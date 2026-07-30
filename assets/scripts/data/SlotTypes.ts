@@ -1,0 +1,970 @@
+/**
+ * SlotTypes - Định nghĩa tất cả Type, Enum, Interface cho game slot.
+ * ★ Gold of Fortune (3×5 Ways Pay) — rewrite từ Shangri-La (3×3 Payline).
+ */
+
+// ─── ENUMS ───
+
+/**
+ * Stage type — mở rộng cho các feature mới của Gold of Fortune.
+ * Giữ nguyên giá trị Free Spin / Buy Free Spin cũ để compatible với server SuperNova schema.
+ */
+export enum SlotStageType {
+    SPIN = 0,
+    POT = 1,                    // POT stage (server API 7.1)
+    RE_SPIN = 2,                // Re-spin stage (server API 7.1)
+    FREE_SPIN_START = 3,
+    FREE_SPIN = 4,
+    FREE_SPIN_RE_TRIGGER = 5,
+    PICK_START = 6,             // Pick game start (server API 7.1)
+    PICK = 7,                   // Pick game in progress (server API 7.1)
+    BUY_FREE_SPIN_START = 8,
+    BUY_FREE_SPIN = 9,
+    LINK_SPIN_START = 10,       // Link spin start (server API 7.1)
+    LINK_SPIN = 11,             // Link spin in progress (server API 7.1)
+    TOPUP_SPIN_START = 12,      // Top-up spin start (server API 7.1)
+    TOPUP_SPIN = 13,            // Top-up spin in progress (server API 7.1)
+    HIDDEN_FREE_SPIN_START = 14, // Hidden free spin start (server API 7.1)
+    HIDDEN_FREE_SPIN = 15,      // Hidden free spin in progress (server API 7.1)
+    NEED_CLAIM = 100,
+    FREE_SPIN_END = 101,
+    PICK_END = 102,             // Pick game end (server API 7.1)
+    COIN_FLIP = 103,            // Coin flip (server API 7.1)
+    COIN_WHEEL = 104,           // Coin wheel (server API 7.1)
+    COIN_FREE_SPIN = 105,       // Coin free spin (server API 7.1)
+    COIN_END = 106,             // Coin event end (server API 7.1)
+    BUY_FREE_SPIN_END = 107,
+    FEATURE_SELECT = 108,       // Feature select (server API 7.1)
+    HIDDEN_FREE_SPIN_END = 109, // Hidden free spin end (server API 7.1)
+    DIRECT_PAY_START = 1000,    // Direct pay start (server API 7.1)
+    DIRECT_PAY = 1001,          // Direct pay in progress (server API 7.1)
+    LINK_SPIN_END = 1002,       // Link spin end (server API 7.1)
+    TOPUP_SPIN_END = 1003,      // Top-up spin end (server API 7.1)
+    DOUBLE_LINK_SPIN_START = 1004, // Double link spin start (server API 7.1)
+    // ★ Gold of Fortune custom stages (client-side only)
+    FEATURE_SELECT_START = 200,   // 6+ Red → hiển thị popup chọn Re-Spin / Free Spin
+    RESPIN_START = 210,           // Vào chuỗi Re-Spin (Top Up)
+    RESPIN = 211,                 // Đang Re-Spin
+    RESPIN_END = 212,             // Re-Spin kết thúc → claim
+    POT_WIN = 220,                // Wild trail trigger Pot Win → vào Pick Game
+    PICK_GAME = 221,              // Đang chơi Pick Game
+    PICK_GAME_END = 222,          // Pick Game kết thúc → claim jackpot
+    BUY_RESPIN_START = 230,       // Mua Re-Spin
+    BUY_RESPIN_END = 231,
+}
+
+/** Secret Treasure — ReelIndex gửi trong SelectFeature cho 5 tier Free Spin (2=Highest … 6=Lowest). */
+export const FREE_SPIN_TIER_REEL_INDICES = [2, 3, 4, 5, 6] as const;
+export type FreeSpinTierReelIndex = typeof FREE_SPIN_TIER_REEL_INDICES[number];
+
+export enum FeatureSelectChoiceId {
+    TOPUP = 'topup',
+    FS_HIGHEST = 'fs_highest',
+    FS_HIGH = 'fs_high',
+    FS_MIDDLE = 'fs_middle',
+    FS_LOW = 'fs_low',
+    FS_LOWEST = 'fs_lowest',
+}
+
+/** Metadata 1 tier Free Spin — map PS field + SelectFeature ReelIndex. */
+export interface FreeSpinTierDef {
+    id: FeatureSelectChoiceId;
+    reelIndex: FreeSpinTierReelIndex;
+    psKeys: string[];
+    labelKey: string;
+    shortLabel: string;
+}
+
+/** 5 tier Free Spin Secret Treasure (ReelIndex 2→6). */
+export const SECRET_TREASURE_FREE_SPIN_TIERS: FreeSpinTierDef[] = [
+    { id: FeatureSelectChoiceId.FS_HIGHEST, reelIndex: 2, psKeys: ['HighestFreeSpinReel', 'HighestFreeSpin'], labelKey: 'feature_select_fs_highest', shortLabel: 'Highest' },
+    { id: FeatureSelectChoiceId.FS_HIGH,    reelIndex: 3, psKeys: ['HighFreeSpinReel', 'HighFreeSpin'],       labelKey: 'feature_select_fs_high',    shortLabel: 'High' },
+    { id: FeatureSelectChoiceId.FS_MIDDLE,  reelIndex: 4, psKeys: ['MiddleFreeSpinReel', 'MiddleFreeSpin'],   labelKey: 'feature_select_fs_middle',  shortLabel: 'Middle' },
+    { id: FeatureSelectChoiceId.FS_LOW,     reelIndex: 5, psKeys: ['LowFreeSpinReel', 'LowFreeSpin'],         labelKey: 'feature_select_fs_low',     shortLabel: 'Low' },
+    { id: FeatureSelectChoiceId.FS_LOWEST,  reelIndex: 6, psKeys: ['LowestFreeSpinReel', 'LowestFreeSpin'],   labelKey: 'feature_select_fs_lowest',  shortLabel: 'Lowest' },
+];
+
+/** Lựa chọn hiển thị trên Feature Selection popup (TopUp + 5 tier FS). */
+export interface FeatureSelectOption {
+    id: FeatureSelectChoiceId;
+    nextStage: SlotStageType;
+    /** SelectFeature: 0=TopUp, 2–6=Free Spin tier. Spin response: 0=Normal, 1=FreeSpin, 2=TopUp game. */
+    reelIndex: number;
+    labelKey: string;
+    enabled: boolean;
+    spinCountHint?: number;
+}
+
+/** 6 lựa chọn mặc định — server có thể disable từng option qua payload sau. */
+export function buildDefaultFeatureSelectOptions(): FeatureSelectOption[] {
+    const topUp: FeatureSelectOption = {
+        id: FeatureSelectChoiceId.TOPUP,
+        nextStage: SlotStageType.TOPUP_SPIN_START,
+        reelIndex: 0,
+        labelKey: 'feature_select_topup',
+        enabled: true,
+    };
+    const tiers: FeatureSelectOption[] = SECRET_TREASURE_FREE_SPIN_TIERS.map(t => ({
+        id: t.id,
+        nextStage: SlotStageType.FREE_SPIN_START,
+        reelIndex: t.reelIndex,
+        labelKey: t.labelKey,
+        enabled: true,
+    }));
+    return [topUp, ...tiers];
+}
+
+export function getFreeSpinTierDef(reelIndex: number): FreeSpinTierDef | undefined {
+    return SECRET_TREASURE_FREE_SPIN_TIERS.find(t => t.reelIndex === reelIndex);
+}
+
+export function isFreeSpinTierReelIndex(reelIndex: number): reelIndex is FreeSpinTierReelIndex {
+    return reelIndex >= 2 && reelIndex <= 6;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ★ FEATURE ENTRY LOGIC ADDED (Concept & System Design v260610)
+//  "New Function → Feature entry logic added"
+//
+//  Có 2 hệ thống độc lập phía client:
+//   (A) Reel UI Gauge — 10 hình chữ tượng hình 2 cột trái/phải, sáng dần
+//       theo PotCount (= StickyAccumulated) + WildCount (= StickyEarned/spin).
+//       KHÔNG dùng PotVisualLevel cho gauge. Xem FEATURE_GAUGE_* bên dưới.
+//   (B) Force Feature Entry — khi Sticky < 6 mà server cho vào Feature theo
+//       xác suất, hệ thống tự "đổ" đủ 6 Sticky (Pot charge → orb → convert),
+//       kèm hiệu ứng nữ thần dẫn dắt trước khi mở Feature Selection.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Ngưỡng "Sticky accumulated qty" cho 10 lighting stage (doc trang 18).
+ * Khi tổng Sticky tích lũy đạt ngưỡng thứ i (1-based) → đèn stage i bật.
+ * stage 1..10 → [10, 20, 40, 60, 80, 100, 120, 140, 160, 200].
+ */
+export const FEATURE_GAUGE_STICKY_THRESHOLDS: readonly number[] =
+    [10, 20, 40, 60, 80, 100, 120, 140, 160, 200];
+
+/**
+ * "Sticky earned qty" — số Sticky cần kiếm thêm để bước từ stage (i-1) → i.
+ * Chỉ mang tính tham chiếu (bằng hiệu các ngưỡng ở trên).
+ * stage 1..10 → [10, 10, 20, 20, 20, 20, 20, 20, 20, 40].
+ */
+export const FEATURE_GAUGE_STICKY_EARNED_PER_STAGE: readonly number[] =
+    [10, 10, 20, 20, 20, 20, 20, 20, 20, 40];
+
+/**
+ * Lighting Condition_1 — ma trận xác suất chuyển stage (doc trang 17).
+ * MATRIX[current-1][next-1] = % (tổng mỗi hàng = 100).
+ * "current" giữ nguyên hoặc được nâng lên theo xác suất; không bao giờ giảm
+ * (mọi ô dưới đường chéo = 0). Dùng khi server KHÔNG chủ động gửi lightingStage.
+ */
+export const FEATURE_LIGHTING_CONDITION_1_MATRIX: readonly (readonly number[])[] = [
+    [72, 12, 6, 4, 3, 1.445, 0.85, 0.55, 0.15, 0.005],
+    [0, 69, 11, 7, 5.5, 3.49, 2.6, 1.1, 0.3, 0.01],
+    [0, 0, 65, 12.5, 8, 6.12, 5.23, 2.3, 0.6, 0.25],
+    [0, 0, 0, 64, 14.8, 8.21, 6.64, 4.65, 1.2, 0.5],
+    [0, 0, 0, 0, 59, 15.58, 12.17, 9.25, 3, 1],
+    [0, 0, 0, 0, 0, 61, 18, 12, 6, 3],
+    [0, 0, 0, 0, 0, 0, 59, 25, 10, 5],
+    [0, 0, 0, 0, 0, 0, 0, 65, 25, 10],
+    [0, 0, 0, 0, 0, 0, 0, 0, 60, 40],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 100],
+];
+
+/** Tổng số lighting stage của gauge (5 trái + 5 phải). */
+export const FEATURE_GAUGE_MAX_STAGE = 10;
+
+/** Server gauge stage (PotVisualLevel) — parsheet MaxLevel=6. Client map 1–6 → 10 UI đèn. */
+export const FEATURE_GAUGE_POT_LEVEL_MAX = 6;
+
+/**
+ * @deprecated Gauge lighting stage giờ dựa trên StickyAccumulated qty [10,20,40,60,80,100,120,140,160,200]
+ *             qua gaugeStageFromAccumulated(). PotVisualLevel chỉ còn dùng cho Pot UI.
+ * Map PotVisualLevel (1–6) từ server sang 10 bước đèn UI (legacy).
+ * Level 1 = chưa sáng ô nào; level 2–6 chia đều 10 ô (2→2, 3→4, 4→6, 5→8, 6→10).
+ */
+export function gaugeStageFromPotVisualLevel(potVisualLevel: number): number {
+    if (potVisualLevel <= 1) return 0;
+    const activeLevels = FEATURE_GAUGE_POT_LEVEL_MAX - 1; // level 2..6
+    return Math.min(
+        FEATURE_GAUGE_MAX_STAGE,
+        Math.round((potVisualLevel - 1) * FEATURE_GAUGE_MAX_STAGE / activeLevels),
+    );
+}
+
+/**
+ * Flat index 0..9 trong mảng 10 đèn (stage 1-based → index 0-based).
+ * Thứ tự doc: bottom-left(1) → bottom-right(2) → 2nd-left(3) → … → top-right(10).
+ */
+export function gaugeStageToFlatIndex(stage: number): number {
+    return stage - 1;
+}
+
+/**
+ * Vị trí bật đèn theo lighting stage (doc trang 14/18):
+ * bottom-left(1) → bottom-right(2) → 2nd-left(3) → 2nd-right(4) → … → top-left(9) → top-right(10).
+ * pillar: 0 = cột trái, 1 = cột phải. index: 0 = dưới cùng … 4 = trên cùng.
+ */
+export function gaugeStageToPillar(stage: number): { pillar: 0 | 1; index: number } | null {
+    if (stage < 1 || stage > FEATURE_GAUGE_MAX_STAGE) return null;
+    return { pillar: ((stage - 1) % 2) as 0 | 1, index: Math.floor((stage - 1) / 2) };
+}
+
+/** Suy ra lighting stage (0..10) từ tổng Sticky tích lũy dựa trên ngưỡng. */
+export function gaugeStageFromAccumulated(accumulated: number): number {
+    let stage = 0;
+    for (let i = 0; i < FEATURE_GAUGE_STICKY_THRESHOLDS.length; i++) {
+        if (accumulated >= FEATURE_GAUGE_STICKY_THRESHOLDS[i]) stage = i + 1;
+        else break;
+    }
+    return stage;
+}
+
+/**
+ * Lighting Condition_1: từ stage hiện tại roll stage kế tiếp theo ma trận xác suất.
+ * @param currentStage 1..10
+ * @param rng hàm random [0,1) — mặc định Math.random (client fallback).
+ */
+export function rollLightingCondition1(currentStage: number, rng: () => number = Math.random): number {
+    const clamped = Math.max(1, Math.min(FEATURE_GAUGE_MAX_STAGE, currentStage));
+    const row = FEATURE_LIGHTING_CONDITION_1_MATRIX[clamped - 1];
+    const r = rng() * 100;
+    let acc = 0;
+    for (let next = 0; next < row.length; next++) {
+        acc += row[next];
+        if (r < acc) return next + 1;
+    }
+    return clamped;
+}
+
+/**
+ * Xác suất vào Feature khi Sticky < 6 (doc trang 20). Trả về fraction [0,1].
+ *   0 ≤ count < 3 → 0.0001%  |  3 ≤ count < 5 → 0.001%  |  count = 5 → 0.01%
+ */
+export function forceFeatureEntryProbability(stickyCount: number): number {
+    if (stickyCount >= 5) return 0.0001;
+    if (stickyCount >= 3) return 0.00001;
+    return 0.000001;
+}
+
+/**
+ * Giá trị credit gán cho Sticky được "đổ" thêm và xác suất tương ứng (doc trang 21).
+ * value[i] có xác suất weight[i]%.
+ */
+export const FEATURE_STICKY_FILL_VALUES: readonly number[] = [0.1, 0.2, 0.5, 0.8, 1.0, 5.0];
+export const FEATURE_STICKY_FILL_WEIGHTS: readonly number[] =
+    [51.414, 25.707, 10.2828, 6.4268, 5.1414, 1.0283];
+
+/** Chọn ngẫu nhiên 1 giá trị credit cho Sticky đổ thêm theo bảng xác suất. */
+export function pickForcedStickyValue(rng: () => number = Math.random): number {
+    const total = FEATURE_STICKY_FILL_WEIGHTS.reduce((s, w) => s + w, 0);
+    const r = rng() * total;
+    let acc = 0;
+    for (let i = 0; i < FEATURE_STICKY_FILL_VALUES.length; i++) {
+        acc += FEATURE_STICKY_FILL_WEIGHTS[i];
+        if (r < acc) return FEATURE_STICKY_FILL_VALUES[i];
+    }
+    return FEATURE_STICKY_FILL_VALUES[0];
+}
+
+/** Số Sticky cần thiết để vào Feature (đủ 6 đồng). */
+export const FEATURE_ENTRY_REQUIRED_STICKY = 6;
+
+/**
+ * Payload mô tả một lần Force Feature Entry (Sticky < 6 → đổ đủ 6).
+ * Dùng cho StickyFillEffect (Pot charge → orb → convert).
+ */
+export interface ForceFeatureEntryData {
+    /** Các Sticky đã xuất hiện tự nhiên trên reel (giữ nguyên, không đổ lại). */
+    existingCells: StickyCell[];
+    /** Các Sticky do hệ thống đổ thêm để đủ 6 (target cho orb bay xuống). */
+    fillCells: StickyCell[];
+    /** Số Sticky tự nhiên trước khi đổ (0..5) — quyết định nhánh xác suất. */
+    naturalCount: number;
+}
+
+/**
+ * ★ Secret Treasure symbol set (0–20).
+ *
+ * Minors  (0–5):   9, 10, J, Q, K, A — payout thấp
+ * Majors  (6–10):  Horus (Ra), Anubis, Sobek, Ramses, Cleopatra — payout cao
+ * Special (11–15): Wild Trail, Sticky Red/Yellow/Green, +1 Re-Spin
+ * Jackpot (16–20): chỉ dùng trong Pick Game, không xuất hiện trên reel strip
+ */
+export enum SymbolId {
+    // ── Minor symbols (Secret Treasure: 6 minors) ──
+    MINOR_9 = 0,
+    MINOR_10 = 1,
+    MINOR_J = 2,
+    MINOR_Q = 3,
+    MINOR_K = 4,
+    MINOR_A = 5,
+    // ── Major symbols (PS 11→15, payout thấp → cao) ──
+    MAJOR_HORUS = 6,      // Horus (Ra)
+    MAJOR_ANUBIS = 7,
+    MAJOR_SOBEK = 8,
+    MAJOR_RAMSES = 9,
+    MAJOR_CLEOPATRA = 10,
+    // ── Special symbols ──
+    WILD = 11,           // Wild Trail — chỉ xuất hiện trên reel 1/2/3 (index 1,2,3)
+    STICKY_RED = 12,     // Red sticky — xuất hiện Normal/Re-Spin/Free Spin, mang credit
+    STICKY_YELLOW = 13,  // Yellow sticky — Re-Spin / Free Spin Wild
+    STICKY_GREEN = 14,   // Green sticky — Re-Spin VIP
+    PLUS_ONE_SPIN = 15,  // +1 Re-Spin
+    // ── Jackpot (chỉ trong Pick Game) ──
+    JP_IDLE = 16,
+    JP_MINI = 17,
+    JP_MINOR = 18,
+    JP_MAJOR = 19,
+    JP_GRAND = 20,
+
+}
+
+/** Helper: kiểm tra symbol là Major (6–10) */
+export function isMajor(s: number): boolean { return s >= SymbolId.MAJOR_HORUS && s <= SymbolId.MAJOR_CLEOPATRA; }
+/** Helper: kiểm tra symbol là Minor (0–5) */
+export function isMinor(s: number): boolean { return s >= SymbolId.MINOR_9 && s <= SymbolId.MINOR_A; }
+/** Helper: kiểm tra symbol là Sticky (Red/Yellow/Green) */
+export function isSticky(s: number): boolean { return s === SymbolId.STICKY_RED || s === SymbolId.STICKY_YELLOW || s === SymbolId.STICKY_GREEN; }
+/** Helper: Wild có thay thế được cho symbol s không?
+ * Wild thay tất cả Minor + Major. KHÔNG thay Sticky, +1 Spin, Jackpot.
+ */
+export function wildSubstitutes(s: number): boolean { return isMinor(s) || isMajor(s); }
+
+// ═══════════════════════════════════════════════════════════
+//  PS ↔ CLIENT SYMBOL ID MAPPING — Secret Treasure (SlotId 18)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * PS ID → Client SymbolId — Secret Treasure (SlotId 18).
+ *
+ * Normal symbols (Way Pay): 1=9, 2=10, 3=J, 4=Q, 5=K, 6=A, 11=Horus, 12=Anubis, 13=Sobek, 14=Ramses, 15=Cleopatra
+ * Wild: 21 (Base Game only)
+ * Red Coins Trail: 41–46 (STICKY_RED + credit text)
+ * Yellow Coin (Free Spin): 47 | Yellow Coin (Top Up): 48
+ * Green Coin: 49 | +1 Spin: 50
+ * Pick Game: 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini
+ */
+export const PS_TO_CLIENT: Record<number, number> = {
+    // ─── Normal symbols (Way Pay wins) ───
+    1:  SymbolId.MINOR_9,
+    2:  SymbolId.MINOR_10,
+    3:  SymbolId.MINOR_J,
+    4:  SymbolId.MINOR_Q,
+    5:  SymbolId.MINOR_K,
+    6:  SymbolId.MINOR_A,
+    11: SymbolId.MAJOR_HORUS,      // Horus (Ra)
+    12: SymbolId.MAJOR_ANUBIS,
+    13: SymbolId.MAJOR_SOBEK,
+    14: SymbolId.MAJOR_RAMSES,
+    15: SymbolId.MAJOR_CLEOPATRA, // highest payout
+    // ─── Wild ───
+    21: SymbolId.WILD,           // Wild Trail (Bat + Peach, Base Game only)
+    // ─── Red Coins Trail (41–46) — tất cả hiển thị cùng 1 hình STICKY_RED ───
+    // Credit value của mỗi loại coin được lấy từ SymbolRates[id] và render dưới dạng text
+    41: SymbolId.STICKY_RED,     // Trail01 Red Coin (giá trị nhỏ nhất)
+    42: SymbolId.STICKY_RED,     // Trail02 Red Coin
+    43: SymbolId.STICKY_RED,     // Trail03 Red Coin
+    44: SymbolId.STICKY_RED,     // Trail04 Red Coin
+    45: SymbolId.STICKY_RED,     // Trail05 Red Coin
+    46: SymbolId.STICKY_RED,     // Trail06 Red Coin (giá trị lớn nhất)
+    // ─── Feature special symbols ───
+    47: SymbolId.STICKY_YELLOW,  // Yellow Coin — Free Spin (Wild + instant pay)
+    48: SymbolId.STICKY_YELLOW,  // Yellow Coin — Top Up (hút tiền các đồng Đỏ)
+    49: SymbolId.STICKY_GREEN,   // Green Coin — Top Up VIP (hút toàn bộ tiền)
+    50: SymbolId.PLUS_ONE_SPIN,  // +1 Spin (Top Up Bonus)
+    // ─── Pick Game symbols (lưới 3×4 = 12 thẻ) ───
+    81: SymbolId.JP_IDLE,        // Pick Idle (thẻ úp)
+    82: SymbolId.JP_GRAND,       // GRAND Jackpot (Rồng Đỏ)
+    83: SymbolId.JP_MAJOR,       // MAJOR Jackpot (Thỏi Vàng/Bạc)
+    84: SymbolId.JP_MINOR,       // MINOR Bonus (Quả Đào)
+    85: SymbolId.JP_MINI,        // MINI Bonus (Quả Cam)
+    // ─── Empty ───
+    99: -1,
+};
+
+/** Client SymbolId → PS ID (normal symbols only — Trail/special là 1-to-many). */
+export const CLIENT_TO_PS: Record<number, number> = {
+    [SymbolId.MINOR_9]:      1,
+    [SymbolId.MINOR_10]:     2,
+    [SymbolId.MINOR_J]:      3,
+    [SymbolId.MINOR_Q]:      4,
+    [SymbolId.MINOR_K]:      5,
+    [SymbolId.MINOR_A]:      6,
+    [SymbolId.MAJOR_HORUS]:     11,
+    [SymbolId.MAJOR_ANUBIS]:    12,
+    [SymbolId.MAJOR_SOBEK]:     13,
+    [SymbolId.MAJOR_RAMSES]:    14,
+    [SymbolId.MAJOR_CLEOPATRA]: 15,
+    [SymbolId.WILD]:         21,
+    [SymbolId.STICKY_RED]:   41,  // representative Trail01
+    [SymbolId.STICKY_YELLOW]:47,  // representative Yellow
+    [SymbolId.STICKY_GREEN]: 49,
+    [SymbolId.PLUS_ONE_SPIN]:50,
+    [SymbolId.JP_IDLE]:      81,
+    [SymbolId.JP_GRAND]:     82,
+    [SymbolId.JP_MAJOR]:     83,
+    [SymbolId.JP_MINOR]:     84,
+    [SymbolId.JP_MINI]:      85,
+};
+
+export function psToClientSymbol(psId: number): number {
+    return PS_TO_CLIENT[psId] ?? -1;
+}
+
+export function convertPSStrips(psStrips: number[][]): number[][] {
+    return psStrips.map((strip) =>
+        strip.map((psId) => PS_TO_CLIENT[psId] ?? SymbolId.MINOR_9)
+    );
+}
+
+export enum JackpotType {
+    NONE = 0,
+    MINI = 1,
+    MINOR = 2,
+    MAJOR = 3,
+    GRAND = 4,
+}
+
+export enum TopupReelType {
+    NONE = 0,
+    RED = 1,
+    YELLOW = 2,
+    GREEN = 3,
+    GRAND = 4,
+}
+
+export enum WinTier {
+    NONE = 0,
+    NORMAL = 1,
+    BIG_WIN = 2,
+    MEGA_WIN = 3,
+    MAJOR_WIN = 4,
+    SUPER_WIN = 5,
+    EPIC_WIN = 6,
+    ULTRA_WIN = 7,
+    MONSTER_WIN = 8,
+    MAX_WIN = 9,
+}
+
+/** State machine — trạng thái hiện tại của vòng spin */
+export enum GameState {
+    IDLE = 'idle',
+    SPINNING = 'spinning',
+    RESULT = 'result',
+    FREE_SPIN = 'freespin',
+    POPUP = 'popup',
+    // ★ NEW
+    FEATURE_SELECT = 'feature_select',  // Đang hiển thị popup chọn Re-Spin / Free Spin
+    RESPIN = 'respin',                  // Đang trong chuỗi Re-Spin
+    POT_WIN = 'pot_win',                // Pot Trail đã trigger, chuẩn bị Pick Game
+    PICK_GAME = 'pick_game',            // Đang chơi Pick Game
+}
+
+// ─── INTERFACES ───
+
+/**
+ * 1 win theo Ways Pay — thay thế MatchedLinePay (payline).
+ * Server (nếu có) cũng có thể trả về structure này khi schema cập nhật.
+ */
+export interface WaysPayWin {
+    /** Symbol thắng (đã resolve Wild → ID symbol gốc). */
+    symbolId: number;
+    /** Số reel liên tiếp từ trái match (3..5). */
+    reelCount: number;
+    /** Số "ways" = tích số instance trên mỗi reel. */
+    ways: number;
+    /** Payout = symbolPayout × ways × totalBet (đã tính sẵn). */
+    payout: number;
+    /** Có chứa Wild không (để khoá animation Wild zoom riêng). */
+    containsWild: boolean;
+    /** Danh sách vị trí (reel, row) tất cả ô tham gia win — dùng cho highlight. */
+    cells: Array<{ reel: number; row: number }>;
+    /**
+     * Mỗi phần tử là 1 combination cụ thể (1 path từ reel 0 → reelCount-1).
+     * combinations.length === ways.
+     * Dùng để cycle từng path riêng biệt giống payline cycling.
+     */
+    combinations: Array<Array<{ reel: number; row: number }>>;
+}
+
+/**
+ * @deprecated dùng `WaysPayWin` cho Gold of Fortune.
+ * Giữ alias để code legacy compile (sẽ remove cùng PaylineDisplay).
+ */
+export interface MatchedLinePay {
+    payLineIndex: number;
+    payout: number;
+    matchedSymbols: number[];
+    containsWild: boolean;
+    reelCnt: number;
+    matchedSymbolsIndices: Array<{ Item1: number; Item2: number }> | null;
+}
+
+/** Sticky cell state — dùng trong Re-Spin / Free Spin. */
+export interface StickyCell {
+    reel: number;        // 0..4
+    row: number;         // 0..2
+    symbolId: number;    // STICKY_RED / STICKY_YELLOW / STICKY_GREEN
+    credit: number;      // giá trị nhúng trên symbol (đơn vị = chip, đã nhân totalBet)
+}
+
+/** Pick Game state — Pick coin reveal sequence. */
+export interface PickGameState {
+    /** Grid 3×4 = 12 ô. Mỗi ô lưu symbolId thật (JP_GRAND/MAJOR/MINOR/MINI) — chưa lộ cho người chơi. */
+    grid: number[];
+    /** Ô đã lật (index 0..11). */
+    revealed: number[];
+    /** Tier thắng (sau khi match 3 cùng tier). undefined = chưa thắng. */
+    wonTier?: 'GRAND' | 'MAJOR' | 'MINOR' | 'MINI';
+}
+
+export interface TopupReelSlot {
+    type: TopupReelType;
+    win: number;
+    index: number;
+}
+
+export interface SelectFeatureResponse {
+    nextStage: number;
+    remainFeatureSpinCount: number;
+    /** ReelIndex đã chọn (0=TopUp, 2–6=Free Spin tier). */
+    reelIndex?: number;
+}
+
+/** Spin response — mở rộng đầy đủ cho Gold of Fortune. */
+export interface SpinResponse {
+    /** Center strip index của 5 reel. */
+    rands: number[];
+    /** ★ NEW: Wins theo Ways Pay. */
+    waysPayWins: WaysPayWin[];
+    /** @deprecated giữ field cho code legacy. */
+    matchedLinePays: MatchedLinePay[];
+    totalBet: number;
+    totalWin: number;
+    updateCash: boolean;
+    nextStage: number;
+    reelIndex?: number;
+    featureMultiple?: number;
+    remainCash?: number;
+    remainFreeSpinCount?: number;
+    winGrade?: string;
+    featureSpinTotalWin?: number;
+
+    // ★ NEW Gold of Fortune fields ─────────────────────────────
+    /** Số Red sticky xuất hiện trong vòng spin này (để detect Feature Select / Long Spin). */
+    redCount?: number;
+    /** Danh sách reel có Red sticky (dùng cho Long Spin trigger: 3+ reel trong [0..3]). */
+    redReels?: number[];
+    /** Danh sách sticky cells (kèm credit) — non-empty khi Re-Spin / Free Spin. */
+    stickyCells?: StickyCell[];
+    /** Số ô Wild Trail xuất hiện trong spin này (để Pot Level tích lũy). */
+    wildTrailCount?: number;
+    /** Pot Visual Level trực tiếp từ server (1..6). Dùng để set Pot level UI. */
+    potVisualLevel?: number;
+    /** Server trigger Pot Win (= bước vào Pick Game). */
+    triggerPotWin?: boolean;
+    /** Pick game data (chỉ có khi triggerPotWin = true). */
+    pickGame?: PickGameState;
+    /** Số Re-Spin còn lại (Re-Spin mode). */
+    remainRespinCount?: number;
+    /** Topup game link reel state: 15 grid cells + 1 Grand slot. */
+    topupReel?: TopupReelSlot[];
+
+    // ★ FEATURE ENTRY LOGIC ADDED ───────────────────────────────
+    /**
+     * true khi vào Feature Select do "Force Feature Enter" (Sticky tự nhiên < 6,
+     * server đổ đủ 6 theo xác suất). Client phát hiệu ứng nữ thần + đổ Sticky.
+     */
+    isForcedFeatureEntry?: boolean;
+    /** Dữ liệu đổ Sticky (existing + fill) khi isForcedFeatureEntry = true. */
+    forceFeatureEntry?: ForceFeatureEntryData;
+    /** Số Sticky xuất hiện tự nhiên trên reel spin này (dùng cho gauge + force check). */
+    naturalStickyCount?: number;
+    /** Số Red Sticky landed spin này — server StickyEarned (normal spin only). */
+    stickyEarnedThisSpin?: number;
+    /** Legacy alias (= stickyEarnedThisSpin). */
+    wildCount?: number;
+    /** Lighting stage 0..10 — từ StickyAccumulated qua gaugeStageFromAccumulated(). */
+    lightingStage?: number;
+    /** Tổng Red Sticky tích lũy — server StickyAccumulated (normal spin only). */
+    stickyAccumulated?: number;
+    /** Legacy alias (= stickyAccumulated). */
+    potCount?: number;
+}
+
+export interface PlayerData {
+    balance: number;
+    betIndex: number;
+    coinValue: number;
+}
+
+/** Config cố định từ Parsheet (★ Gold of Fortune — 5 reels, Ways Pay). */
+export interface SlotConfig {
+    /** 5 reel strips Normal Spin. Mỗi strip = mảng SymbolId. */
+    reelStrips: number[][];
+    /** Legacy single Free Spin strip (Gold Of Fortunes fallback). */
+    freeSpinReelStrips: number[][];
+    /** Secret Treasure: 5 tier Free Spin strips keyed by SelectFeature ReelIndex (2–6). */
+    freeSpinTierStrips: Record<number, number[][]>;
+    /** 5 reel strips Re-Spin (chỉ ô trống được quay; strip nhiều +1 spin / Yellow / Green). */
+    respinReelStrips: number[][];
+    /** Hỗ trợ legacy: nếu user bật BuyBonus cũ ⇒ dùng tạm strips này. */
+    purchaseReelStrips: number[][];
+
+    /** Bet & Coin options. */
+    betOptions: number[];
+    coinValues: number[];
+
+    /** Số reel cố định = 5 (đặt thành biến để code adapter dễ thay đổi). */
+    reelCount: number;
+    /** Số row visible = 3. */
+    rowCount: number;
+    /** Tổng số ways = rowCount ^ reelCount = 3^5 = 243. */
+    totalWays: number;
+
+    /** Ngưỡng WinTier (×totalBet). */
+    bigWinThreshold: number;
+    megaWinThreshold: number;
+    majorWinThreshold: number;
+    superWinThreshold: number;
+    epicWinThreshold: number;
+    ultraWinThreshold: number;
+    monsterWinThreshold: number;
+    maxWinThreshold: number;
+
+    /**
+     * Paytable theo Ways Pay: payout multiplier × totalBet × ways
+     * Key = SymbolId. Value = mảng [3-of-a-kind, 4-of-a-kind, 5-of-a-kind] multiplier.
+     * Lưu ý: multiplier áp dụng **không nhân với totalBet** vì server schema mới
+     * dùng công thức (multiplier × ways × totalBet). Xem `WaysPayCalculator`.
+     */
+    waysPayTable: Record<number, [number, number, number]>;
+
+    /** Jackpot tier payout multipliers (× totalBet) — Pick Game reward. */
+    jackpotMultipliers?: {
+        GRAND: number;
+        MAJOR: number;
+        MINOR: number;
+        MINI: number;
+    };
+
+    /** Pot Level thresholds (số Wild Trail tích luỹ để lên level). 6 ngưỡng cho level 1→6. */
+    potLevelThresholds: number[]; // e.g. [1, 3, 5, 7, 9, 12]
+
+    // ─── @deprecated — giữ field cho code legacy. Không dùng trong code mới. ───
+    /** @deprecated dùng Ways Pay; không còn paylines. */
+    paylines: number[][];
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SERVER API TYPES (dùng khi USE_REAL_API = true)
+// ═══════════════════════════════════════════════════════════
+
+/** Session data nhận được sau khi Login thành công */
+export interface ServerSession {
+    nick: string;
+    serverTime: string;
+    clientIp: string;
+    sessionKey: bigint;       // Int64 — dùng làm SKEY cho mọi request sau (dùng BigInt để tránh mất precision)
+    sessionUpdateSec: number;
+    memberIdx: number;        // Int64 — dùng làm MIDX (giá trị thực tế nhỏ, number là đủ)
+    seq: number;              // Sequence number khởi đầu
+    uid: string;
+    cash: number;             // Balance thực từ server
+    aky: string;              // AES-256 key cho mọi request sau login
+    currency: string;
+    country: string;
+    isNewAccount: boolean;
+    useBroadcast: boolean;
+    isPractice?: boolean;
+    smm: ServerMaintenanceMessage | null;
+}
+
+/** Enter response — data game khởi tạo */
+export interface ServerEnterResponse {
+    cash: number;
+    slotName: string;
+    ps: string;               // Base64 par sheet data
+    betIndex: number;
+    coinValueIndex: number;
+    lastSpinResponse: any;    // ISpinResponse từ server
+    isPractice: boolean;
+    memberIdx: number;
+    smm: ServerMaintenanceMessage | null;
+}
+
+/** Spin response từ server (AckSpin) — ALL PascalCase theo actual API */
+export interface ServerSpinResponse {
+    RemainCash: number;
+    Res: {
+        Rands: number[];
+        MatchedLinePays: ServerMatchedLinePay[];
+        UpdateCash: boolean;
+        TotalBet: number;
+        TotalWin: number;
+        NextStage: number;
+        WinGrade: string | null;
+        FeatureSpinTotalWin: number;
+        FeatureSpinWin: number;
+        RemainFreeSpinCount: number;
+        RemainFeatureSpinCount?: number;
+        ReelIndex: number;
+        FeatureMultiple?: number;
+        MysteryMultiple?: number;
+        FreeSpinMultiplier?: number;
+        MatchedBonus?: any;
+        CollectWin?: number;
+        AddSpinCount?: number;
+        InitReel?: any;
+        // ★ Gold of Fortune specific fields
+        RedCount?: number;
+        StickyRedCount?: number;
+        RedReels?: number[];
+        StickyCells?: any[];
+        StickyList?: any[];
+        CollectSymbols?: any[];
+        WildTrailCount?: number;
+        WildCount?: number;
+        /** Gauge accumulated count (= StickyAccumulated). */
+        PotCount?: number;
+        PotVisualLevel?: number;
+        TriggerPotWin?: boolean;
+        IsPotWin?: boolean;
+        PickGame?: any;
+        PickGameState?: any;
+        RemainReSpinCount?: number;
+        RemainRespinCount?: number;
+        TopupReel?: any[];
+        NormalSpinLinkReel?: any[];
+        NoramlSpinLinkReel?: any[];
+        // ★ Feature Entry Logic Added — optional server fields (nếu server hỗ trợ)
+        IsForceFeatureEnter?: boolean;
+        ForceFeatureEnter?: boolean;
+        IsForcedFeatureEntry?: boolean;
+        LightingStage?: number;
+        StickyAccumulated?: number;
+        StickyEarned?: number;
+        StickyEarnedCount?: number;
+    };
+    SpinID: number;                    // Int64
+    Before: Record<string, number>;    // Jackpot values trước spin
+    After: Record<string, number>;     // Jackpot values sau spin
+    SMM: ServerMaintenanceMessage | null;
+}
+
+/** Server MatchedLinePay format — ALL PascalCase theo actual API */
+export interface ServerMatchedLinePay {
+    Feature: string | null;
+    FeatureParam: number;
+    MatchedSymbols: number[];
+    MatchedSymbolsCount: number;
+    PayLineIndex: number;
+    Payout: number;
+    ReelCnt: number;
+    ContainsWild: boolean;
+    MatchedSymbolsIndices: any[];
+}
+
+/**
+ * Pick response từ server (AckPick → GFPickResponse).
+ * IsJackpot=true khi đã match 3 hình giống nhau.
+ * JackpotIndex: 0=Mini, 1=Minor, 2=Major, 3=Grand.
+ * NextStage=102 (PICK_END) khi kết thúc → client phải gọi /Claim.
+ *
+ * Theo API spec: Server trả về {RemainCash, Res: {GFPickResponse}}
+ * GFPickResponse structure:
+ *   PickGame: array<int> - Current pick grid state (12 items)
+ *   PickResults: int - Result value of this pick
+ *   PickStage: int - Current pick stage (1-9)
+ *   PickWin: number - Accumulated pick win amount
+ *   IsJackpot: boolean - Whether 3 matches resulted in jackpot
+ *   JackpotIndex: int - Jackpot type (0=Mini, 1=Minor, 2=Major, 3=Grand, -1=no win)
+ *   NextStage: int - Next stage
+ */
+export interface ServerPickResponse {
+    PickGame: number[];          // Grid state (12 items, server symbol IDs: 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini)
+    PickResults?: number;        // Result value of this pick
+    PickStage?: number;          // Current pick stage (1-9)
+    PickWin?: number;           // Accumulated pick win amount
+    IsJackpot: boolean;
+    JackpotIndex: number;       // 0=Mini 1=Minor 2=Major 3=Grand -1=no win
+    NextStage: number;
+}
+
+/** Claim response từ server (AckClaimFeature) — PascalCase theo tài liệu */
+export interface ServerClaimResponse {
+    ClaimResponse: {
+        TotalWin: number;
+        FeatureName: string;
+        NextStage: number;
+        WinGrade: string;
+        StartRands: number[];
+    };
+    WinCash: number;           // Tiền thắng trong feature spin
+    Cash: number;
+}
+
+/** BalanceGet response từ server (AckBalanceGet) — 4.11 /Slot/{SlotId}/BalanceGet */
+export interface ServerBalanceGetResponse {
+    Balance: number;     // Current balance
+    Currency: string;    // Currency code (e.g. "KRW")
+}
+
+/** FeatureItem từ server — AckFeatureItemGet.Items[n] (theo API doc) */
+export interface ServerFeatureItem {
+    Id: number;              // ID của gói
+    Name: string;            // Tên gói
+    Title: string;           // Tiêu đề hiển thị
+    Desc: string;            // Mô tả chi tiết
+    PriceRatio: number;      // Bội số so với totalBet (không phải giá tuyệt đối)
+    EffectType: number;      // 1=Ticket, 2=ExchangeReel, 3=ProvideSymbol, 4=AddSpins
+    EffectReels: number[];   // Reel áp dụng (nếu có)
+    EffectSymbols: any[];    // Symbol áp dụng (nếu có)
+    AddSpinValue: number | null;
+    TicketFeature: number;
+    Order: number;
+    ImgUrl: string;          // URL thumbnail
+}
+
+/** FeatureItemGet response từ server (AckFeatureItemGet) */
+export interface ServerFeatureItemGetResponse {
+    Cash: number;
+    Items: ServerFeatureItem[];
+    SMM: any | null;
+}
+
+/** FeatureItemBuy response từ server (AckPurchaseItemBuy) */
+export interface ServerFeatureItemBuyResponse {
+    IsSuccess: boolean;
+    Res: any | null;       // ISpinResponse — spin result kèm theo khi mua
+    RemainCash: number;
+    ExReel: any;           // Có thể là string (AES encrypted), array, object, hoặc null
+}
+
+/** Client-side FeatureItem (camelCase) */
+export interface FeatureItem {
+    itemId: number;
+    name: string;
+    title: string;
+    desc: string;
+    priceRatio: number;      // PriceRatio từ server (bội số × totalBet)
+    effectType: number;      // 1=Ticket, 2=ExchangeReel, 3=ProvideSymbol, 4=AddSpins
+    imgUrl: string;
+    addSpinValue?: number | null;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BUY BONUS SYSTEM — IBonusItem
+// ═══════════════════════════════════════════════════════════
+
+/** Loại áp dụng của BonusItem (mapping từ SlotPurchaseItemEffectType) */
+export type BonusApplyType = 'onceuse' | 'activate';
+
+/**
+ * IBonusItem — Dữ liệu item bonus từ Server (SlotFeatureItemInfo).
+ * - "onceuse": Mua đứt 1 lần → gọi API FeatureItemBuy (EffectType=1 Ticket / 4 AddSpins).
+ * - "activate": Bật/Tắt → dùng OnOff trong FeatureItemBuy (EffectType=2 ExchangeReel / 3 ProvideSymbol).
+ * - Price hiển thị = currentTotalBet × valueRatio (PriceRatio từ server).
+ */
+export interface IBonusItem {
+    uniqueID: string;            // ← SlotFeatureItemInfo.Id (Int32 → string)
+    itemName: string;            // ← SlotFeatureItemInfo.Name
+    itemInfo: string;            // ← SlotFeatureItemInfo.Desc
+    applyType: BonusApplyType;   // ← suy ra từ EffectType: "onceuse" hoặc "activate"
+    valueRatio: number;          // ← SlotFeatureItemInfo.PriceRatio
+    thumbnailImage: string;      // ← SlotFeatureItemInfo.ImgUrl
+}
+
+/** Jackpot polling response (AckJackpotInfo) — PascalCase theo tài liệu */
+export interface ServerJackpotResponse {
+    Wins: number[];                  // [mini, minor, major, grand] — array theo actual API
+    WinMsgs: ServerWinBroadcast[];
+    ReqRace: boolean;
+    CR: NwCashRaceSimpleForUser | null;
+    UTC: string;
+    SMM?: ServerMaintenanceMessage | null;  // "Most responses include SMM" (doc section 6)
+}
+
+// ─── Cash Race types (theo API doc) ──────────────────────────────────────────
+
+/** NwCashRaceSimpleForUser — trả về trong Jackpot polling */
+export interface NwCashRaceSimpleForUser {
+    MyRank: number;           // hạng hiện tại của tôi (0 nếu chưa có hạng)
+    MyPrizePercent: number;   // % prize có thể nhận
+    Race: NwCashRaceInfoSimple;
+}
+
+/** NwCashRaceInfoSimple — thông tin race rút gọn (trong Jackpot CR) */
+export interface NwCashRaceInfoSimple {
+    RaceId: number;
+    Rule: number;     // CashRaceRule: 0=WIN, 1=BET, 2=LOSE
+    State: number;    // CashRaceState: 0=none,1=wait,2=notice,3=running,4=closing,5=closed
+    NT: string;       // notice start time (ISO UTC)
+    ST: string;       // race start time (ISO UTC)
+    CT: string;       // race end / settlement start time (ISO UTC)
+    ET: string;       // settlement end time (ISO UTC)
+    DT: string;       // display time (ISO UTC)
+    TotalPrize: number;
+}
+
+/** NwCashRaceInfoDetail — thông tin race đầy đủ (trong CashRaceMyRankGetFirst) */
+export interface NwCashRaceInfoDetail {
+    RaceId: number;
+    Title: string;
+    Rule: number;     // CashRaceRule: 0=WIN, 1=BET, 2=LOSE
+    State: number;    // CashRaceState
+    NT: string;
+    ST: string;
+    CT: string;
+    ET: string;
+    Desc: string;
+    TotalPrize: number;
+    WinnerCount: number;  // số người nhận thưởng
+    BasePrize: number;
+    PrizeRatio: number;
+}
+
+/** NwCashRaceRankerSimple — 1 dòng trong bảng xếp hạng */
+export interface NwCashRaceRankerSimple {
+    Rank: number;
+    Nick: string;
+    Score: number;
+    Prize: number;
+    B_Rank: number;   // hạng trước đó
+}
+
+/** Response của CashRaceMyRankGetFirst */
+export interface CashRaceMyRankGetFirstResponse {
+    Race: NwCashRaceInfoDetail;
+    MyRank: NwCashRaceRankerSimple | null;
+    TopRanks: NwCashRaceRankerSimple[];
+    BottomRanks: NwCashRaceRankerSimple[];
+    PrizeRangePercent: number;
+}
+
+/** Win broadcast message */
+export interface ServerWinBroadcast {
+    Seq: string;                 // ID dạng số lớn (19 chữ số) — giữ dạng string tránh mất precision
+    Slot: string;
+    MX: number;
+    Nick: string;                // Server vẫn gửi field "Nick" (hiện đang chứa UUID)
+    DisplayName?: string;        // Tên hiển thị (nếu server bổ sung sau)
+    WinPopupUrl: string;
+    Feature: string;
+    LangID: string;
+    SlotIcon: string;
+    CountryFlagIcon: string;
+    CTime: string;
+}
+
+/** Server Maintenance Message */
+export interface ServerMaintenanceMessage {
+    ServerUtc: string;
+    ShutdownUtc: string;
+    Title: string;
+    Line1: string;
+    Line2: string;
+    RemainMinutes: number;
+    DurationMinutes: number;
+    Step: number;
+}

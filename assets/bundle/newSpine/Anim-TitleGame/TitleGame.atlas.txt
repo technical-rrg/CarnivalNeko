@@ -1,0 +1,349 @@
+
+TitleGame.png
+size: 1804, 650
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Canh
+  rotate: true
+  xy: 1, 365
+  size: 284, 148
+  orig: 284, 148
+  offset: 0, 0
+  index: -1
+Decor
+  rotate: false
+  xy: 1, 4
+  size: 162, 16
+  orig: 162, 16
+  offset: 0, 0
+  index: -1
+Decor2
+  rotate: false
+  xy: 257, 367
+  size: 32, 51
+  orig: 32, 51
+  offset: 0, 0
+  index: -1
+E
+  rotate: true
+  xy: 204, 365
+  size: 35, 51
+  orig: 35, 51
+  offset: 0, 0
+  index: -1
+E-glow
+  rotate: true
+  xy: 151, 365
+  size: 35, 51
+  orig: 35, 51
+  offset: 0, 0
+  index: -1
+F
+  rotate: true
+  xy: 546, 378
+  size: 40, 55
+  orig: 40, 55
+  offset: 0, 0
+  index: -1
+F-glow
+  rotate: true
+  xy: 489, 378
+  size: 40, 55
+  orig: 40, 55
+  offset: 0, 0
+  index: -1
+Fortunesd
+  rotate: false
+  xy: 1, 22
+  size: 230, 63
+  orig: 230, 63
+  offset: 0, 0
+  index: -1
+Frame
+  rotate: true
+  xy: 1, 87
+  size: 276, 186
+  orig: 276, 186
+  offset: 0, 0
+  index: -1
+Fx/TextRa-fx_00
+  rotate: true
+  xy: 707, 148
+  size: 228, 171
+  orig: 291, 192
+  offset: 32, 0
+  index: -1
+Fx/TextRa-fx_01
+  rotate: true
+  xy: 732, 421
+  size: 228, 171
+  orig: 291, 192
+  offset: 32, 0
+  index: -1
+Fx/TextRa-fx_02
+  rotate: true
+  xy: 388, 420
+  size: 229, 170
+  orig: 291, 192
+  offset: 31, 0
+  index: -1
+Fx/TextRa-fx_03
+  rotate: true
+  xy: 189, 134
+  size: 229, 171
+  orig: 291, 192
+  offset: 31, 0
+  index: -1
+Fx/TextRa-fx_04
+  rotate: true
+  xy: 1399, 191
+  size: 228, 170
+  orig: 291, 192
+  offset: 31, 0
+  index: -1
+Fx/TextRa-fx_05
+  rotate: true
+  xy: 905, 421
+  size: 228, 171
+  orig: 291, 192
+  offset: 31, 0
+  index: -1
+Fx/TextRa-fx_06
+  rotate: true
+  xy: 535, 147
+  size: 229, 170
+  orig: 291, 192
+  offset: 31, 0
+  index: -1
+Fx/TextRa-fx_07
+  rotate: true
+  xy: 560, 420
+  size: 229, 170
+  orig: 291, 192
+  offset: 31, 0
+  index: -1
+Fx/TextRa-fx_08
+  rotate: true
+  xy: 880, 165
+  size: 228, 171
+  orig: 291, 192
+  offset: 32, 0
+  index: -1
+Fx/TextRa-fx_09
+  rotate: true
+  xy: 215, 420
+  size: 229, 171
+  orig: 291, 192
+  offset: 31, 0
+  index: -1
+Fx/TextRa-fx_10
+  rotate: true
+  xy: 362, 146
+  size: 229, 171
+  orig: 291, 192
+  offset: 31, 0
+  index: -1
+Fx/TextRa-fx_11
+  rotate: true
+  xy: 1053, 191
+  size: 228, 171
+  orig: 291, 192
+  offset: 32, 0
+  index: -1
+Fx/TextRa-fx_12
+  rotate: true
+  xy: 1424, 422
+  size: 227, 171
+  orig: 291, 192
+  offset: 33, 0
+  index: -1
+Fx/TextRa-fx_13
+  rotate: true
+  xy: 1078, 421
+  size: 228, 171
+  orig: 291, 192
+  offset: 33, 0
+  index: -1
+Fx/TextRa-fx_14
+  rotate: false
+  xy: 1053, 17
+  size: 227, 172
+  orig: 291, 192
+  offset: 33, 0
+  index: -1
+Fx/TextRa-fx_15
+  rotate: false
+  xy: 1571, 249
+  size: 227, 171
+  orig: 291, 192
+  offset: 33, 0
+  index: -1
+Fx/TextRa-fx_16
+  rotate: false
+  xy: 1571, 76
+  size: 227, 171
+  orig: 291, 192
+  offset: 33, 0
+  index: -1
+Fx/TextRa-fx_17
+  rotate: true
+  xy: 1226, 191
+  size: 228, 171
+  orig: 291, 192
+  offset: 32, 0
+  index: -1
+Fx/TextRa-fx_18
+  rotate: true
+  xy: 1251, 421
+  size: 228, 171
+  orig: 291, 192
+  offset: 32, 0
+  index: -1
+Fx/TextRa-fx_19
+  rotate: false
+  xy: 1282, 18
+  size: 228, 171
+  orig: 291, 192
+  offset: 32, 0
+  index: -1
+Kimtuthap
+  rotate: false
+  xy: 600, 1
+  size: 164, 144
+  orig: 164, 144
+  offset: 0, 0
+  index: -1
+Layer 12
+  rotate: true
+  xy: 504, 35
+  size: 109, 94
+  orig: 109, 94
+  offset: 0, 0
+  index: -1
+Layer 13
+  rotate: true
+  xy: 929, 74
+  size: 89, 85
+  orig: 89, 85
+  offset: 0, 0
+  index: -1
+Layer 2
+  rotate: true
+  xy: 151, 402
+  size: 247, 62
+  orig: 247, 62
+  offset: 0, 0
+  index: -1
+N
+  rotate: false
+  xy: 372, 377
+  size: 37, 41
+  orig: 37, 41
+  offset: 0, 0
+  index: -1
+N-Glow
+  rotate: false
+  xy: 333, 377
+  size: 37, 41
+  orig: 37, 41
+  offset: 0, 0
+  index: -1
+O
+  rotate: false
+  xy: 291, 377
+  size: 40, 41
+  orig: 40, 41
+  offset: 0, 0
+  index: -1
+O-glow
+  rotate: true
+  xy: 189, 92
+  size: 40, 41
+  orig: 40, 41
+  offset: 0, 0
+  index: -1
+Of
+  rotate: true
+  xy: 751, 386
+  size: 33, 20
+  orig: 33, 20
+  offset: 0, 0
+  index: -1
+Ofsd
+  rotate: false
+  xy: 773, 395
+  size: 166, 24
+  orig: 166, 24
+  offset: 0, 0
+  index: -1
+R
+  rotate: false
+  xy: 642, 378
+  size: 37, 40
+  orig: 37, 40
+  offset: 0, 0
+  index: -1
+R-glow
+  rotate: false
+  xy: 603, 378
+  size: 37, 40
+  orig: 37, 40
+  offset: 0, 0
+  index: -1
+Ra-sd
+  rotate: false
+  xy: 766, 48
+  size: 161, 98
+  orig: 161, 98
+  offset: 0, 0
+  index: -1
+Sun
+  rotate: true
+  xy: 233, 1
+  size: 131, 133
+  orig: 131, 133
+  offset: 0, 0
+  index: -1
+T
+  rotate: false
+  xy: 716, 378
+  size: 33, 40
+  orig: 33, 40
+  offset: 0, 0
+  index: -1
+T-glow
+  rotate: false
+  xy: 681, 378
+  size: 33, 40
+  orig: 33, 40
+  offset: 0, 0
+  index: -1
+U
+  rotate: false
+  xy: 450, 377
+  size: 37, 41
+  orig: 37, 41
+  offset: 0, 0
+  index: -1
+U-glow
+  rotate: false
+  xy: 411, 377
+  size: 37, 41
+  orig: 37, 41
+  offset: 0, 0
+  index: -1
+circle-light
+  rotate: false
+  xy: 1597, 443
+  size: 206, 206
+  orig: 206, 206
+  offset: 0, 0
+  index: -1
+star
+  rotate: false
+  xy: 368, 10
+  size: 134, 134
+  orig: 134, 134
+  offset: 0, 0
+  index: -1

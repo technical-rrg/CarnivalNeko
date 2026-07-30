@@ -1,0 +1,495 @@
+
+TransitionFeature-Portrait.png
+size: 2044,2011
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+BG-Portrait
+  rotate: false
+  xy: 2, 857
+  size: 648, 1152
+  orig: 648, 1152
+  offset: 0, 0
+  index: -1
+Char-fx/Char-fx_00
+  rotate: false
+  xy: 968, 39
+  size: 238, 260
+  orig: 285, 309
+  offset: 35, 16
+  index: -1
+Char-fx/Char-fx_02
+  rotate: true
+  xy: 372, 36
+  size: 263, 284
+  orig: 285, 309
+  offset: 12, 13
+  index: -1
+Char-fx/Char-fx_03
+  rotate: false
+  xy: 1713, 436
+  size: 267, 286
+  orig: 285, 309
+  offset: 12, 14
+  index: -1
+Char-fx/Char-fx_04
+  rotate: true
+  xy: 1645, 16
+  size: 269, 288
+  orig: 285, 309
+  offset: 8, 12
+  index: -1
+Ellipse 1 copy
+  rotate: false
+  xy: 2, 465
+  size: 390, 390
+  orig: 422, 422
+  offset: 16, 16
+  index: -1
+FreespinsText
+  rotate: false
+  xy: 652, 1837
+  size: 671, 172
+  orig: 673, 174
+  offset: 1, 1
+  index: -1
+Magicball-Fx/Magicball-fx_00
+  rotate: true
+  xy: 394, 487
+  size: 368, 388
+  orig: 377, 402
+  offset: 0, 14
+  index: -1
+Magicball-Fx/Magicball-fx_01
+  rotate: false
+  xy: 2, 75
+  size: 368, 388
+  orig: 377, 402
+  offset: 0, 14
+  index: -1
+Magicball-Fx/Magicball-fx_02
+  rotate: true
+  xy: 784, 1022
+  size: 354, 382
+  orig: 377, 402
+  offset: 6, 7
+  index: -1
+Magicball-Fx/Magicball-fx_03
+  rotate: true
+  xy: 1243, 1190
+  size: 351, 363
+  orig: 377, 402
+  offset: 11, 17
+  index: -1
+Magicball-Fx/Magicball-fx_04
+  rotate: true
+  xy: 1325, 1672
+  size: 337, 351
+  orig: 377, 402
+  offset: 17, 20
+  index: -1
+Magicball-Fx/Magicball-fx_05
+  rotate: true
+  xy: 1678, 1685
+  size: 324, 336
+  orig: 377, 402
+  offset: 26, 23
+  index: -1
+Magicball-Fx/Magicball-fx_06
+  rotate: true
+  xy: 1608, 1220
+  size: 324, 336
+  orig: 377, 402
+  offset: 26, 23
+  index: -1
+Magicball-Fx/Magicball-fx_07
+  rotate: true
+  xy: 784, 542
+  size: 316, 333
+  orig: 377, 402
+  offset: 29, 22
+  index: -1
+Magicball-Fx/Magicball-fx_08
+  rotate: false
+  xy: 1404, 287
+  size: 307, 324
+  orig: 377, 402
+  offset: 35, 22
+  index: -1
+Magicball-Fx/Magicball-fx_09
+  rotate: true
+  xy: 1576, 724
+  size: 304, 309
+  orig: 377, 402
+  offset: 43, 25
+  index: -1
+Magicball-Fx/Magicball-fx_10
+  rotate: true
+  xy: 1119, 571
+  size: 287, 283
+  orig: 377, 402
+  offset: 58, 36
+  index: -1
+Magicball-Fx/Magicball-fx_11
+  rotate: false
+  xy: 1356, 2
+  size: 287, 283
+  orig: 377, 402
+  offset: 58, 36
+  index: -1
+Magicball-Fx/Magicball-fx_15
+  rotate: false
+  xy: 1209, 334
+  size: 152, 152
+  orig: 377, 402
+  offset: 131, 119
+  index: -1
+Magicball-Fx/Magicball-fx_16
+  rotate: false
+  xy: 1731, 1062
+  size: 156, 156
+  orig: 377, 402
+  offset: 129, 117
+  index: -1
+Magicball-Fx/Magicball-fx_17
+  rotate: false
+  xy: 1565, 1030
+  size: 164, 158
+  orig: 377, 402
+  offset: 122, 116
+  index: -1
+Magicball-Fx/Magicball-fx_18
+  rotate: false
+  xy: 1403, 1028
+  size: 160, 160
+  orig: 377, 402
+  offset: 127, 115
+  index: -1
+Magicball-Fx/Magicball-fx_19
+  rotate: false
+  xy: 1239, 1026
+  size: 162, 162
+  orig: 377, 402
+  offset: 126, 114
+  index: -1
+Magicball-Fx/Magicball-fx_20
+  rotate: false
+  xy: 1417, 1546
+  size: 145, 124
+  orig: 377, 402
+  offset: 126, 136
+  index: -1
+Magicball-Fx/Magicball-fx_21
+  rotate: false
+  xy: 1564, 1546
+  size: 143, 124
+  orig: 377, 402
+  offset: 128, 136
+  index: -1
+Magicball-Fx/Magicball-fx_22
+  rotate: true
+  xy: 1713, 293
+  size: 141, 146
+  orig: 377, 402
+  offset: 130, 116
+  index: -1
+Magicball-Fx/Magicball-fx_23
+  rotate: true
+  xy: 1887, 921
+  size: 139, 132
+  orig: 377, 402
+  offset: 133, 124
+  index: -1
+Magicball-Fx/Magicball-fx_24
+  rotate: false
+  xy: 1278, 1543
+  size: 137, 127
+  orig: 377, 402
+  offset: 136, 124
+  index: -1
+Magicball-Fx/Magicball-fx_25
+  rotate: true
+  xy: 1861, 294
+  size: 140, 150
+  orig: 377, 402
+  offset: 133, 121
+  index: -1
+Magicball-Fx/Magicball-fx_26
+  rotate: true
+  xy: 652, 958
+  size: 132, 128
+  orig: 377, 402
+  offset: 141, 124
+  index: -1
+Magicball-Fx/Magicball-fx_27
+  rotate: true
+  xy: 1209, 183
+  size: 149, 145
+  orig: 377, 402
+  offset: 124, 121
+  index: -1
+Magicball-Fx/Magicball-fx_28
+  rotate: true
+  xy: 1208, 42
+  size: 139, 124
+  orig: 377, 402
+  offset: 134, 128
+  index: -1
+Magicball-Fx/Magicball-fx_29
+  rotate: false
+  xy: 1876, 1548
+  size: 166, 135
+  orig: 377, 402
+  offset: 120, 127
+  index: -1
+PickGameText
+  rotate: false
+  xy: 784, 860
+  size: 621, 160
+  orig: 621, 160
+  offset: 0, 0
+  index: -1
+TopupText
+  rotate: false
+  xy: 394, 301
+  size: 813, 184
+  orig: 815, 186
+  offset: 1, 1
+  index: -1
+aosau-phai
+  rotate: false
+  xy: 1407, 613
+  size: 167, 413
+  orig: 167, 413
+  offset: 0, 0
+  index: -1
+aosau-trai
+  rotate: true
+  xy: 658, 41
+  size: 258, 308
+  orig: 258, 308
+  offset: 0, 0
+  index: -1
+cay-truong
+  rotate: true
+  xy: 652, 1378
+  size: 163, 589
+  orig: 163, 589
+  offset: 0, 0
+  index: -1
+giapvai
+  rotate: false
+  xy: 1119, 488
+  size: 157, 81
+  orig: 157, 81
+  offset: 0, 0
+  index: -1
+non
+  rotate: true
+  xy: 652, 861
+  size: 95, 101
+  orig: 95, 101
+  offset: 0, 0
+  index: -1
+tayphai
+  rotate: true
+  xy: 1889, 1098
+  size: 120, 144
+  orig: 120, 146
+  offset: 0, 2
+  index: -1
+taytrai
+  rotate: true
+  xy: 1168, 1074
+  size: 79, 58
+  orig: 163, 102
+  offset: 0, 0
+  index: -1
+taytrai2
+  rotate: false
+  xy: 1576, 620
+  size: 103, 102
+  orig: 107, 102
+  offset: 0, 0
+  index: -1
+than
+  rotate: true
+  xy: 652, 1543
+  size: 292, 624
+  orig: 409, 624
+  offset: 0, 0
+  index: -1
+vai-sau
+  rotate: false
+  xy: 1887, 728
+  size: 121, 191
+  orig: 121, 193
+  offset: 0, 2
+  index: -1
+vaigiua
+  rotate: false
+  xy: 1168, 1155
+  size: 69, 221
+  orig: 69, 221
+  offset: 0, 0
+  index: -1
+vaitrai
+  rotate: false
+  xy: 652, 1092
+  size: 129, 284
+  orig: 129, 284
+  offset: 0, 0
+  index: -1
+vongtronphepthuat
+  rotate: true
+  xy: 1709, 1546
+  size: 137, 165
+  orig: 145, 178
+  offset: 4, 6
+  index: -1
+
+TransitionFeature-Portrait2.png
+size: 1229,1135
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+Char-fx/Char-fx_01
+  rotate: false
+  xy: 282, 3
+  size: 255, 267
+  orig: 285, 309
+  offset: 18, 15
+  index: -1
+Char-fx/Char-fx_05
+  rotate: false
+  xy: 227, 845
+  size: 252, 288
+  orig: 285, 309
+  offset: 8, 13
+  index: -1
+Char-fx/Char-fx_06
+  rotate: false
+  xy: 2, 260
+  size: 243, 286
+  orig: 285, 309
+  offset: 14, 15
+  index: -1
+Char-fx/Char-fx_07
+  rotate: false
+  xy: 247, 272
+  size: 229, 283
+  orig: 285, 309
+  offset: 18, 16
+  index: -1
+Char-fx/Char-fx_08
+  rotate: false
+  xy: 246, 557
+  size: 210, 286
+  orig: 285, 309
+  offset: 47, 15
+  index: -1
+Char-fx/Char-fx_09
+  rotate: false
+  xy: 539, 5
+  size: 210, 269
+  orig: 285, 309
+  offset: 44, 12
+  index: -1
+Char-fx/Char-fx_10
+  rotate: false
+  xy: 986, 859
+  size: 222, 274
+  orig: 285, 309
+  offset: 43, 11
+  index: -1
+Char-fx/Char-fx_11
+  rotate: false
+  xy: 683, 571
+  size: 234, 280
+  orig: 285, 309
+  offset: 35, 7
+  index: -1
+Char-fx/Char-fx_12
+  rotate: false
+  xy: 458, 560
+  size: 223, 283
+  orig: 285, 309
+  offset: 41, 5
+  index: -1
+Char-fx/Char-fx_13
+  rotate: false
+  xy: 2, 840
+  size: 223, 293
+  orig: 285, 309
+  offset: 37, 5
+  index: -1
+Char-fx/Char-fx_14
+  rotate: false
+  xy: 2, 548
+  size: 242, 290
+  orig: 285, 309
+  offset: 26, 7
+  index: -1
+Char-fx/Char-fx_15
+  rotate: false
+  xy: 732, 856
+  size: 252, 277
+  orig: 285, 309
+  offset: 22, 10
+  index: -1
+Char-fx/Char-fx_16
+  rotate: false
+  xy: 919, 579
+  size: 258, 275
+  orig: 285, 309
+  offset: 17, 15
+  index: -1
+Char-fx/Char-fx_17
+  rotate: true
+  xy: 2, 2
+  size: 256, 278
+  orig: 285, 309
+  offset: 13, 17
+  index: -1
+Char-fx/Char-fx_18
+  rotate: false
+  xy: 478, 276
+  size: 253, 282
+  orig: 285, 309
+  offset: 12, 18
+  index: -1
+Char-fx/Char-fx_19
+  rotate: false
+  xy: 481, 853
+  size: 249, 280
+  orig: 285, 309
+  offset: 8, 19
+  index: -1
+Char-fx/Char-fx_20
+  rotate: false
+  xy: 733, 292
+  size: 210, 277
+  orig: 285, 309
+  offset: 13, 17
+  index: -1
+Magicball-Fx/Magicball-fx_12
+  rotate: true
+  xy: 751, 26
+  size: 264, 252
+  orig: 377, 402
+  offset: 76, 47
+  index: -1
+Magicball-Fx/Magicball-fx_13
+  rotate: true
+  xy: 945, 331
+  size: 246, 234
+  orig: 377, 402
+  offset: 86, 56
+  index: -1
+Magicball-Fx/Magicball-fx_14
+  rotate: true
+  xy: 1005, 93
+  size: 236, 222
+  orig: 377, 402
+  offset: 92, 64
+  index: -1

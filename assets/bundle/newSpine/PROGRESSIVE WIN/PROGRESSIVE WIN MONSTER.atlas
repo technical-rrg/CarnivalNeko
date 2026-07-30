@@ -1,0 +1,55 @@
+
+PROGRESSIVE WIN MONSTER.png
+size: 1853, 1715
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+BIG
+  rotate: true
+  xy: 666, 69
+  size: 660, 146
+  orig: 1920, 1080
+  offset: 491, 695
+  index: -1
+CIRCLE LIGHT BIG
+  rotate: false
+  xy: 2, 68
+  size: 662, 661
+  orig: 677, 678
+  offset: 8, 7
+  index: -1
+CIRCLE LIGHT SMALL
+  rotate: true
+  xy: 814, 228
+  size: 501, 396
+  orig: 501, 501
+  offset: 0, 66
+  index: -1
+Ellipse 1
+  rotate: false
+  xy: 2, 731
+  size: 1393, 982
+  orig: 1920, 1080
+  offset: 264, 70
+  index: -1
+FRAME
+  rotate: true
+  xy: 1397, 388
+  size: 1325, 454
+  orig: 1920, 1080
+  offset: 299, 270
+  index: -1
+Star
+  rotate: false
+  xy: 1212, 2
+  size: 384, 384
+  orig: 512, 512
+  offset: 64, 64
+  index: -1
+WIN
+  rotate: true
+  xy: 1212, 436
+  size: 293, 142
+  orig: 1920, 1080
+  offset: 1136, 696
+  index: -1

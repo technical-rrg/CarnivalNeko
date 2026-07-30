@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+
+    <title>Fortune of Ra - Secret Treasure</title>
+
+    <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1,minimum-scale=1,maximum-scale=1,minimal-ui=true"/>
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
+    <meta name="mobile-web-app-capable" content="yes"/>
+    <meta name="full-screen" content="yes"/>
+    <meta name="screen-orientation" content="portrait"/>
+    <meta name="x5-fullscreen" content="true"/>
+    <meta name="360-fullscreen" content="true"/>
+
+    <meta name="renderer" content="webkit"/>
+    <meta name="force-rendering" content="webkit"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+
+    <link rel="stylesheet" type="text/css" href="./style.css"/>
+
+    <style>
+      html { overflow: hidden; width: 100%; height: 100%; }
+      body {
+        position: fixed !important; top: 0 !important; left: 0 !important;
+        width: 100% !important; height: 100% !important;
+        padding: 0 !important; border: 0 !important; margin: 0 !important;
+        overflow: hidden !important; background-color: #000 !important;
+        display: flex !important; justify-content: center !important; align-items: center !important;
+      }
+      .header, .footer { display: none !important; }
+      #GameDiv { overflow: hidden !important; flex-shrink: 0 !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; }
+      #Cocos3dGameContainer, #GameCanvas { width: 100% !important; height: 100% !important; }
+
+      /* ── HTML Loading Overlay ──────────────────────────────────────────────
+         Overlay này hiển thị TRƯỚC khi Cocos engine khởi động.
+         Ảnh được đặt cùng thư mục với index.html:
+           - loading-gif.gif   : logo dạng animation (GIF)
+           - loading-logo.png  : logo tĩnh (PNG), thường đặt phía dưới hoặc trên GIF
+
+         ĐỂ THAY ẢNH: đối tác chỉ cần thay 2 file này, không cần sửa code.
+         Khi Cocos loading xong, overlay tự ẩn mượt (CSS transition 0.5s).
+      ───────────────────────────────────────────────────────────────────── */
+      #sn-loading-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: transparent;
+        transition: opacity 0.5s ease;
+        pointer-events: none;
+      }
+      #sn-loading-overlay.hidden {
+        opacity: 0;
+        /* Xóa khỏi DOM sau khi transition kết thúc (xem JS bên dưới) */
+      }
+      #sn-loading-overlay img { opacity: 0; object-fit: contain; }
+    </style>
+
+    <script type="text/javascript">
+      (function () {
+        /* ── Responsive GameDiv ─────────────────────────────────── */
+        var R_LAND = 16 / 9, R_PORT = 9 / 16;
+        function fit() {
+          var vw = window.innerWidth, vh = window.innerHeight, w, h;
+          var R = vh > vw ? R_PORT : R_LAND;
+          if (vw / vh > R) { h = vh; w = Math.round(vh * R); }
+          else { w = vw; h = Math.round(vw / R); }
+          var d = document.getElementById('GameDiv');
+          if (d) { d.style.width = w + 'px'; d.style.height = h + 'px'; }
+        }
+        document.addEventListener('DOMContentLoaded', fit);
+        window.addEventListener('resize', fit);
+        window.addEventListener('orientationchange', function () { setTimeout(fit, 200); });
+
+        /* ── Hide loading overlay ───────────────────────────────────
+           Được gọi từ LoadingController._onLoadComplete() (Cocos script)
+           thông qua: window.snHideLoadingOverlay?.()
+        ─────────────────────────────────────────────────────────── */
+        window.snHideLoadingOverlay = function () {
+          var overlay = document.getElementById('sn-loading-overlay');
+          if (!overlay) return;
+          overlay.style.transition = 'none';
+          overlay.style.opacity = '0';
+          overlay.classList.add('hidden');
+          overlay.addEventListener('transitionend', function () {
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          }, { once: true });
+          /* fallback nếu transition không fire (display:none parent, v.v.) */
+          setTimeout(function () {
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          }, 800);
+        };
+      }());
+    </script>
+  </head>
+  <body>
+    <h1 class="header">Fortune of Ra - Secret Treasure</h1>
+
+    <!--
+      ★ HTML LOADING OVERLAY ★
+      Thay 2 file ảnh dưới đây để tuỳ chỉnh màn hình loading:
+        - loading-gif.gif   : logo animation (GIF), đặt cùng thư mục index.html
+        - loading-logo.png  : logo tĩnh (PNG), đặt cùng thư mục index.html
+      Thứ tự hiển thị: GIF ở trên, PNG ở dưới (có thể đảo hoặc bỏ 1 cái).
+    -->
+    <div id="sn-loading-overlay">
+      <img id="sn-loading-gif"  src="https://downloads.newworld.id/Icons/logo.gif"          alt="Loading" onerror="this.style.display='none'"/>
+      <img id="sn-loading-logo" src="https://downloads.newworld.id/Icons/nw_logo_text.png"  alt="Logo"    onerror="this.style.display='none'"/>
+    </div>
+    <script type="text/javascript">(function(){var DW=1920,DH=1080,imgs={'sn-loading-gif':[960,714,375,292,1.5],'sn-loading-logo':[960,297.941,290,150,1]};function pos(){var vw=window.innerWidth,vh=window.innerHeight,R=vh>vw?9/16:16/9,cw,ch;if(vw/vh>R){ch=vh;cw=vh*R;}else{cw=vw;ch=vw/R;}var ox=(vw-cw)/2,oy=(vh-ch)/2;for(var id in imgs){var n=imgs[id],el=document.getElementById(id);if(!el)continue;var ew=n[2]/DW*cw*n[4],eh=n[3]/DH*ch*n[4],lx=ox+n[0]/DW*cw,ty=oy+(1-n[1]/DH)*ch;el.style.cssText='position:fixed;opacity:0;width:'+ew+'px;height:'+eh+'px;left:'+lx+'px;top:'+ty+'px;transform:translate(-50%,-50%);object-fit:contain;max-width:none;max-height:none;';}}pos();window.addEventListener('resize',pos);window.addEventListener('orientationchange',function(){setTimeout(pos,200);});}());</script>
+
+    <div id="GameDiv" cc_exact_fit_screen="false">
+      <div id="Cocos3dGameContainer">
+        <canvas id="GameCanvas" width="1920" height="1080" tabindex="99"></canvas>
+      </div>
+    </div>
+
+    <p class="footer">
+      Created with <a href="https://www.cocos.com/products" title="Cocos Creator">Cocos Creator</a>
+    </p>
+
+    <!-- Polyfills bundle. -->
+    <script src="src/polyfills.bundle.js" charset="utf-8"> </script>
+
+    <!-- SystemJS support. -->
+    <script src="src/system.bundle.js" charset="utf-8"> </script>
+
+    <!-- Import map -->
+    <script src="src/import-map.json" type="systemjs-importmap" charset="utf-8"> </script>
+
+    <script>
+      System.import('./index.js').catch(function (err) { console.error(err); });
+    </script>
+  </body>
+</html>

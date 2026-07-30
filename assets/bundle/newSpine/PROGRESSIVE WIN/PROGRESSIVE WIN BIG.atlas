@@ -1,0 +1,55 @@
+
+PROGRESSIVE WIN BIG.png
+size: 1715, 1797
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+BIG
+  rotate: true
+  xy: 1435, 828
+  size: 303, 153
+  orig: 1920, 1080
+  offset: 632, 684
+  index: -1
+CIRCLE LIGHT BIG
+  rotate: true
+  xy: 932, 1133
+  size: 662, 661
+  orig: 677, 678
+  offset: 8, 7
+  index: -1
+CIRCLE LIGHT SMALL
+  rotate: false
+  xy: 932, 735
+  size: 501, 396
+  orig: 501, 501
+  offset: 0, 66
+  index: -1
+Ellipse 1
+  rotate: true
+  xy: 2, 458
+  size: 1337, 928
+  orig: 1920, 1080
+  offset: 274, 108
+  index: -1
+FRAME
+  rotate: false
+  xy: 2, 2
+  size: 1325, 454
+  orig: 1920, 1080
+  offset: 299, 270
+  index: -1
+Star
+  rotate: false
+  xy: 1329, 349
+  size: 384, 384
+  orig: 512, 512
+  offset: 64, 64
+  index: -1
+WIN
+  rotate: false
+  xy: 932, 583
+  size: 362, 150
+  orig: 1920, 1080
+  offset: 934, 685
+  index: -1

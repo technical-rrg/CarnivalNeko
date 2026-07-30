@@ -1,0 +1,62 @@
+
+ANIM-WIN-MAJOR-JACKPOT.png
+size: 2042, 2032
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Backlight
+  rotate: false
+  xy: 1, 677
+  size: 1176, 855
+  orig: 1574, 886
+  offset: 199, 0
+  index: -1
+CiircleLight2
+  rotate: true
+  xy: 1179, 260
+  size: 945, 855
+  orig: 1574, 886
+  offset: 310, 31
+  index: -1
+Circle-Pattern
+  rotate: false
+  xy: 176, 43
+  size: 632, 632
+  orig: 1574, 886
+  offset: 471, 101
+  index: -1
+Jackpot
+  rotate: true
+  xy: 810, 15
+  size: 308, 74
+  orig: 1574, 886
+  offset: 629, 506
+  index: -1
+Khung
+  rotate: false
+  xy: 1, 1534
+  size: 1213, 497
+  orig: 1574, 886
+  offset: 181, 139
+  index: -1
+Mini
+  rotate: true
+  xy: 1, 1
+  size: 674, 173
+  orig: 1574, 886
+  offset: 450, 554
+  index: -1
+Star
+  rotate: false
+  xy: 810, 325
+  size: 350, 350
+  orig: 420, 420
+  offset: 35, 35
+  index: -1
+circle
+  rotate: false
+  xy: 1216, 1207
+  size: 825, 824
+  orig: 1574, 886
+  offset: 365, 13
+  index: -1

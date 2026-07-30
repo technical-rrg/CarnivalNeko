@@ -1,0 +1,20 @@
+
+anim-change-color-goldcoin.png
+size: 400, 201
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Green
+  rotate: false
+  xy: 2, 3
+  size: 196, 196
+  orig: 197, 198
+  offset: 0, 1
+  index: -1
+goldcoin
+  rotate: true
+  xy: 200, 2
+  size: 197, 198
+  orig: 197, 198
+  offset: 0, 0
+  index: -1

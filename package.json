@@ -1,0 +1,24 @@
+{
+  "name": "shangri-la",
+  "uuid": "4ebdf29d-71fd-4971-86d6-c4a2cb049409",
+  "creator": {
+    "version": "3.8.8"
+  },
+  "scripts": {
+    "cdn:manifest": "node tools/generate-cdn-manifest.js",
+    "cdn:manifest:force": "node tools/generate-cdn-manifest.js --force",
+    "build:patch": "node tools/patch-build-css.js",
+    "build:patch:common": "node tools/patch-build-css.js common"
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "lz4js": "^0.2.0",
+    "msgpackr": "^1.11.10"
+  },
+  "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/node": "^25.5.2",
+    "xlsx": "^0.18.5"
+  },
+  "version": "3.8.8"
+}

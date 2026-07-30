@@ -1,0 +1,43 @@
+{
+	"RemainCash": 99999.7,
+	"Res": {
+		"FeatureSpinTotalWin": 0,
+		"FeatureSpinWin": 0,
+		"NextStage": 5,
+		"ReelIndex": 0,
+		"Rands": [19, 25, 26, 17, 7],
+		"MatchedLinePays": [
+			{
+				"Feature": "FreeSpin",
+				"FeatureParam": 5,
+				"MatchedSymbols": [21],
+				"MatchedSymbolsCount": 3,
+				"PayLineIndex": 0,
+				"Payout": 0,
+				"ReelCnt": 0,
+				"ContainsWild": false,
+				"MatchedSymbolsIndices": [
+					[
+						{"Item1": 0, "Item2": 1},
+						{"Item1": 1, "Item2": 1},
+						{"Item1": 2, "Item2": 1}
+					]
+				]
+			}
+		],
+		"TotalBet": 0.1,
+		"TotalWin": 0,
+		"UpdateCash": false,
+		"MysteryMultiple": 3,
+		"MatchedBonus": null,
+		"WinGrade": null,
+		"CollectWin": 2.5,
+		"RemainFreeSpinCount": 8,
+		"AddSpinCount": 5,
+		"InitReel": null
+	},
+	"SpinID": 8,
+	"Before": {"0": 100, "1": 500, "2": 2500, "3": 25000},
+	"After": {"0": 100.01, "1": 500.05, "2": 2500.25, "3": 25002.5},
+	"SMM": null
+}

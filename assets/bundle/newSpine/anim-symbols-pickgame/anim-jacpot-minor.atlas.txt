@@ -1,0 +1,41 @@
+
+anim-jacpot-minor.png
+size: 753, 233
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Cup
+  rotate: true
+  xy: 603, 61
+  size: 171, 149
+  orig: 229, 233
+  offset: 30, 50
+  index: -1
+Cup-Glow
+  rotate: true
+  xy: 452, 61
+  size: 171, 149
+  orig: 229, 233
+  offset: 30, 50
+  index: -1
+Frame
+  rotate: false
+  xy: 232, 8
+  size: 218, 224
+  orig: 229, 233
+  offset: 7, 3
+  index: -1
+Light
+  rotate: false
+  xy: 1, 1
+  size: 229, 231
+  orig: 229, 233
+  offset: 0, 1
+  index: -1
+MINI
+  rotate: false
+  xy: 452, 7
+  size: 197, 52
+  orig: 229, 233
+  offset: 17, 17
+  index: -1

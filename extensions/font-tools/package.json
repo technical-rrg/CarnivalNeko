@@ -1,0 +1,22 @@
+{
+  "package_version": 2,
+  "version": "1.0.0",
+  "name": "font-tools",
+  "description": "Subset NotoSans fonts for each language and output TTF + WOFF2",
+  "author": "SuperNova Team",
+  "main": "./main.js",
+  "contributions": {
+    "menu": [
+      {
+        "path": "i18n:menu.extension",
+        "label": "i18n:font-tools.menu_subset",
+        "message": "subset-fonts"
+      }
+    ],
+    "messages": {
+      "subset-fonts": {
+        "methods": ["subsetFonts"]
+      }
+    }
+  }
+}

@@ -1,0 +1,153 @@
+
+anim-sym-Wild.png
+size: 1239, 253
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+D
+  rotate: true
+  xy: 1156, 91
+  size: 64, 77
+  orig: 64, 77
+  offset: 0, 0
+  index: -1
+D-sd
+  rotate: false
+  xy: 881, 20
+  size: 70, 83
+  orig: 70, 83
+  offset: 0, 0
+  index: -1
+Dglow
+  rotate: false
+  xy: 1086, 68
+  size: 64, 77
+  orig: 64, 77
+  offset: 0, 0
+  index: -1
+Eye
+  rotate: true
+  xy: 824, 105
+  size: 147, 115
+  orig: 147, 115
+  offset: 0, 0
+  index: -1
+Eye-sd
+  rotate: true
+  xy: 701, 99
+  size: 153, 121
+  orig: 153, 121
+  offset: 0, 0
+  index: -1
+Frame
+  rotate: true
+  xy: 247, 1
+  size: 251, 244
+  orig: 251, 244
+  offset: 0, 0
+  index: -1
+Frame-glow
+  rotate: true
+  xy: 1, 1
+  size: 251, 244
+  orig: 251, 244
+  offset: 0, 0
+  index: -1
+I
+  rotate: true
+  xy: 693, 7
+  size: 37, 73
+  orig: 37, 73
+  offset: 0, 0
+  index: -1
+I-glow
+  rotate: true
+  xy: 618, 7
+  size: 37, 73
+  orig: 37, 73
+  offset: 0, 0
+  index: -1
+Isd
+  rotate: true
+  xy: 493, 1
+  size: 43, 79
+  orig: 43, 79
+  offset: 0, 0
+  index: -1
+L
+  rotate: true
+  xy: 1161, 37
+  size: 52, 73
+  orig: 52, 73
+  offset: 0, 0
+  index: -1
+L-glow
+  rotate: true
+  xy: 1086, 14
+  size: 52, 73
+  orig: 52, 73
+  offset: 0, 0
+  index: -1
+L-sd
+  rotate: true
+  xy: 1156, 157
+  size: 58, 79
+  orig: 58, 79
+  offset: 0, 0
+  index: -1
+W
+  rotate: true
+  xy: 1077, 147
+  size: 105, 77
+  orig: 105, 77
+  offset: 0, 0
+  index: -1
+W-glow
+  rotate: true
+  xy: 1007, 11
+  size: 105, 77
+  orig: 105, 77
+  offset: 0, 0
+  index: -1
+W-sd
+  rotate: false
+  xy: 768, 14
+  size: 111, 83
+  orig: 111, 83
+  offset: 0, 0
+  index: -1
+circle-light
+  rotate: false
+  xy: 493, 46
+  size: 206, 206
+  orig: 206, 206
+  offset: 0, 0
+  index: -1
+star
+  rotate: false
+  xy: 941, 118
+  size: 134, 134
+  orig: 134, 134
+  offset: 0, 0
+  index: -1
+trongden
+  rotate: false
+  xy: 574, 2
+  size: 42, 42
+  orig: 42, 42
+  offset: 0, 0
+  index: -1
+trongtrang
+  rotate: false
+  xy: 1156, 217
+  size: 82, 35
+  orig: 82, 35
+  offset: 0, 0
+  index: -1
+wings
+  rotate: true
+  xy: 953, 10
+  size: 106, 52
+  orig: 106, 52
+  offset: 0, 0
+  index: -1

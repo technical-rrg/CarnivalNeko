@@ -1,0 +1,146 @@
+
+NewFeature-Highlight.png
+size: 1850,388
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+highlight-fx_00
+  rotate: false
+  xy: 1677, 214
+  size: 170, 172
+  orig: 238, 240
+  offset: 34, 34
+  index: -1
+highlight-fx_01
+  rotate: false
+  xy: 1678, 40
+  size: 170, 172
+  orig: 238, 240
+  offset: 34, 34
+  index: -1
+highlight-fx_02
+  rotate: false
+  xy: 1334, 38
+  size: 170, 173
+  orig: 238, 240
+  offset: 34, 34
+  index: -1
+highlight-fx_03
+  rotate: false
+  xy: 763, 196
+  size: 188, 190
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_04
+  rotate: false
+  xy: 764, 4
+  size: 188, 190
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_05
+  rotate: false
+  xy: 1143, 197
+  size: 188, 189
+  orig: 238, 240
+  offset: 25, 26
+  index: -1
+highlight-fx_06
+  rotate: false
+  xy: 573, 4
+  size: 189, 189
+  orig: 238, 240
+  offset: 25, 26
+  index: -1
+highlight-fx_07
+  rotate: false
+  xy: 2, 196
+  size: 189, 190
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_08
+  rotate: false
+  xy: 2, 4
+  size: 189, 190
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_09
+  rotate: false
+  xy: 1144, 6
+  size: 188, 189
+  orig: 238, 240
+  offset: 25, 26
+  index: -1
+highlight-fx_10
+  rotate: false
+  xy: 953, 196
+  size: 188, 190
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_11
+  rotate: false
+  xy: 193, 195
+  size: 188, 191
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_12
+  rotate: false
+  xy: 193, 2
+  size: 188, 191
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_13
+  rotate: false
+  xy: 383, 195
+  size: 188, 191
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_14
+  rotate: false
+  xy: 383, 2
+  size: 188, 191
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_15
+  rotate: false
+  xy: 573, 195
+  size: 188, 191
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_16
+  rotate: false
+  xy: 954, 4
+  size: 188, 190
+  orig: 238, 240
+  offset: 25, 25
+  index: -1
+highlight-fx_17
+  rotate: false
+  xy: 1505, 213
+  size: 170, 173
+  orig: 238, 240
+  offset: 34, 34
+  index: -1
+highlight-fx_18
+  rotate: false
+  xy: 1506, 38
+  size: 170, 173
+  orig: 238, 240
+  offset: 34, 34
+  index: -1
+highlight-fx_19
+  rotate: false
+  xy: 1333, 213
+  size: 170, 173
+  orig: 238, 240
+  offset: 34, 34
+  index: -1

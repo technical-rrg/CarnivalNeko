@@ -1,0 +1,92 @@
+{
+  "package_version": 2,
+  "version": "1.0.0",
+  "name": "language-switcher",
+  "description": "Switch game language for testing (saves to ServerConfig.ts DEV_FORCE_LANG)",
+  "author": "SuperNova Team",
+  "main": "./main.js",
+  "contributions": {
+    "menu": [
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇺🇸  English  (en)",
+        "message": "set-lang-en"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇰🇷  Korean — 한국어  (ko)",
+        "message": "set-lang-ko"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇨🇳  Simplified Chinese — 简体中文  (zh-cn)",
+        "message": "set-lang-zh-cn"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇹🇼  Traditional Chinese — 繁體中文  (zh-tw)",
+        "message": "set-lang-zh-tw"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇵🇭  Filipino  (fil)",
+        "message": "set-lang-fil"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇯🇵  Japanese — 日本語  (ja)",
+        "message": "set-lang-ja"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇹🇭  Thai — ภาษาไทย  (th)",
+        "message": "set-lang-th"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇸🇬  Singapore — English (SG)  (sg)",
+        "message": "set-lang-sg"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇲🇾  Malay — Bahasa Melayu  (ms)",
+        "message": "set-lang-ms"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇻🇳  Vietnamese — Tiếng Việt  (vi)",
+        "message": "set-lang-vi"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇦🇺  Australia — English (AU)  (au)",
+        "message": "set-lang-au"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "🇭🇰  Hong Kong — English (HK)  (hk)",
+        "message": "set-lang-hk"
+      },
+      {
+        "path": "i18n:menu.extension/🌐 Language Switcher",
+        "label": "⬛  Auto (clear override)",
+        "message": "set-lang-auto"
+      }
+    ],
+    "messages": {
+      "set-lang-en":    { "methods": ["setLangEn"] },
+      "set-lang-ko":    { "methods": ["setLangKo"] },
+      "set-lang-zh-cn": { "methods": ["setLangZhCn"] },
+      "set-lang-zh-tw": { "methods": ["setLangZhTw"] },
+      "set-lang-fil":   { "methods": ["setLangFil"] },
+      "set-lang-ja":    { "methods": ["setLangJa"] },
+      "set-lang-th":    { "methods": ["setLangTh"] },
+      "set-lang-sg":    { "methods": ["setLangSg"] },
+      "set-lang-ms":    { "methods": ["setLangMs"] },
+      "set-lang-vi":    { "methods": ["setLangVi"] },
+      "set-lang-au":    { "methods": ["setLangAu"] },
+      "set-lang-hk":    { "methods": ["setLangHk"] },
+      "set-lang-auto":  { "methods": ["setLangAuto"] }
+    }
+  }
+}

@@ -1,0 +1,251 @@
+
+anim-high-symbol_02.png
+size: 906,993
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+Border
+  rotate: false
+  xy: 2, 799
+  size: 192, 192
+  orig: 194, 194
+  offset: 1, 1
+  index: -1
+Borderback
+  rotate: false
+  xy: 390, 809
+  size: 183, 182
+  orig: 185, 184
+  offset: 1, 1
+  index: -1
+Circlepatern
+  rotate: true
+  xy: 575, 811
+  size: 180, 181
+  orig: 180, 181
+  offset: 0, 0
+  index: -1
+Gem_A
+  rotate: false
+  xy: 339, 748
+  size: 24, 21
+  orig: 26, 25
+  offset: 1, 1
+  index: -1
+Gem_B
+  rotate: true
+  xy: 365, 745
+  size: 24, 21
+  orig: 26, 25
+  offset: 1, 3
+  index: -1
+Gemglow
+  rotate: false
+  xy: 339, 771
+  size: 28, 26
+  orig: 30, 28
+  offset: 1, 1
+  index: -1
+Light
+  rotate: true
+  xy: 575, 635
+  size: 174, 181
+  orig: 200, 200
+  offset: 9, 9
+  index: -1
+Lightglow
+  rotate: false
+  xy: 196, 799
+  size: 192, 192
+  orig: 202, 202
+  offset: 5, 5
+  index: -1
+Symbol_02_00001
+  rotate: true
+  xy: 2, 661
+  size: 136, 197
+  orig: 220, 250
+  offset: 44, 42
+  index: -1
+Symbol_02_00002
+  rotate: true
+  xy: 2, 524
+  size: 135, 196
+  orig: 220, 250
+  offset: 44, 43
+  index: -1
+Symbol_02_00003
+  rotate: true
+  xy: 339, 503
+  size: 134, 197
+  orig: 220, 250
+  offset: 44, 42
+  index: -1
+Symbol_02_00004
+  rotate: true
+  xy: 538, 501
+  size: 132, 196
+  orig: 220, 250
+  offset: 45, 43
+  index: -1
+Symbol_02_00005
+  rotate: false
+  xy: 199, 206
+  size: 130, 196
+  orig: 220, 250
+  offset: 46, 43
+  index: -1
+Symbol_02_00006
+  rotate: true
+  xy: 2, 258
+  size: 129, 195
+  orig: 220, 250
+  offset: 46, 44
+  index: -1
+Symbol_02_00007
+  rotate: false
+  xy: 736, 399
+  size: 127, 196
+  orig: 220, 250
+  offset: 47, 43
+  index: -1
+Symbol_02_00008
+  rotate: false
+  xy: 729, 202
+  size: 124, 195
+  orig: 220, 250
+  offset: 48, 44
+  index: -1
+Symbol_02_00009
+  rotate: true
+  xy: 331, 246
+  size: 122, 195
+  orig: 220, 250
+  offset: 49, 44
+  index: -1
+Symbol_02_00010
+  rotate: true
+  xy: 331, 124
+  size: 120, 195
+  orig: 220, 250
+  offset: 50, 44
+  index: -1
+Symbol_02_00011
+  rotate: false
+  xy: 199, 9
+  size: 120, 195
+  orig: 220, 250
+  offset: 51, 44
+  index: -1
+Symbol_02_00012
+  rotate: true
+  xy: 528, 3
+  size: 120, 194
+  orig: 220, 250
+  offset: 52, 45
+  index: -1
+Symbol_02_00013
+  rotate: true
+  xy: 528, 125
+  size: 121, 194
+  orig: 220, 250
+  offset: 53, 45
+  index: -1
+Symbol_02_00014
+  rotate: true
+  xy: 2, 5
+  size: 120, 193
+  orig: 220, 250
+  offset: 55, 46
+  index: -1
+Symbol_02_00015
+  rotate: true
+  xy: 321, 2
+  size: 120, 193
+  orig: 220, 250
+  offset: 56, 46
+  index: -1
+Symbol_02_00016
+  rotate: false
+  xy: 724, 6
+  size: 121, 194
+  orig: 220, 250
+  offset: 56, 45
+  index: -1
+Symbol_02_00017
+  rotate: true
+  xy: 533, 248
+  size: 123, 194
+  orig: 220, 250
+  offset: 55, 45
+  index: -1
+Symbol_02_00018
+  rotate: true
+  xy: 533, 373
+  size: 126, 194
+  orig: 220, 250
+  offset: 53, 45
+  index: -1
+Symbol_02_00019
+  rotate: true
+  xy: 2, 127
+  size: 129, 195
+  orig: 220, 250
+  offset: 51, 44
+  index: -1
+Symbol_02_00020
+  rotate: true
+  xy: 336, 370
+  size: 131, 195
+  orig: 220, 250
+  offset: 50, 44
+  index: -1
+Symbol_02_00021
+  rotate: true
+  xy: 2, 389
+  size: 133, 195
+  orig: 220, 250
+  offset: 49, 44
+  index: -1
+Symbol_02_00022
+  rotate: false
+  xy: 200, 404
+  size: 134, 195
+  orig: 220, 250
+  offset: 48, 44
+  index: -1
+Symbol_02_00023
+  rotate: false
+  xy: 201, 601
+  size: 136, 196
+  orig: 220, 250
+  offset: 47, 43
+  index: -1
+Symbol_02_00024
+  rotate: false
+  xy: 758, 597
+  size: 137, 196
+  orig: 220, 250
+  offset: 46, 43
+  index: -1
+Symbol_02_00025
+  rotate: false
+  xy: 758, 795
+  size: 138, 196
+  orig: 220, 250
+  offset: 46, 43
+  index: -1
+Text
+  rotate: true
+  xy: 898, 776
+  size: 215, 6
+  orig: 217, 8
+  offset: 1, 1
+  index: -1
+background
+  rotate: false
+  xy: 390, 639
+  size: 168, 168
+  orig: 170, 170
+  offset: 1, 1
+  index: -1

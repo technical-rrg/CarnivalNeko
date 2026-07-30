@@ -1,0 +1,146 @@
+
+anim-longspin.png
+size: 1536, 1359
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Longspin_00
+  rotate: false
+  xy: 878, 901
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_01
+  rotate: false
+  xy: 878, 441
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_02
+  rotate: false
+  xy: 1098, 901
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_03
+  rotate: false
+  xy: 1098, 441
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_04
+  rotate: false
+  xy: 1, 900
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_05
+  rotate: false
+  xy: 1, 440
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_06
+  rotate: false
+  xy: 220, 900
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_07
+  rotate: false
+  xy: 220, 440
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_08
+  rotate: false
+  xy: 440, 900
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_09
+  rotate: false
+  xy: 440, 440
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_10
+  rotate: true
+  xy: 1, 220
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_11
+  rotate: false
+  xy: 659, 900
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_12
+  rotate: true
+  xy: 1, 1
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_13
+  rotate: false
+  xy: 1317, 901
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 1
+  index: -1
+Longspin_14
+  rotate: false
+  xy: 659, 440
+  size: 218, 459
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_15
+  rotate: false
+  xy: 1317, 441
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_16
+  rotate: true
+  xy: 461, 220
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_17
+  rotate: true
+  xy: 461, 1
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_18
+  rotate: true
+  xy: 920, 222
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1
+Longspin_19
+  rotate: true
+  xy: 920, 2
+  size: 218, 458
+  orig: 218, 459
+  offset: 0, 0
+  index: -1

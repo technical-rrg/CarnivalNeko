@@ -1,0 +1,41 @@
+
+anim-jacpot-grand.png
+size: 746, 235
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Cup
+  rotate: false
+  xy: 605, 59
+  size: 140, 175
+  orig: 229, 233
+  offset: 44, 35
+  index: -1
+Cup-Glow
+  rotate: false
+  xy: 463, 59
+  size: 140, 175
+  orig: 229, 233
+  offset: 44, 35
+  index: -1
+Frame
+  rotate: false
+  xy: 1, 1
+  size: 229, 233
+  orig: 229, 233
+  offset: 0, 0
+  index: -1
+Light
+  rotate: false
+  xy: 232, 3
+  size: 229, 231
+  orig: 229, 233
+  offset: 0, 1
+  index: -1
+MINI
+  rotate: false
+  xy: 463, 2
+  size: 208, 55
+  orig: 229, 233
+  offset: 14, 16
+  index: -1

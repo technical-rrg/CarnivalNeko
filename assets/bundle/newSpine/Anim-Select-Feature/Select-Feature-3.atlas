@@ -1,0 +1,118 @@
+
+Select-Feature-3.png
+size: 978,270
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+88
+  rotate: false
+  xy: 744, 44
+  size: 78, 53
+  orig: 80, 55
+  offset: 1, 1
+  index: -1
+Body
+  rotate: true
+  xy: 809, 172
+  size: 58, 91
+  orig: 61, 93
+  offset: 2, 1
+  index: -1
+Bodyef_01
+  rotate: false
+  xy: 824, 36
+  size: 61, 51
+  orig: 71, 109
+  offset: 6, 9
+  index: -1
+Bodyef_02
+  rotate: false
+  xy: 744, 4
+  size: 59, 38
+  orig: 71, 109
+  offset: 7, 47
+  index: -1
+Gem
+  rotate: false
+  xy: 902, 158
+  size: 74, 72
+  orig: 76, 74
+  offset: 1, 1
+  index: -1
+Layer 33
+  rotate: false
+  xy: 887, 44
+  size: 35, 42
+  orig: 40, 49
+  offset: 4, 3
+  index: -1
+Leg_01
+  rotate: true
+  xy: 848, 89
+  size: 81, 51
+  orig: 81, 51
+  offset: 0, 0
+  index: -1
+Leg_02
+  rotate: false
+  xy: 644, 107
+  size: 127, 67
+  orig: 127, 67
+  offset: 0, 0
+  index: -1
+Light
+  rotate: false
+  xy: 468, 87
+  size: 174, 181
+  orig: 200, 200
+  offset: 9, 9
+  index: -1
+Wing_L
+  rotate: true
+  xy: 468, 2
+  size: 83, 136
+  orig: 83, 136
+  offset: 0, 0
+  index: -1
+Wing_R
+  rotate: true
+  xy: 606, 2
+  size: 83, 136
+  orig: 83, 136
+  offset: 0, 0
+  index: -1
+background
+  rotate: true
+  xy: 2, 13
+  size: 255, 464
+  orig: 261, 469
+  offset: 3, 3
+  index: -1
+freegames
+  rotate: false
+  xy: 644, 176
+  size: 163, 92
+  orig: 166, 95
+  offset: 1, 2
+  index: -1
+gemef_01
+  rotate: false
+  xy: 773, 99
+  size: 73, 71
+  orig: 76, 74
+  offset: 2, 2
+  index: -1
+gemef_02
+  rotate: false
+  xy: 901, 88
+  size: 70, 68
+  orig: 76, 74
+  offset: 3, 3
+  index: -1
+onreels
+  rotate: false
+  xy: 809, 232
+  size: 165, 36
+  orig: 168, 40
+  offset: 1, 2
+  index: -1

@@ -1,0 +1,55 @@
+
+PROGRESSIVE WIN MAX.png
+size: 1993, 1649
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+BIG
+  rotate: true
+  xy: 1783, 764
+  size: 380, 141
+  orig: 1920, 1080
+  offset: 612, 692
+  index: -1
+CIRCLE LIGHT BIG
+  rotate: false
+  xy: 2, 2
+  size: 662, 661
+  orig: 677, 678
+  offset: 8, 7
+  index: -1
+CIRCLE LIGHT SMALL
+  rotate: true
+  xy: 1397, 1146
+  size: 501, 396
+  orig: 501, 501
+  offset: 0, 66
+  index: -1
+Ellipse 1
+  rotate: false
+  xy: 2, 665
+  size: 1393, 982
+  orig: 1920, 1080
+  offset: 264, 71
+  index: -1
+FRAME
+  rotate: false
+  xy: 666, 209
+  size: 1325, 454
+  orig: 1920, 1080
+  offset: 299, 270
+  index: -1
+Star
+  rotate: false
+  xy: 1397, 760
+  size: 384, 384
+  orig: 512, 512
+  offset: 64, 64
+  index: -1
+WIN
+  rotate: true
+  xy: 1795, 1333
+  size: 314, 140
+  orig: 1920, 1080
+  offset: 994, 693
+  index: -1

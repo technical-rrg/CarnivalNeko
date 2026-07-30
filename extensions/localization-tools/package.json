@@ -1,0 +1,30 @@
+{
+  "package_version": 2,
+  "version": "1.0.0",
+  "name": "localization-tools",
+  "description": "Update locale TS/JSON files from LocalizationStringTable.xlsx",
+  "author": "SuperNova Team",
+  "main": "./main.js",
+  "contributions": {
+    "menu": [
+      {
+        "path": "i18n:menu.extension",
+        "label": "i18n:localization-tools.menu_update",
+        "message": "update-localization"
+      },
+      {
+        "path": "i18n:menu.extension",
+        "label": "i18n:localization-tools.menu_cdn_manifest",
+        "message": "generate-cdn-manifest"
+      }
+    ],
+    "messages": {
+      "update-localization": {
+        "methods": ["updateLocalization"]
+      },
+      "generate-cdn-manifest": {
+        "methods": ["generateCdnManifest"]
+      }
+    }
+  }
+}

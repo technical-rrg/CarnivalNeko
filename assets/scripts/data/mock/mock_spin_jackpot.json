@@ -1,0 +1,50 @@
+{
+	"RemainCash": 124999.9,
+	"Res": {
+		"FeatureSpinTotalWin": 0,
+		"FeatureSpinWin": 0,
+		"NextStage": 0,
+		"ReelIndex": 0,
+		"Rands": [27, 1, 24, 20, 9],
+		"MatchedLinePays": [
+			{
+				"Feature": "Jackpot",
+				"FeatureParam": 52,
+				"MatchedSymbols": [52],
+				"MatchedSymbolsCount": 5,
+				"PayLineIndex": 0,
+				"Payout": 25000,
+				"ReelCnt": 0,
+				"ContainsWild": false,
+				"MatchedSymbolsIndices": [
+					[
+						{"Item1": 0, "Item2": 1},
+						{"Item1": 1, "Item2": 1},
+						{"Item1": 2, "Item2": 1},
+						{"Item1": 3, "Item2": 1},
+						{"Item1": 4, "Item2": 1}
+					]
+				]
+			}
+		],
+		"TotalBet": 0.1,
+		"TotalWin": 25000,
+		"UpdateCash": true,
+		"MysteryMultiple": 1,
+		"MatchedBonus": {
+			"BonusType": "Jackpot",
+			"JackpotID": 52,
+			"JackpotName": "Grand",
+			"JackpotPayout": 25000
+		},
+		"WinGrade": "Mega",
+		"CollectWin": 0,
+		"RemainFreeSpinCount": -1,
+		"AddSpinCount": 0,
+		"InitReel": null
+	},
+	"SpinID": 14,
+	"Before": {"0": 100, "1": 500, "2": 2500, "3": 25000},
+	"After": {"0": 100, "1": 500, "2": 2500, "3": 100},
+	"SMM": null
+}

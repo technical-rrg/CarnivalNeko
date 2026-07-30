@@ -1,0 +1,14 @@
+{
+	"ClaimResponse": {
+		"NextStage": 0,
+		"TotalWin": 5.5,
+		"FeatureName": "FreeSpin",
+		"UpdateCash": true,
+		"TotalFreeSpinCount": -1,
+		"StartRands": [1, 4, 1, 4, 1],
+		"WinGrade": "Big"
+	},
+	"WinCash": 5.5,
+	"Cash": 100005.3,
+	"SMM": null
+}

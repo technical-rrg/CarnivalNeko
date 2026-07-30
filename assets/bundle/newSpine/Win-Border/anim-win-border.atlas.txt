@@ -1,0 +1,181 @@
+
+anim-win-border.png
+size: 1536, 1498
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Win-border_00
+  rotate: false
+  xy: 1229, 907
+  size: 306, 296
+  orig: 306, 305
+  offset: 0, 5
+  index: -1
+Win-border_01
+  rotate: false
+  xy: 922, 1206
+  size: 306, 291
+  orig: 306, 305
+  offset: 0, 7
+  index: -1
+Win-border_02
+  rotate: false
+  xy: 308, 614
+  size: 306, 297
+  orig: 306, 305
+  offset: 0, 4
+  index: -1
+Win-border_03
+  rotate: false
+  xy: 921, 3
+  size: 304, 304
+  orig: 306, 305
+  offset: 2, 1
+  index: -1
+Win-border_04
+  rotate: true
+  xy: 920, 308
+  size: 300, 305
+  orig: 306, 305
+  offset: 3, 0
+  index: -1
+Win-border_05
+  rotate: true
+  xy: 615, 612
+  size: 297, 305
+  orig: 306, 305
+  offset: 5, 0
+  index: -1
+Win-border_06
+  rotate: true
+  xy: 308, 913
+  size: 294, 305
+  orig: 306, 305
+  offset: 7, 0
+  index: -1
+Win-border_07
+  rotate: true
+  xy: 615, 1207
+  size: 290, 305
+  orig: 306, 305
+  offset: 9, 0
+  index: -1
+Win-border_08
+  rotate: true
+  xy: 614, 311
+  size: 300, 304
+  orig: 306, 305
+  offset: 2, 1
+  index: -1
+Win-border_09
+  rotate: false
+  xy: 1, 12
+  size: 305, 303
+  orig: 306, 305
+  offset: 0, 2
+  index: -1
+Win-border_10
+  rotate: false
+  xy: 1227, 307
+  size: 306, 300
+  orig: 306, 305
+  offset: 0, 4
+  index: -1
+Win-border_11
+  rotate: false
+  xy: 922, 610
+  size: 306, 297
+  orig: 306, 305
+  offset: 0, 6
+  index: -1
+Win-border_12
+  rotate: false
+  xy: 615, 911
+  size: 306, 294
+  orig: 306, 305
+  offset: 0, 7
+  index: -1
+Win-border_13
+  rotate: false
+  xy: 1, 1208
+  size: 306, 288
+  orig: 306, 305
+  offset: 0, 10
+  index: -1
+Win-border_14
+  rotate: false
+  xy: 1, 616
+  size: 305, 296
+  orig: 306, 305
+  offset: 0, 4
+  index: -1
+Win-border_15
+  rotate: true
+  xy: 308, 10
+  size: 303, 304
+  orig: 306, 305
+  offset: 2, 1
+  index: -1
+Win-border_16
+  rotate: true
+  xy: 308, 314
+  size: 299, 305
+  orig: 306, 305
+  offset: 3, 0
+  index: -1
+Win-border_17
+  rotate: true
+  xy: 923, 909
+  size: 296, 305
+  orig: 306, 305
+  offset: 5, 0
+  index: -1
+Win-border_18
+  rotate: true
+  xy: 1229, 1205
+  size: 292, 305
+  orig: 306, 305
+  offset: 7, 0
+  index: -1
+Win-border_19
+  rotate: true
+  xy: 308, 1208
+  size: 288, 305
+  orig: 306, 305
+  offset: 9, 0
+  index: -1
+Win-border_20
+  rotate: true
+  xy: 1, 316
+  size: 298, 305
+  orig: 306, 305
+  offset: 3, 0
+  index: -1
+Win-border_21
+  rotate: false
+  xy: 1226, 1
+  size: 304, 304
+  orig: 306, 305
+  offset: 1, 1
+  index: -1
+Win-border_22
+  rotate: false
+  xy: 613, 6
+  size: 306, 300
+  orig: 306, 305
+  offset: 0, 3
+  index: -1
+Win-border_23
+  rotate: false
+  xy: 1229, 609
+  size: 306, 297
+  orig: 306, 305
+  offset: 0, 4
+  index: -1
+Win-border_24
+  rotate: false
+  xy: 1, 914
+  size: 306, 293
+  orig: 306, 305
+  offset: 0, 6
+  index: -1

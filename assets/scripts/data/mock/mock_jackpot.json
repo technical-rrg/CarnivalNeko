@@ -1,0 +1,21 @@
+{
+	"Wins": [100, 500, 2500, 25000],
+	"WinMsgs": [
+		{
+			"Seq": 2604090300000000001,
+			"Slot": "SuperNova",
+			"MX": 0,
+			"Nick": "LuckyPlayer2026",
+			"WinPopupUrl": "https://downloads.newworld.id/bcpopup/BC_MegaWin.png",
+			"Feature": "Grand Jackpot",
+			"LangID": "en",
+			"SlotIcon": "https://downloads.newworld.id/Icons/SLOT_SuperNova_128.png",
+			"CountryFlagIcon": "https://downloads.newworld.id/flags/us.png",
+			"CTime": "2026-04-09T12:00:00.0000000Z"
+		}
+	],
+	"ReqRace": false,
+	"CR": null,
+	"SMM": null,
+	"UTC": "2026-04-09T12:00:01.0000000Z"
+}

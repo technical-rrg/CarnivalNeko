@@ -1,0 +1,55 @@
+
+PROGRESSIVE WIN SUPER.png
+size: 1910, 1720
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+BIG
+  rotate: false
+  xy: 1450, 236
+  size: 458, 150
+  orig: 1920, 1080
+  offset: 593, 689
+  index: -1
+CIRCLE LIGHT BIG
+  rotate: false
+  xy: 2, 73
+  size: 662, 661
+  orig: 677, 678
+  offset: 8, 7
+  index: -1
+CIRCLE LIGHT SMALL
+  rotate: true
+  xy: 666, 233
+  size: 501, 396
+  orig: 501, 501
+  offset: 0, 66
+  index: -1
+Ellipse 1
+  rotate: false
+  xy: 2, 736
+  size: 1393, 982
+  orig: 1920, 1080
+  offset: 264, 70
+  index: -1
+FRAME
+  rotate: true
+  xy: 1397, 388
+  size: 1330, 460
+  orig: 1920, 1080
+  offset: 296, 267
+  index: -1
+Star
+  rotate: false
+  xy: 1064, 2
+  size: 384, 384
+  orig: 512, 512
+  offset: 64, 64
+  index: -1
+WIN
+  rotate: false
+  xy: 666, 88
+  size: 290, 143
+  orig: 1920, 1080
+  offset: 1038, 692
+  index: -1

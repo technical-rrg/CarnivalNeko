@@ -24,7 +24,7 @@
  */
 
 import {
-    _decorator, Component, Node, Sprite, SpriteFrame, UIOpacity, tween, Vec3, Tween,
+    _decorator, Component, Node, Sprite, SpriteFrame, UIOpacity, tween, Vec3, Tween, instantiate,
 } from 'cc';
 import { EventBus }     from '../core/EventBus';
 import { GameEvents }   from '../core/GameEvents';
@@ -38,6 +38,7 @@ import { SlotMachineController } from './SlotMachineController';
 import { TopUpManager } from './TopUpManager';
 import { TOPUP_STICKY_SYMBOL_SCALE } from './TopUpReelController';
 import { TopUpTransitionPopup, TransitionMode } from './TopUpTransitionPopup';
+import { MATSURI_COL_COUNT, MATSURI_GOLD_SYMBOL, MATSURI_MIN_ROWS, clampMatsuriRows } from '../data/MatsuriGridUtil';
 
 const { ccclass, property } = _decorator;
 
@@ -53,10 +54,9 @@ export class StickyOverlayController extends Component {
     @property({
         type: [Node],
         tooltip:
-            '15 CoinSlot nodes theo thứ tự: index = reel * 3 + row\n' +
-            '(row: 0=Bottom, 1=Mid, 2=Top visual)\n' +
-            '[0]=R0_Bot [1]=R0_Mid [2]=R0_Top  [3]=R1_Bot ... [14]=R4_Top\n' +
-            'Mỗi node cần Sprite component (coin image) + optional child "CreditLabel" (SpriteNumber).',
+            'CoinSlot nodes: index = reel * N + row (N = activeRowCount, Prefab mặc định 3).\n' +
+            '(row: 0=Bottom … N-1=Top)\n' +
+            'Mỗi node cần Sprite + optional child "CreditLabel" (SpriteNumber).',
     })
     coinSlots: Node[] = [];
 
@@ -132,6 +132,8 @@ export class StickyOverlayController extends Component {
     private _topUpSpinCounter: number = 0;
     /** Mốc kết thúc land-bounce vàng/xanh gần nhất; absorb phải chờ qua mốc này. */
     private _goldLandBounceEndMs: number = 0;
+    /** Matsuri: đang flip Green→Gold — _refreshAll không đụng slot này. */
+    private _matsuriFlippingKeys: Set<string> = new Set();
 
     /** true trong _refreshAll lần đầu vào TopUp — nhún chậm + stagger. */
     private _isEnteringTopUp: boolean = false;
@@ -143,9 +145,143 @@ export class StickyOverlayController extends Component {
     private _pendingEnterAnim: boolean = false;
     private _enterAnimPlayed: boolean = false;
 
+    /** Số hàng active (3|4|5) — đồng bộ TopUpManager.ensureRowCount. */
+    private _rowCount: number = MATSURI_MIN_ROWS;
+    /** Pool 25 coinSlots từ Prefab 5×5. */
+    private _poolCoinSlots: Node[] = [];
+    private static readonly POOL_ROWS = 5;
+
+    get rowCount(): number { return this._rowCount; }
+
+    private _cellIdx(reel: number, row: number): number {
+        return reel * this._rowCount + row;
+    }
+
+    /**
+     * Đồng bộ số hàng với TopUpManager (clone coinSlots nếu Prefab chỉ có 5×3).
+     */
+    ensureRowCount(rows: number, topUpMgr?: TopUpManager | null): void {
+        const target = clampMatsuriRows(rows);
+        if (topUpMgr) topUpMgr.ensureRowCount(target);
+
+        if (this._poolCoinSlots.length === 0) {
+            this._poolCoinSlots = this.coinSlots.slice();
+        }
+
+        // Prefab 5×5 pool
+        if (this._poolCoinSlots.length >= MATSURI_COL_COUNT * StickyOverlayController.POOL_ROWS) {
+            const fullRows = StickyOverlayController.POOL_ROWS;
+            const next: Node[] = [];
+            for (let col = 0; col < MATSURI_COL_COUNT; col++) {
+                for (let row = 0; row < target; row++) {
+                    const n = this._poolCoinSlots[col * fullRows + row];
+                    if (!n) continue;
+                    n.active = false; // refresh sẽ bật khi có coin
+                    next.push(n);
+                }
+                for (let row = target; row < fullRows; row++) {
+                    const n = this._poolCoinSlots[col * fullRows + row];
+                    if (n) n.active = false;
+                }
+            }
+            this.coinSlots = next;
+            this._rowCount = target;
+            Log.d(`[StickyOverlay] ensureRowCount pool → 5×${target} (${this.coinSlots.length} active)`);
+            return;
+        }
+
+        const oldRows = this._rowCount;
+        const oldSlots = this.coinSlots.slice();
+
+        if (target === oldRows && oldSlots.length >= MATSURI_COL_COUNT * target) {
+            this._rowCount = target;
+            this._applySlotVisibility();
+            return;
+        }
+
+        if (target < oldRows) {
+            const kept: Node[] = [];
+            for (let col = 0; col < MATSURI_COL_COUNT; col++) {
+                for (let row = 0; row < target; row++) {
+                    const n = oldSlots[col * oldRows + row];
+                    if (n) kept.push(n);
+                }
+                for (let row = target; row < oldRows; row++) {
+                    const n = oldSlots[col * oldRows + row];
+                    if (n) n.active = false;
+                }
+            }
+            this.coinSlots = kept;
+            this._rowCount = target;
+            this._applySlotVisibility();
+            Log.d(`[StickyOverlay] ensureRowCount shrink → 5×${target}`);
+            return;
+        }
+
+        const spacingY = (oldSlots[0] && oldSlots[1])
+            ? oldSlots[1].position.y - oldSlots[0].position.y
+            : 120;
+        const parent = oldSlots[0]?.parent;
+        if (!parent) {
+            Log.e('[StickyOverlay] ensureRowCount: thiếu parent coinSlots');
+            this._rowCount = target;
+            return;
+        }
+
+        const newSlots: Node[] = [];
+        for (let col = 0; col < MATSURI_COL_COUNT; col++) {
+            for (let row = 0; row < target; row++) {
+                if (row < oldRows) {
+                    const existing = oldSlots[col * oldRows + row];
+                    if (existing) {
+                        existing.active = false;
+                        newSlots.push(existing);
+                    }
+                    continue;
+                }
+                const template = oldSlots[col * oldRows + (oldRows - 1)];
+                if (!template) continue;
+                const node = instantiate(template);
+                node.name = `CoinSlot_${col}_${row}`;
+                parent.addChild(node);
+                const base = template.position;
+                node.setPosition(base.x, base.y + spacingY * (row - (oldRows - 1)), base.z);
+                node.active = false;
+                newSlots.push(node);
+            }
+        }
+        this.coinSlots = newSlots;
+        this._rowCount = target;
+        this._applySlotVisibility();
+        Log.e(`[StickyOverlay] ensureRowCount expand → 5×${target} slots=${this.coinSlots.length}`);
+    }
+
+    private _applySlotVisibility(): void {
+        const n = MATSURI_COL_COUNT * this._rowCount;
+        for (let i = 0; i < this.coinSlots.length; i++) {
+            // keep inactive until refresh shows coins; don't force active
+            if (i >= n && this.coinSlots[i]) this.coinSlots[i].active = false;
+        }
+    }
+
+    private _isCellFeatureMode(): boolean {
+        const m = GameData.instance.currentMode;
+        return m === 'respin' || m === 'matsuri';
+    }
+
     // ── LIFECYCLE ──────────────────────────────────────────────────────────────
 
     onLoad(): void {
+        this._poolCoinSlots = this.coinSlots.slice();
+        if (this._poolCoinSlots.length >= MATSURI_COL_COUNT * StickyOverlayController.POOL_ROWS) {
+            this._rowCount = StickyOverlayController.POOL_ROWS;
+            this.ensureRowCount(MATSURI_MIN_ROWS, null);
+        } else if (this.coinSlots.length >= 20) {
+            this._rowCount = 4;
+        } else {
+            this._rowCount = 3;
+        }
+
         this._hideAll();
 
         EventBus.instance.on(GameEvents.TOPUP_TRANSITION_SHOW, this._onTransitionShow, this);
@@ -160,9 +296,9 @@ export class StickyOverlayController extends Component {
 
         // Defer inactive: nếu set active=false ngay trong onLoad, child TopUpManager
         // có thể chưa kịp onLoad khi lazy-instantiate Prefab.
-        // Đang ở TopUp (resume / vừa set mode) → giữ active, chờ TOPUP_START refresh.
+        // Đang ở TopUp/Matsuri (resume / vừa set mode) → giữ active, chờ TOPUP_START refresh.
         this.scheduleOnce(() => {
-            if (GameData.instance.currentMode !== 'respin') {
+            if (!this._isCellFeatureMode()) {
                 this.node.active = false;
             }
         }, 0);
@@ -199,7 +335,7 @@ export class StickyOverlayController extends Component {
 
     /** Transition tắt → diễn fade + bounce đồng đỏ lần đầu vào TopUp. */
     private _onTransitionDone(): void {
-        if (GameData.instance.currentMode !== 'respin') {
+        if (!this._isCellFeatureMode()) {
             this._pendingEnterAnim = false;
             this._deferEnterAnim = false;
             return;
@@ -246,7 +382,7 @@ export class StickyOverlayController extends Component {
         return popups.some(p => !!p?.node?.isValid && p.node.active);
     }
 
-    /** Fade-in overlay + bounce stagger lần đầu vào TopUp. */
+    /** Fade-in overlay + (TopUp) bounce stagger; Matsuri: hiện tĩnh, không nhún L→R. */
     private _playEnterAnim(): void {
         if (this._enterAnimPlayed) return;
         this._enterAnimPlayed = true;
@@ -255,6 +391,14 @@ export class StickyOverlayController extends Component {
         this.node.active = true;
         this._previouslyActiveSlots.clear();
         this._fadeInOverlay();
+        const isMatsuri = GameData.instance.currentMode === 'matsuri';
+        if (isMatsuri) {
+            // Matsuri: không stagger bounce — coin hiện sẵn sau fade overlay
+            this.alignPositionsFromTopUpManager();
+            this._refreshAll(false, false);
+            Log.d('[StickyOverlay] Matsuri enter — static coins (no stagger bounce)');
+            return;
+        }
         this._isEnteringTopUp = true;
         this._refreshAll(false, true);
         this._isEnteringTopUp = false;
@@ -281,6 +425,10 @@ export class StickyOverlayController extends Component {
             this._topUpSpinCounter++;
             this._restoreCoinSlotParents(this._topUpSpinCounter);
             this.clearTempPlusOne('reels-start-spin');
+            if (GameData.instance.currentMode === 'matsuri') {
+                // Re-parent xong → canh lại một lần (không canh giữa land/flip)
+                this.alignPositionsFromTopUpManager();
+            }
             this._refreshAll(true /* chỉ fade in coin MỚI, coin cũ giữ nguyên */);
         }
     }
@@ -294,6 +442,7 @@ export class StickyOverlayController extends Component {
         this._coinSlotOriginalParents.clear();
         this._topUpSpinCounter = 0;
         this._goldLandBounceEndMs = 0;
+        this._matsuriFlippingKeys.clear();
         this._deferEnterAnim = false;
         this._pendingEnterAnim = false;
         this._enterAnimPlayed = false;
@@ -320,9 +469,9 @@ export class StickyOverlayController extends Component {
         const isEnter = this._isEnteringTopUp;
 
         for (let reel = 0; reel < 5; reel++) {
-            for (let row = 0; row < 3; row++) {
+            for (let row = 0; row < this._rowCount; row++) {
                 const key      = `${reel}-${row}`;
-                const idx      = reel * 3 + row;
+                const idx      = this._cellIdx(reel, row);
                 const slotNode = this.coinSlots[idx];
                 if (!slotNode) continue;
 
@@ -347,6 +496,7 @@ export class StickyOverlayController extends Component {
                     }
                     this._slotCreditMap.delete(slotNode);
                     this._tempPlusOneKeys.delete(key);
+                    this._matsuriFlippingKeys.delete(key);
                     slotNode.setScale(1, 1, 1);
                     slotNode.active = false;
                     continue;
@@ -357,9 +507,17 @@ export class StickyOverlayController extends Component {
                 // Track active slots
                 newActiveSlots.add(key);
 
+                // Matsuri flip Green→Gold đang chạy — đừng apply/align (tránh cắt tween + lệch Y)
+                if (this._matsuriFlippingKeys.has(key)) {
+                    continue;
+                }
+
                 // Detect if this is a NEW coin (wasn't in previous set)
                 const isNewCoin = !this._previouslyActiveSlots.has(key);
-                const isAbsorbTarget = isNewCoin && (
+                // TopUp: Yellow/Green mới chờ absorb → credit=0 tạm.
+                // Matsuri Gold(=YELLOW)/Green: hiện credit ngay, không absorb.
+                const isMatsuri = GameData.instance.currentMode === 'matsuri';
+                const isAbsorbTarget = !isMatsuri && isNewCoin && (
                     cell.symbolId === SymbolId.STICKY_YELLOW ||
                     cell.symbolId === SymbolId.STICKY_GREEN
                 );
@@ -374,12 +532,12 @@ export class StickyOverlayController extends Component {
                 Log.e(`[SOC-DEBUG]   slot[${key}] idx=${idx} isNew=${isNewCoin} absorb=${isAbsorbTarget} sym=${cell.symbolId} credit=${cell.credit} showCredit=${creditToShow}`);
 
                 // Áp dụng sprite + credit
-                // NEW Yellow/Green: KHÔNG set credit — TopUpAbsorbEffect sẽ count-up
-                // Existing coins hoặc Red: hiển thị credit bình thường
+                // Align chỉ coin MỚI (tránh refresh sau land canh lại giữa bounce → lệch Y)
                 this._applyCoin(slotNode, cell.symbolId, creditToShow);
                 slotNode.active = true;
                 if (isNewCoin) {
                     this._reparentToStickyOverlay(slotNode);
+                    this._alignSlotToTopUpCell(idx);
                 }
 
                 const isGoldCoin = cell.symbolId === SymbolId.STICKY_YELLOW
@@ -388,17 +546,39 @@ export class StickyOverlayController extends Component {
                 if (!animate) {
                     // Setup tĩnh dưới Transition — chờ DONE mới fade/bounce
                     Tween.stopAllByTarget(slotNode);
+                    slotNode.setRotationFromEuler(0, 0, 0);
                     const restOp = slotNode.getComponent(UIOpacity) ?? slotNode.addComponent(UIOpacity);
                     Tween.stopAllByTarget(restOp);
                     restOp.opacity = 255;
                     slotNode.setScale(this._getBaseScale(cell.symbolId), this._getBaseScale(cell.symbolId), 1);
+                    if (isNewCoin) this._alignSlotToTopUpCell(idx);
                     continue;
                 }
 
                 // Fade in + Bounce: chỉ cho coin MỚI hoặc lần đầu mở (fadeOnlyNew=false)
                 if (!fadeOnlyNew || isNewCoin) {
-                    // Land vàng/xanh: reel Mid giữ nguyên; overlay nhún giống sticky đỏ normal
-                    // (0.85 → peak → settle 1), phủ lên trên.
+                    // Matsuri Green land: hiện xanh → flip sang vàng (không jump Y)
+                    if (isMatsuri && isNewCoin && cell.symbolId === SymbolId.STICKY_GREEN) {
+                        const op = slotNode.getComponent(UIOpacity)
+                            ?? slotNode.addComponent(UIOpacity);
+                        Tween.stopAllByTarget(op);
+                        op.opacity = 255;
+                        this._playMatsuriGreenFlipToGold(slotNode, key, idx, creditToShow);
+                        continue;
+                    }
+
+                    // Matsuri Gold (start coins / đã flip): không nhún Y
+                    if (isMatsuri && isNewCoin && cell.symbolId === SymbolId.STICKY_YELLOW) {
+                        const op = slotNode.getComponent(UIOpacity)
+                            ?? slotNode.addComponent(UIOpacity);
+                        Tween.stopAllByTarget(op);
+                        op.opacity = 255;
+                        this._applyBaseScale(slotNode, cell.symbolId);
+                        this._alignSlotToTopUpCell(idx);
+                        continue;
+                    }
+
+                    // Land vàng/xanh TopUp: reel Mid giữ nguyên; overlay nhún giống sticky đỏ
                     const fromHandoff = isGoldCoin && !isEnter && isNewCoin;
                     if (fromHandoff) {
                         const op = slotNode.getComponent(UIOpacity)
@@ -502,8 +682,8 @@ export class StickyOverlayController extends Component {
     private _applyStickySymbolOrder(): void {
         const sortable = this.coinSlots
             .map((node, idx) => {
-                const reel = Math.floor(idx / 3);
-                const row = idx % 3;
+                const reel = Math.floor(idx / this._rowCount);
+                const row = idx % this._rowCount;
                 const cell = GameData.instance.stickyCells.get(`${reel}-${row}`);
                 return { node, idx, symbolId: cell?.symbolId ?? -1 };
             })
@@ -535,7 +715,7 @@ export class StickyOverlayController extends Component {
      * Gọi hideTempCoin() sau khi xong.
      */
     showTempCoin(reel: number, row: number, symbolId: number, allowPlusOne: boolean = false): Node | null {
-        const idx      = reel * 3 + row;
+        const idx      = this._cellIdx(reel, row);
         const slotNode = this.coinSlots[idx];
         if (!slotNode) return null;
         const key = `${reel}-${row}`;
@@ -580,7 +760,7 @@ export class StickyOverlayController extends Component {
         this._tempPlusOneKeys.delete(key);
         // Chỉ ẩn nếu không có sticky coin thật tại vị trí này
         if (!GameData.instance.stickyCells.has(key)) {
-            const idx      = reel * 3 + row;
+            const idx      = this._cellIdx(reel, row);
             const slotNode = this.coinSlots[idx];
             if (slotNode) this._hideTempSlot(slotNode);
         }
@@ -599,7 +779,7 @@ export class StickyOverlayController extends Component {
                 const [reelStr, rowStr] = key.split('-');
                 const reel = Number(reelStr);
                 const row = Number(rowStr);
-                const idx = reel * 3 + row;
+                const idx = this._cellIdx(reel, row);
                 const slotNode = this.coinSlots[idx];
                 if (slotNode) {
                     this._applyCoin(slotNode, realCell.symbolId, realCell.credit ?? 0);
@@ -613,7 +793,7 @@ export class StickyOverlayController extends Component {
             const [reelStr, rowStr] = key.split('-');
             const reel = Number(reelStr);
             const row = Number(rowStr);
-            const idx = reel * 3 + row;
+            const idx = this._cellIdx(reel, row);
             const slotNode = this.coinSlots[idx];
             if (slotNode) this._hideTempSlot(slotNode);
             this._tempPlusOneKeys.delete(key);
@@ -639,9 +819,10 @@ export class StickyOverlayController extends Component {
         slotNode.active = false;
     }
 
-    /** Tìm CreditLabel child — fallback getComponentInChildren(SpriteNumber) cho nested prefab. */
+    /** Tìm CreditLabel child — fallback typo CreaditLabel + SpriteNumber trong nested prefab. */
     private _resolveCreditLabel(slotNode: Node): { labelNode: Node | null; sn: SpriteNumber | null } {
-        let labelNode = slotNode.getChildByName('CreditLabel');
+        let labelNode = slotNode.getChildByName('CreditLabel')
+            ?? slotNode.getChildByName('CreaditLabel');
         let sn = labelNode?.getComponent(SpriteNumber) ?? null;
         if (!sn) {
             sn = slotNode.getComponentInChildren(SpriteNumber);
@@ -741,8 +922,8 @@ export class StickyOverlayController extends Component {
             if (!reel) continue;
 
             const symbolNodeIndices = [1, 2, 3]; // Top, Mid, Bot
-            for (let row = 0; row < 3; row++) {
-                const coinIdx = reelIdx * 3 + row;
+            for (let row = 0; row < this._rowCount; row++) {
+                const coinIdx = this._cellIdx(reelIdx, row);
                 const slotNode = this.coinSlots[coinIdx];
                 if (!slotNode) continue;
 
@@ -758,7 +939,7 @@ export class StickyOverlayController extends Component {
      * Canh 15 coin slot theo 15 reel trong TopUpManager.
      * Mỗi reel TopUp là một ô (cell); node Mid (symbolNodes[1]) là tâm ô.
      * Giả định mảng coinSlots và TopUpManager.reels cùng thứ tự:
-     *   index = reel * 3 + row  (row 0 = Bottom, 1 = Mid, 2 = Top visual).
+     *   index = reel * N + row  (row 0 = Bottom, 1 = Mid, 2 = Top visual).
      */
     alignPositionsFromTopUpManager(): void {
         // Ưu tiên TopUpManager trong cùng prefab hierarchy (lazy-loaded), fallback scene scan.
@@ -771,23 +952,81 @@ export class StickyOverlayController extends Component {
             return;
         }
 
-        if (topUpMgr.reels.length !== 15) {
-            Log.w(`[StickyOverlay] alignPositionsFromTopUpManager: reels.length=${topUpMgr.reels.length} (expected 15).`);
+        if (topUpMgr.reels.length !== topUpMgr.cellCount) {
+            Log.w(`[StickyOverlay] alignPositionsFromTopUpManager: reels.length=${topUpMgr.reels.length} (expected cellCount).`);
         }
 
         const count = Math.min(topUpMgr.reels.length, this.coinSlots.length);
         for (let i = 0; i < count; i++) {
-            const reel = topUpMgr.reels[i];
-            const slotNode = this.coinSlots[i];
-            if (!reel || !slotNode) continue;
-
-            const symbolNode = reel.symbolNodes[1]; // Mid node = tâm ô
-            if (!symbolNode) continue;
-
-            slotNode.setWorldPosition(symbolNode.worldPosition);
+            this._alignSlotToTopUpCell(i, topUpMgr);
         }
 
         Log.d(`[StickyOverlay] alignPositionsFromTopUpManager — synced ${count} slots.`);
+    }
+
+    /** Canh 1 coinSlot đúng world-pos tâm ô TopUpReel (Mid rest — không dùng mid.worldPosition stale). */
+    private _alignSlotToTopUpCell(idx: number, topUpMgr?: TopUpManager | null): void {
+        const mgr = topUpMgr
+            ?? this.node.getComponentInChildren(TopUpManager)
+            ?? this.node.parent?.getComponentInChildren(TopUpManager)
+            ?? this.node.scene?.getComponentInChildren(TopUpManager)
+            ?? null;
+        if (!mgr) return;
+        const reel = mgr.reels[idx];
+        const slotNode = this.coinSlots[idx];
+        if (!reel || !slotNode) return;
+        slotNode.setWorldPosition(reel.getMidRestWorldPosition());
+    }
+
+    /**
+     * Matsuri: hiện Green trên overlay → squeeze flip sang Gold.
+     * Không nhảy Y (tránh lệch vị trí đến spin sau).
+     */
+    private _playMatsuriGreenFlipToGold(
+        slotNode: Node,
+        key: string,
+        idx: number,
+        credit: number,
+    ): void {
+        this._matsuriFlippingKeys.add(key);
+        Tween.stopAllByTarget(slotNode);
+        this._alignSlotToTopUpCell(idx);
+        slotNode.setRotationFromEuler(0, 0, 0);
+
+        const greenS = this._getBaseScale(SymbolId.STICKY_GREEN);
+        const goldS = this._getBaseScale(MATSURI_GOLD_SYMBOL);
+        const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
+        const landDur = 0.12 * m;
+        const holdDur = 0.1 * m;
+        const flipDur = 0.14 * m;
+
+        SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
+
+        slotNode.setScale(greenS * TOPUP_STICKY_SYMBOL_SCALE, greenS * TOPUP_STICKY_SYMBOL_SCALE, 1);
+        tween(slotNode)
+            .to(landDur, { scale: new Vec3(greenS, greenS, 1) }, { easing: 'backOut' })
+            .delay(holdDur)
+            .to(flipDur, { scale: new Vec3(0.02, greenS, 1) }, { easing: 'sineIn' })
+            .call(() => {
+                if (!slotNode?.isValid) return;
+                this._applyCoin(slotNode, MATSURI_GOLD_SYMBOL, credit);
+                const cell = GameData.instance.stickyCells.get(key);
+                if (cell) {
+                    cell.symbolId = MATSURI_GOLD_SYMBOL;
+                    GameData.instance.stickyCells.set(key, { ...cell });
+                }
+                this._alignSlotToTopUpCell(idx);
+                slotNode.setScale(0.02, goldS, 1);
+            })
+            .to(flipDur, { scale: new Vec3(goldS, goldS, 1) }, { easing: 'sineOut' })
+            .call(() => {
+                if (!slotNode?.isValid) return;
+                this._alignSlotToTopUpCell(idx);
+                slotNode.setScale(goldS, goldS, 1);
+                slotNode.setRotationFromEuler(0, 0, 0);
+                this._matsuriFlippingKeys.delete(key);
+            })
+            .start();
     }
 
     /**
@@ -820,8 +1059,8 @@ export class StickyOverlayController extends Component {
     private _coinSlotKey(slotNode: Node): string | null {
         const idx = this.coinSlots.indexOf(slotNode);
         if (idx < 0) return null;
-        const reel = Math.floor(idx / 3);
-        const row = idx % 3;
+        const reel = Math.floor(idx / this._rowCount);
+        const row = idx % this._rowCount;
         return `${reel}-${row}`;
     }
 
@@ -844,7 +1083,7 @@ export class StickyOverlayController extends Component {
 
         Tween.stopAllByTarget(slotNode);
 
-        if (GameData.instance.currentMode === 'respin' && isGoldCoin) {
+        if ((GameData.instance.currentMode === 'respin' || GameData.instance.currentMode === 'matsuri') && isGoldCoin) {
             SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
         }
 

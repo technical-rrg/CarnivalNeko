@@ -1283,7 +1283,7 @@ export class SlotMachineController extends Component {
      */
     private _showCreditsForReel(reelIndex: number): void {
         // TopUp mode: credit label chỉ hiện trên StickyOverlay, không hiện trên background reel
-        if (GameData.instance.currentMode === 'respin') return;
+        if (GameData.instance.currentMode === 'respin' || GameData.instance.currentMode === 'matsuri') return;
         const cells = GameData.instance.stickyCells;
         if (cells.size === 0) return;
 

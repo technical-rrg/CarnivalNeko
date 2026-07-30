@@ -86,9 +86,13 @@ export const GameEvents = {
     CARNIVAL_POT_BURST: 'carnival:pot:burst',
     /** Burst anim xong — GameManager tiếp tục Jackpot / Matsuri. Payload: CarnivalFeatureTrigger */
     CARNIVAL_POT_BURST_DONE: 'carnival:pot:burst:done',
-    /** Matsuri stub (chưa có gameplay Hold&Spin). Payload: CarnivalFeatureTrigger */
+    /** Matsuri Hold&Spin bắt đầu (payload: CarnivalFeatureTrigger). */
+    CARNIVAL_MATSURI_START: 'carnival:matsuri:start',
+    /** Matsuri Hold&Spin kết thúc → về Base. No payload. */
+    CARNIVAL_MATSURI_END: 'carnival:matsuri:end',
+    /** @deprecated dùng CARNIVAL_MATSURI_START — giữ alias cho listener cũ */
     CARNIVAL_MATSURI_STUB: 'carnival:matsuri:stub',
-    /** Matsuri stub đóng / xong → về Base. No payload. */
+    /** @deprecated dùng CARNIVAL_MATSURI_END */
     CARNIVAL_MATSURI_STUB_DONE: 'carnival:matsuri:stub:done',
     /** Mở Pick Game popup. Payload: PickGameState */
     PICK_GAME_OPEN: 'pick:game:open',

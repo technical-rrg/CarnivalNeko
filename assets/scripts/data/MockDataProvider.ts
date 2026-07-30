@@ -31,6 +31,7 @@ import {
     CarnivalTrailHit,
     CarnivalPotLevels,
     CarnivalFeatureKind,
+    TopupReelType,
 } from './SlotTypes';
 import { INetworkAdapter } from '../manager/NetworkManager';
 import { GameData } from './GameData';
@@ -42,6 +43,14 @@ import {
     MOCK_CARNIVAL_TRAIL_COUNT_MAX,
 } from './ServerConfig';
 import { resolveMockCarnivalFeature } from './CarnivalFeatureResolve';
+import {
+    MATSURI_COL_COUNT,
+    MATSURI_SPIN_COUNT,
+    buildMatsuriTopupReel,
+    clampMatsuriRows,
+    matsuriCellCount,
+    pickMatsuriCredit,
+} from './MatsuriGridUtil';
 
 export class MockDataProvider {
 
@@ -61,6 +70,7 @@ export class MockDataProvider {
         const mode = data.currentMode;
 
         if (mode === 'respin')                     return MockDataProvider._generateRespin();
+        if (mode === 'matsuri')                    return MockDataProvider._generateMatsuri();
         if (mode === 'freespin' || mode === 'freespin_gold') return MockDataProvider._generateFreeSpin();
         return MockDataProvider._generateNormal();
     }
@@ -394,6 +404,84 @@ export class MockDataProvider {
             remainRespinCount,
             featureSpinTotalWin: data.respinTotalWin + totalWin,
             winGrade: MockDataProvider._getWinGrade(totalWin, totalBet),
+        };
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  MATSURI HOLD & SPIN (5×3|4|5) — Green → Gold, reset 3 spins
+    // ═══════════════════════════════════════════════════════════
+
+    private static _generateMatsuri(): SpinResponse {
+        const data = GameData.instance;
+        const totalBet = data.totalBet;
+        const rows = clampMatsuriRows(data.matsuriRows || 3);
+        const cellCount = matsuriCellCount(rows);
+        const stickyMap = data.stickyCells;
+        const newGreens: StickyCell[] = [];
+        let landedGreen = false;
+        let spinWin = 0;
+
+        // Spawn Green trên ô trống (~28%)
+        for (let reel = 0; reel < MATSURI_COL_COUNT; reel++) {
+            for (let row = 0; row < rows; row++) {
+                const key = `${reel}-${row}`;
+                if (stickyMap.has(key)) continue;
+                if (Math.random() >= 0.28) continue;
+                const credit = pickMatsuriCredit(totalBet);
+                landedGreen = true;
+                const cell: StickyCell = {
+                    reel,
+                    row,
+                    symbolId: SymbolId.STICKY_GREEN,
+                    credit,
+                };
+                newGreens.push(cell);
+                spinWin += credit;
+            }
+        }
+
+        const topupReel = buildMatsuriTopupReel(stickyMap, newGreens, rows);
+
+        // remain: GM đã −1 trước request → không green = giữ data.respinRemaining; green = reset 3
+        let remainRespinCount = landedGreen ? MATSURI_SPIN_COUNT : Math.max(0, data.respinRemaining);
+
+        const filledAfter = stickyMap.size + newGreens.length;
+        const fullGrid = filledAfter >= cellCount;
+        if (fullGrid) {
+            const grandMult = data.config.jackpotMultipliers?.GRAND ?? 1000;
+            spinWin += grandMult * totalBet;
+            remainRespinCount = 0;
+            Log.e(`[Matsuri MOCK] FULL GRID 5×${rows} → Grand + end`);
+        }
+
+        const nextStage = (fullGrid || remainRespinCount <= 0)
+            ? SlotStageType.TOPUP_SPIN_END
+            : SlotStageType.TOPUP_SPIN;
+
+        // rands dummy (TopUp/Matsuri không dùng main strip)
+        const normalStrips = data.config.reelStrips;
+        const rands = normalStrips.map((s) => Math.floor(Math.random() * (s.length || 1)));
+
+        Log.e(
+            `[Matsuri MOCK] rows=${rows} newGreen=${newGreens.length} filled=${filledAfter}/${cellCount}` +
+            ` remain=${remainRespinCount} win=${spinWin} next=${nextStage}`
+        );
+
+        return {
+            rands,
+            waysPayWins: [],
+            matchedLinePays: [],
+            totalBet,
+            totalWin: spinWin,
+            updateCash: false,
+            nextStage,
+            reelIndex: 3,
+            remainCash: data.player.balance + spinWin,
+            stickyCells: newGreens,
+            remainRespinCount,
+            featureSpinTotalWin: data.respinTotalWin + spinWin,
+            topupReel,
+            winGrade: MockDataProvider._getWinGrade(spinWin, totalBet),
         };
     }
 

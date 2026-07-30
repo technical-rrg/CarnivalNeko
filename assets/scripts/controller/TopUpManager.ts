@@ -1,20 +1,16 @@
 /**
- * TopUpManager — Quản lý 15 lồng xoay trong chế độ Top Up (grid 5×3).
+ * TopUpManager — Quản lý grid cell-spin (TopUp 5×3 / Matsuri Hold&Spin 5×3|4|5).
  *
- * ── LAYOUT 15 REELS ──
- *   5 Cột (Column), mỗi cột 3 Reels (Top, Mid, Bot).
- *   Thứ tự mảng `reels` (column-major theo scene visual):
- *     [0]=C0-Top [1]=C0-Mid [2]=C0-Bot
- *     [3]=C1-Top [4]=C1-Mid [5]=C1-Bot ... [14]=C4-Bot
+ * ── LAYOUT ──
+ *   Prefab StickyOverlay = 5 cột × 5 hàng (25 ô), column-major:
+ *     idx = col * 5 + row  (row 0 = Top … trong pool prefab)
+ *   ensureRowCount(3|4|5) chọn subset active (TopUp mặc định 3 hàng).
  *
- * ── FLOW MỚI: SEQUENTIAL SPIN ──
- *   Mỗi lần spin: quay TUẦN TỰ từng reel một theo thứ tự col-major.
- *   Reel 0 → spin → dừng → apply result (show coin/lock) → Reel 5 → spin → ...
- *   Chỉ khi reel cuối dừng xong mới emit REELS_STOPPED → absorb effect.
- *   1 lần gửi spin = 15 reels quay lần lượt, KHÔNG cùng lúc.
+ * ── Matsuri 5×4 / 5×5 ──
+ *   Prefab đã có sẵn 25 ô — chỉ bật/ẩn hàng, không cần clone runtime.
  */
 
-import { _decorator, Component, Node, Mask } from 'cc';
+import { _decorator, Component, Node, Mask, instantiate } from 'cc';
 import { TopUpReelController } from './TopUpReelController';
 import { SlotMachineController } from './SlotMachineController';
 import { SymbolView } from './SymbolView';
@@ -24,11 +20,11 @@ import { GameEvents } from '../core/GameEvents';
 import { Log } from '../core/Logger';
 import { TopupReelType, SymbolId } from '../data/SlotTypes';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
+import { MATSURI_COL_COUNT, MATSURI_MIN_ROWS, clampMatsuriRows } from '../data/MatsuriGridUtil';
 
 const { ccclass, property } = _decorator;
 
-const COLUMN_COUNT = 5;
-const ROW_COUNT = 3;
+const COLUMN_COUNT = MATSURI_COL_COUNT;
 
 @ccclass('TopUpManager')
 export class TopUpManager extends Component {
@@ -36,8 +32,8 @@ export class TopUpManager extends Component {
     @property({
         type: [TopUpReelController],
         tooltip:
-            '15 ReelControllers (5 cột × 3 hàng).\n' +
-            'Thứ tự column-major visual: [0]=C0-Top [1]=C0-Mid [2]=C0-Bot ... [14]=C4-Bot',
+            'ReelControllers 5×N (Prefab mặc định N=3 → 15 ô).\n' +
+            'Thứ tự column-major: idx = col * N + row (row 0=Bottom).',
     })
     reels: TopUpReelController[] = [];
 
@@ -68,8 +64,17 @@ export class TopUpManager extends Component {
     })
     maskNode: Node | null = null;
 
+    /** Số hàng active (3|4|5). Prefab gốc = 5×5 (25 ô); TopUp/Mighty dùng 3. */
+    private _rowCount: number = MATSURI_MIN_ROWS;
+    /** Pool đầy đủ từ Prefab (25 ô column-major 5 hàng) — không mất khi shrink. */
+    private _poolReels: TopUpReelController[] = [];
+    private static readonly POOL_ROWS = 5;
+
+    get rowCount(): number { return this._rowCount; }
+    get cellCount(): number { return COLUMN_COUNT * this._rowCount; }
+
     private _isSpinning: boolean = false;
-    /** Thứ tự quay tuần tự theo col-major: [0,5,10,1,6,11,...] */
+    /** Thứ tự quay theo col-major index 0..cellCount-1 */
     private _seqOrder: number[] = [];
     private _seqIndex: number = 0;
     private _pendingResults: any[] = [];
@@ -96,14 +101,25 @@ export class TopUpManager extends Component {
     // ─── LIFECYCLE ───
 
     onLoad(): void {
-        if (this.reels.length !== 15) {
-            Log.w(`[TopUpManager] reels.length=${this.reels.length} (expected 15). Kiểm tra lại gán trong Editor.`);
-        }
+        this._poolReels = this.reels.slice();
         this._isSpinning = false;
         this._seqIndex = 0;
         this._pendingResults = [];
-        // Row-major: 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
-        this._seqOrder = Array.from({ length: 15 }, (_, i) => i);
+
+        if (this._poolReels.length >= COLUMN_COUNT * TopUpManager.POOL_ROWS) {
+            // Prefab 5×5 — mặc định active 5×3 (TopUp / Mighty)
+            this._rowCount = TopUpManager.POOL_ROWS;
+            this.ensureRowCount(MATSURI_MIN_ROWS);
+        } else if (this._poolReels.length >= 20) {
+            this._rowCount = 4;
+            this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
+        } else {
+            this._rowCount = 3;
+            this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
+            if (this.reels.length < this.cellCount) {
+                Log.w(`[TopUpManager] reels.length=${this.reels.length} (expected ≥${this.cellCount}). Kiểm tra Prefab.`);
+            }
+        }
 
         this._distributeFramesFromSlotMachine();
 
@@ -114,10 +130,127 @@ export class TopUpManager extends Component {
         EventBus.instance.on(GameEvents.FREE_SPIN_GOLD_END, this._onTopUpEnd,    this);
         EventBus.instance.on(GameEvents.FREE_SPIN_END,       this._onTopUpEnd,    this);
 
-        // Nếu đang ở TopUp mode khi load scene → init ngay (symbols hiển thị tức thì)
-        if (GameData.instance.currentMode === 'respin') {
-            Log.d('[TopUpManager] onLoad — đang ở TopUp mode, init ngay');
+        const mode = GameData.instance.currentMode;
+        if (mode === 'respin' || mode === 'matsuri') {
+            Log.d(`[TopUpManager] onLoad — mode=${mode}, init ngay`);
             this._onTopUpStart();
+        }
+    }
+
+    /**
+     * Chọn số hàng active 3|4|5.
+     * Prefab 5×5: remap từ pool (không clone). Prefab cũ 5×3: clone fallback.
+     */
+    ensureRowCount(rows: number): void {
+        const target = clampMatsuriRows(rows);
+
+        if (this._poolReels.length >= COLUMN_COUNT * TopUpManager.POOL_ROWS) {
+            const fullRows = TopUpManager.POOL_ROWS;
+            const next: TopUpReelController[] = [];
+            for (let col = 0; col < COLUMN_COUNT; col++) {
+                for (let row = 0; row < target; row++) {
+                    const reel = this._poolReels[col * fullRows + row];
+                    if (!reel) continue;
+                    reel.node.active = true;
+                    next.push(reel);
+                }
+                for (let row = target; row < fullRows; row++) {
+                    const reel = this._poolReels[col * fullRows + row];
+                    if (reel?.node) reel.node.active = false;
+                }
+            }
+            this.reels = next;
+            this._rowCount = target;
+            this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
+            this._distributeFramesFromSlotMachine();
+            Log.d(`[TopUpManager] ensureRowCount pool → 5×${target} (${this.reels.length} active / ${this._poolReels.length} pool)`);
+            return;
+        }
+
+        const oldRows = this._rowCount;
+        const oldReels = this.reels.slice();
+
+        if (target === oldRows && oldReels.length >= COLUMN_COUNT * target) {
+            this._rowCount = target;
+            this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
+            this._applyCellVisibility();
+            return;
+        }
+
+        if (target < oldRows) {
+            const kept: TopUpReelController[] = [];
+            for (let col = 0; col < COLUMN_COUNT; col++) {
+                for (let row = 0; row < target; row++) {
+                    const reel = oldReels[col * oldRows + row];
+                    if (reel) kept.push(reel);
+                }
+                for (let row = target; row < oldRows; row++) {
+                    const reel = oldReels[col * oldRows + row];
+                    if (reel?.node) reel.node.active = false;
+                }
+            }
+            this.reels = kept;
+            this._rowCount = target;
+            this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
+            this._distributeFramesFromSlotMachine();
+            this._applyCellVisibility();
+            Log.d(`[TopUpManager] ensureRowCount shrink → 5×${target} (${this.reels.length} cells)`);
+            return;
+        }
+
+        const spacingY = (oldReels[0] && oldReels[1])
+            ? oldReels[1].node.position.y - oldReels[0].node.position.y
+            : 120;
+        const parent = oldReels[0]?.node?.parent;
+        if (!parent) {
+            Log.e('[TopUpManager] ensureRowCount: thiếu parent — không clone được');
+            return;
+        }
+
+        const newReels: TopUpReelController[] = [];
+        for (let col = 0; col < COLUMN_COUNT; col++) {
+            for (let row = 0; row < target; row++) {
+                if (row < oldRows) {
+                    const existing = oldReels[col * oldRows + row];
+                    if (existing) {
+                        existing.node.active = true;
+                        newReels.push(existing);
+                    }
+                    continue;
+                }
+                const template = oldReels[col * oldRows + (oldRows - 1)];
+                if (!template) {
+                    Log.e(`[TopUpManager] ensureRowCount: thiếu template col=${col}`);
+                    continue;
+                }
+                const node = instantiate(template.node);
+                node.name = `TopUpCell_${col}_${row}`;
+                parent.addChild(node);
+                const base = template.node.position;
+                const extra = row - (oldRows - 1);
+                node.setPosition(base.x, base.y + spacingY * extra, base.z);
+                const ctrl = node.getComponent(TopUpReelController);
+                if (ctrl) {
+                    ctrl.reset();
+                    newReels.push(ctrl);
+                } else {
+                    Log.e(`[TopUpManager] clone thiếu TopUpReelController col=${col} row=${row}`);
+                }
+            }
+        }
+
+        this.reels = newReels;
+        this._rowCount = target;
+        this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
+        this._distributeFramesFromSlotMachine();
+        this._applyCellVisibility();
+        Log.e(`[TopUpManager] ensureRowCount expand → 5×${target} (${this.reels.length} cells) spacingY=${spacingY}`);
+    }
+
+    private _applyCellVisibility(): void {
+        for (let i = 0; i < this.reels.length; i++) {
+            const reel = this.reels[i];
+            if (reel?.node) reel.node.active = i < this.cellCount;
         }
     }
 
@@ -133,7 +266,7 @@ export class TopUpManager extends Component {
                 if (!reel) continue;
                 reel.symbolFrames = this.slotMachine.symbolFrames;
 
-                const col = Math.floor(i / ROW_COUNT);
+                const col = Math.floor(i / this._rowCount);
                 // TopUpReelController.symbolNodes: [0]=Top [1]=Mid [2]=Bot
                 // rowIndex convention: 0=top, 1=mid, 2=bot
                 for (let ni = 0; ni < reel.symbolNodes.length; ni++) {
@@ -198,7 +331,7 @@ export class TopUpManager extends Component {
             const [reelStr, rowStr] = key.split('-');
             const reel = parseInt(reelStr);
             const row = parseInt(rowStr);
-            const idx = reel * ROW_COUNT + row;
+            const idx = reel * this._rowCount + row;
             const topUpReel = this.reels[idx];
             if (!topUpReel) continue;
 
@@ -217,7 +350,7 @@ export class TopUpManager extends Component {
         }
 
         // Set symbols cho các reel trống
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < this.cellCount; i++) {
             if (lockedIndices.has(i)) continue;
             const reel = this.reels[i];
             if (!reel) continue;
@@ -244,7 +377,7 @@ export class TopUpManager extends Component {
             }
         }
 
-        Log.d(`[TopUpManager] _onTopUpStart — ${lockedIndices.size} reels locked (coins), ${15 - lockedIndices.size} reels free`);
+        Log.d(`[TopUpManager] _onTopUpStart — ${lockedIndices.size} reels locked (coins), ${this.cellCount - lockedIndices.size} reels free`);
     }
 
     /** Map SymbolId (STICKY_RED/YELLOW/GREEN/JP_GRAND) → TopupReelType */
@@ -257,7 +390,7 @@ export class TopUpManager extends Component {
     }
 
     lockCellAt(reel: number, row: number, symbolId: number, credit: number = 0): void {
-        const idx = reel * ROW_COUNT + row;
+        const idx = reel * this._rowCount + row;
         const topUpReel = this.reels[idx];
         if (!topUpReel) return;
 
@@ -278,9 +411,9 @@ export class TopUpManager extends Component {
      * → server topupReel index (row-major: 0-4=top, 5-9=mid, 10-14=bot).
      */
     private _topUpIdxToServerIdx(idx: number): number {
-        const col = Math.floor(idx / ROW_COUNT);     // 0-4
-        const offset = idx % ROW_COUNT;              // TopUp/StickyOverlay visual row
-        const apiRow = ROW_COUNT - 1 - offset;       // Server row order is inverted vertically.
+        const col = Math.floor(idx / this._rowCount);     // 0-4
+        const offset = idx % this._rowCount;              // TopUp/StickyOverlay visual row
+        const apiRow = this._rowCount - 1 - offset;       // Server row order is inverted vertically.
         return apiRow * COLUMN_COUNT + col;
     }
 
@@ -312,7 +445,7 @@ export class TopUpManager extends Component {
         // Log.d(`[TopUpManager] _applyStrips — ${strips.length} strip sources...`);
 
         for (let i = 0; i < reelCount; i++) {
-            const col = Math.floor(i / ROW_COUNT); // 0,1,2→strip[0], 3,4,5→strip[1]...
+            const col = Math.floor(i / this._rowCount); // 0,1,2→strip[0], 3,4,5→strip[1]...
             const stripSrc = strips[col];
             const symbols = stripSrc?.Symbols ?? stripSrc ?? [];
             const reel = this.reels[i];
@@ -334,7 +467,7 @@ export class TopUpManager extends Component {
         this._seqIndex = 0;
         this._spunCount = 0;
         this._stoppedCount = 0;
-        this._pendingResults = new Array(15);
+        this._pendingResults = new Array(this.cellCount);
 
         // ★ Xóa PLUS_ONE_SPIN khỏi stickyCells — chúng đã tiêu thụ ở spin trước
         //    và unlock các reel bị lock bởi PLUS_ONE_SPIN
@@ -346,7 +479,7 @@ export class TopUpManager extends Component {
                 const [reelStr, rowStr] = key.split('-');
                 const reel = parseInt(reelStr);
                 const row = parseInt(rowStr);
-                const idx = reel * ROW_COUNT + row;
+                const idx = reel * this._rowCount + row;
                 const topUpReel = this.reels[idx];
                 if (topUpReel) {
                     topUpReel.isLocked = false;
@@ -358,9 +491,9 @@ export class TopUpManager extends Component {
 
         Log.d(`[TopUpManager] spinAll — bắt đầu sequence spin stagger.`);
         this._setMaskEnabled(true);
-        for (let i = 0; i < 15; i++) {
-            const col = Math.floor(i / ROW_COUNT);
-            const row = i % ROW_COUNT;
+        for (let i = 0; i < this.cellCount; i++) {
+            const col = Math.floor(i / this._rowCount);
+            const row = i % this._rowCount;
             const key = `${col}-${row}`;
             const cell = cells.get(key);
             const reel = this.reels[i];
@@ -386,8 +519,8 @@ export class TopUpManager extends Component {
             if (reel && !reel.isLocked) {
                 // ★ Check stickyCells: nếu vừa có coin mới (per-reel land) → lock ngay, skip
                 //    BUT: PLUS_ONE_SPIN KHÔNG lock — đã bị xóa trong spinAll()
-                const col = Math.floor(reelIdx / ROW_COUNT);
-                const row = reelIdx % ROW_COUNT;
+                const col = Math.floor(reelIdx / this._rowCount);
+                const row = reelIdx % this._rowCount;
                 const key = `${col}-${row}`;
                 const cell = GameData.instance.stickyCells.get(key);
                 if (cell) {
@@ -457,20 +590,20 @@ export class TopUpManager extends Component {
         const topupReel = GFSpinResponse?.topupReel
             ?? GFSpinResponse?.TopupReel
             ?? [];
-        const resultSlots = topupReel.slice(0, 15);
+        const resultSlots = topupReel.slice(0, this.cellCount);
 
-        if (resultSlots.length < 15) {
-            Log.e(`[TopUpManager] TopupReel không đủ 15 phần tử: ${resultSlots.length}`);
+        if (resultSlots.length < this.cellCount) {
+            Log.e(`[TopUpManager] TopupReel không đủ ${this.cellCount} phần tử: ${resultSlots.length}`);
             return;
         }
 
         // Remap server row-major → TopUp column-major indices
-        this._pendingResults = new Array(15);
+        this._pendingResults = new Array(this.cellCount);
         const serverRemain = GFSpinResponse?.remainRespinCount ?? GFSpinResponse?.RemainFeatureSpinCount ?? GFSpinResponse?.RemainReSpinCount;
         const afterLocalConsume = GameData.instance.respinRemaining;
         const plusOneCount = serverRemain != null ? Math.max(0, serverRemain - afterLocalConsume) : 0;
         let plusOneUsed = 0;
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < this.cellCount; i++) {
             const serverIdx = this._topUpIdxToServerIdx(i);
             const slot = resultSlots[serverIdx];
             const index = slot?.Index ?? slot?.index ?? 0;
@@ -485,7 +618,7 @@ export class TopUpManager extends Component {
         Log.e(`[TOPUP-PLUS] TopUpManager stopReels serverRemain=${serverRemain ?? 'n/a'} afterLocalConsume=${afterLocalConsume} plusOneCount=${plusOneCount} visualAllowed=${plusOneUsed}`);
         if (plusOneCount > 0 && plusOneUsed < plusOneCount) {
             const dump = [];
-            for (let i = 0; i < 15; i++) {
+            for (let i = 0; i < this.cellCount; i++) {
                 const serverIdx = this._topUpIdxToServerIdx(i);
                 const slot = resultSlots[serverIdx];
                 const index = slot?.Index ?? slot?.index ?? 0;
@@ -497,7 +630,7 @@ export class TopUpManager extends Component {
         }
 
         // Dừng TẤT CẢ reel đang quay (parallel spin: nhiều reel quay cùng lúc)
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < this.cellCount; i++) {
             const reel = this.reels[i];
             const data = this._pendingResults[i];
             const st = (reel as any)['_state'];
@@ -508,11 +641,11 @@ export class TopUpManager extends Component {
     }
 
     public getDebugClientGrid(): number[][] {
-        const grid: number[][] = Array.from({ length: ROW_COUNT }, () => Array(COLUMN_COUNT).fill(-1));
+        const grid: number[][] = Array.from({ length: this._rowCount }, () => Array(COLUMN_COUNT).fill(-1));
         const sticky = GameData.instance.stickyCells;
-        for (let i = 0; i < 15; i++) {
-            const reel = Math.floor(i / ROW_COUNT);
-            const row = i % ROW_COUNT;
+        for (let i = 0; i < this.cellCount; i++) {
+            const reel = Math.floor(i / this._rowCount);
+            const row = i % this._rowCount;
             const key = `${reel}-${row}`;
             const result = this._pendingResults[i];
             const stickyCell = sticky.get(key);

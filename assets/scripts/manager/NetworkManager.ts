@@ -598,9 +598,9 @@ class MockNetworkAdapter implements INetworkAdapter {
         // ★ TopUp / Re-Spin: KHÔNG dùng queue — luôn generateRespin() để đảm bảo
         // nextStage=TOPUP_SPIN/TOPUP_SPIN_END đúng và stickyCells được tạo đúng.
         // Queue chứa NORMAL spin responses (nextStage=SPIN) sẽ làm TopUp freeze.
-        if (GameData.instance.currentMode === 'respin') {
-            const resp = MockDataProvider.generateSpinResponse(false); // sẽ gọi _generateRespin()
-            Log.d(`[MockAdapter] TopUp (generateRespin) — nextStage=${resp.nextStage}, remain=${resp.remainRespinCount}, win=${resp.totalWin}`);
+        if (GameData.instance.currentMode === 'respin' || GameData.instance.currentMode === 'matsuri') {
+            const resp = MockDataProvider.generateSpinResponse(false);
+            Log.d(`[MockAdapter] ${GameData.instance.currentMode} — nextStage=${resp.nextStage}, remain=${resp.remainRespinCount}, win=${resp.totalWin}`);
             return resp;
         }
 

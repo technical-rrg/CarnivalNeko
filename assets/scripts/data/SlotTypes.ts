@@ -52,7 +52,7 @@ export enum SlotStageType {
     BUY_RESPIN_START = 230,       // Mua Re-Spin
     BUY_RESPIN_END = 231,
     // ★ Carnival Neko
-    CARNIVAL_MATSURI_START = 240, // Pot Blue/Green/Combo → Matsuri (Hold&Spin) — stub UI tạm
+    CARNIVAL_MATSURI_START = 240, // Pot Blue/Green/Combo → Matsuri Hold&Spin
 }
 
 /** Secret Treasure — ReelIndex gửi trong SelectFeature cho 5 tier Free Spin (2=Highest … 6=Lowest). */

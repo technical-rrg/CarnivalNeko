@@ -240,7 +240,12 @@ export class GameData {
     pickGameWinAmount: number = 0;
 
     /** Feature mode đang active để Mock API biết generate strip nào. */
-    currentMode: 'normal' | 'respin' | 'freespin' | 'freespin_gold' = 'normal';
+    currentMode: 'normal' | 'respin' | 'freespin' | 'freespin_gold' | 'matsuri' = 'normal';
+
+    /** Matsuri Hold&Spin — số hàng grid (3|4|5). */
+    matsuriRows: number = 3;
+    /** Tên feature Matsuri đang chạy (log / UI). */
+    matsuriFeatureName: string = '';
 
     // ─── FreeSpin Gold state ───────────────────────────────────────────────────
     /** Số lượt quay FreeSpin Gold còn lại. */

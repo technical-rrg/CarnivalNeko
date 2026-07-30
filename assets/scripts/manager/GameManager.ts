@@ -28,6 +28,12 @@ import { StickyOverlayController } from '../controller/StickyOverlayController';
 import { StickyOverlayLoader } from '../controller/StickyOverlayLoader';
 import { SymbolView } from '../controller/SymbolView';
 import { TransitionMode } from '../controller/TopUpTransitionPopup';
+import {
+    MATSURI_GOLD_SYMBOL,
+    MATSURI_SPIN_COUNT,
+    clampMatsuriRows,
+    seedMatsuriStartCoins,
+} from '../data/MatsuriGridUtil';
 
 const { ccclass, property } = _decorator;
 
@@ -769,6 +775,7 @@ export class GameManager extends Component {
 
     private _areSlotReelsSettled(): boolean {
         if (this._isTopUp()) return true;
+        if (this._isMatsuri()) return true;
         const scene = this.node.scene;
         if (!scene) return true;
         const slotMachines = scene.getComponentsInChildren(SlotMachineController);
@@ -892,7 +899,7 @@ export class GameManager extends Component {
     }
 
     private _shouldRetrySpinRequestAfterSettled(): boolean {
-        return AutoSpinManager.instance.isAutoSpinActive || this._isFreeSpin() || this._isTopUp();
+        return AutoSpinManager.instance.isAutoSpinActive || this._isFreeSpin() || this._isTopUp() || this._isMatsuri();
     }
 
     private _retrySpinRequestAfterReelsSettled(): void {
@@ -956,7 +963,8 @@ export class GameManager extends Component {
         const wallet = WalletManager.instance;
         const isFreeSpin = this._isFreeSpin();
         const isTopUp = this._isTopUp();
-        const isFeatureSpin = isFreeSpin || isTopUp;
+        const isMatsuri = this._isMatsuri();
+        const isFeatureSpin = isFreeSpin || isTopUp || isMatsuri;
 
         // Feature spins (FreeSpin / Topup) không trừ tiền từng lượt.
         if (!isFeatureSpin) {
@@ -1012,12 +1020,12 @@ export class GameManager extends Component {
         this._wildTrailReelsProcessed.clear();
         this._gameState = GameState.SPINNING;
         this._logSpinState('SPIN_REQUEST accepted, entering SPINNING');
-        // Clear stickyCells từ spin trước (nếu không phải respin — respin giữ sticky cũ)
-        if (!isFeatureSpin && GameData.instance.currentMode !== 'respin') {
+        // Clear stickyCells từ spin trước (nếu không phải respin/matsuri — giữ sticky cũ)
+        if (!isFeatureSpin && GameData.instance.currentMode !== 'respin' && GameData.instance.currentMode !== 'matsuri') {
             GameData.instance.stickyCells.clear();
         }
 
-        if (isTopUp) {
+        if (isTopUp || isMatsuri) {
             // ★ Xóa PLUS_ONE_SPIN khỏi stickyCells trước khi quay lượt mới
             //    +1 Spin chỉ hiển thị trong lượt rơi xuống, không sticky qua lượt
             for (const [key, cell] of data.stickyCells.entries()) {
@@ -1075,7 +1083,7 @@ export class GameManager extends Component {
             }
 
             // Detect Long Spin — trả về danh sách vị trí hint nếu có
-            const longSpinHints = isTopUp ? this._getTopUpLongSpinHints() : this._getLongSpinHints(response);
+            const longSpinHints = (isTopUp || isMatsuri) ? this._getTopUpLongSpinHints() : this._getLongSpinHints(response);
             if (longSpinHints.length > 0) {
                 this._hadLongSpin = true;
                 this._longSpinHintPositions = longSpinHints;
@@ -1087,10 +1095,9 @@ export class GameManager extends Component {
 
             // ★ Store stickyCells NGAY khi nhận response (trước khi reel dừng)
             // để credit values hiển thị đúng khi mỗi reel stop.
-            // EXCEPTION: TopUp mode — KHÔNG pre-store ở đây vì _handleTopUpReelsStopped
-            // sẽ tự so sánh cells mới vs cũ để detect newCells cho absorb effect.
-            // Nếu pre-store, mọi cell đều bị coi là "đã tồn tại" → newCells luôn rỗng → không có effect.
-            if (!isTopUp && response.stickyCells && response.stickyCells.length > 0) {
+            // EXCEPTION: TopUp / Matsuri — KHÔNG pre-store ở đây
+            // (TopUp: absorb detect newCells; Matsuri: Green→Gold lúc stop/land)
+            if (!isTopUp && !isMatsuri && response.stickyCells && response.stickyCells.length > 0) {
                 // Force Feature Entry: chỉ pre-store ô Red tự nhiên; fillCells merge sau STICKY_FILL_DONE
                 const cellsToStore = response.isForcedFeatureEntry && response.forceFeatureEntry
                     ? response.forceFeatureEntry.existingCells
@@ -1213,31 +1220,205 @@ export class GameManager extends Component {
         }
 
         // Matsuri-only (Mighty / Mega / Super)
-        this._enterCarnivalMatsuriStub(f);
+        void this._enterCarnivalMatsuri(f);
     }
 
-    /** Stub Matsuri — chưa có Hold&Spin; hiện log + chờ vài giây rồi DONE. */
-    private _enterCarnivalMatsuriStub(feature: CarnivalFeatureTrigger): void {
+    /** Vào Matsuri Hold&Spin — tái dùng StickyOverlay + TopUpManager (grid 5×N). */
+    private async _enterCarnivalMatsuri(feature: CarnivalFeatureTrigger): Promise<void> {
         GameData.instance.pendingCarnivalMatsuri = null;
-        this._gameState = GameState.POPUP;
+        const data = GameData.instance;
+        const rows = clampMatsuriRows(feature.matsuriRows || 3);
+
+        data.currentMode = 'matsuri';
+        data.matsuriRows = rows;
+        data.matsuriFeatureName = feature.featureName;
+        data.respinRemaining = MATSURI_SPIN_COUNT;
+        data.respinTotalWin = 0;
+        this._topUpStickySnapshot.clear();
+        this._topUpRemainBeforeSpin = 0;
         this._currentStage = SlotStageType.CARNIVAL_MATSURI_START;
-        EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB, feature);
-        Log.e(
-            `[CarnivalMatsuri STUB] ${feature.featureName} | grid=5x${feature.matsuriRows} ` +
-            `startCoins=${feature.startCoins} — gameplay Hold&Spin sẽ làm ở bước sau`
+        this._gameState = GameState.IDLE;
+
+        const placed = seedMatsuriStartCoins(
+            data.stickyCells,
+            rows,
+            feature.startCoins,
+            data.totalBet,
         );
-        // Tạm: auto đóng stub sau 2s (sau này thay bằng Matsuri UI thật)
+        data.featureBaseCredit = placed.reduce((s, c) => s + (c.credit ?? 0), 0);
+        data.respinTotalWin = data.featureBaseCredit;
+
+        Log.e(
+            `[CarnivalMatsuri] ENTER "${feature.featureName}" grid=5x${rows} ` +
+            `startCoins=${placed.length}/${feature.startCoins} base=${data.featureBaseCredit} ` +
+            `totalBet=${data.totalBet} credits=[${placed.map(c => `${c.reel}-${c.row}:${c.credit}`).join('|')}]`
+        );
+
+        this._updateDisplayVisibility();
+        this._updateBackgroundSprite();
+
+        await this._ensureStickyOverlayLoaded();
+        this._applyStickyOverlayRowCount(rows);
+
+        EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_START, feature);
+        EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB, feature); // alias listener cũ
+        EventBus.instance.emit(GameEvents.TOPUP_START, {
+            spinsRemaining: data.respinRemaining,
+            baseCredit: data.featureBaseCredit,
+            totalWin: data.respinTotalWin,
+            stickyCells: Array.from(data.stickyCells.values()),
+            matsuri: true,
+            rows,
+        });
+        EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
+        EventBus.instance.emit(GameEvents.TOPUP_TOTAL_UPDATED, {
+            baseCredit: data.featureBaseCredit,
+            totalWin: data.respinTotalWin,
+        });
+        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+
+        // Auto spin đầu sau enter (Matsuri không còn stagger bounce)
         this.scheduleOnce(() => {
-            EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB_DONE);
-        }, 2.0);
+            EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+        }, 0.4);
     }
 
     private _onCarnivalMatsuriStubDone(): void {
-        Log.e('[GameManager] CARNIVAL_MATSURI_STUB_DONE → IDLE');
+        // External / legacy: chỉ end nếu vẫn đang matsuri (tránh loop từ emit trong _endCarnivalMatsuri)
+        if (GameData.instance.currentMode === 'matsuri') {
+            this._endCarnivalMatsuri();
+        }
+    }
+
+    /** Kết thúc Matsuri — cộng win, unload overlay, về Base. */
+    private _endCarnivalMatsuri(): void {
+        const data = GameData.instance;
+        if (data.currentMode !== 'matsuri') return;
+
+        const total = data.respinTotalWin;
+        Log.e(`[CarnivalMatsuri] END "${data.matsuriFeatureName}" total=${total}`);
+
+        if (!USE_REAL_API && total > 0) {
+            WalletManager.instance.add(total);
+            EventBus.instance.emit(GameEvents.BALANCE_UPDATED, WalletManager.instance.balance);
+        }
+
+        data.currentMode = 'normal';
+        data.respinRemaining = 0;
+        data.respinTotalWin = 0;
+        data.matsuriRows = 3;
+        data.matsuriFeatureName = '';
+        data.stickyCells.clear();
+        data.pendingCarnivalMatsuri = null;
+
+        EventBus.instance.emit(GameEvents.TOPUP_END);
+        EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_END);
+        EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB_DONE);
+
         this._currentStage = SlotStageType.SPIN;
         this._gameState = GameState.IDLE;
+        this._updateDisplayVisibility();
+        this._updateBackgroundSprite();
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
         EventBus.instance.emit(GameEvents.NORMAL_SPIN_DONE);
+    }
+
+    /**
+     * Matsuri reels stopped — đếm Green (đã land trên overlay), reset 3 spins; flip Gold do StickyOverlay.
+     */
+    private _handleMatsuriReelsStopped(resp: SpinResponse): void {
+        const data = GameData.instance;
+        this.unschedule(this._spinCycleFallback);
+
+        const rows = clampMatsuriRows(data.matsuriRows || 3);
+        let greenCount = 0;
+        let spinWin = 0;
+
+        if (resp.stickyCells) {
+            for (const cell of resp.stickyCells) {
+                const key = `${cell.reel}-${cell.row}`;
+                const credit = cell.credit ?? 0;
+                greenCount++;
+                spinWin += credit;
+
+                // Per-reel land có thể đã add Green — chỉ bổ sung nếu thiếu
+                if (!data.stickyCells.has(key)) {
+                    const green: StickyCell = {
+                        reel: cell.reel,
+                        row: cell.row,
+                        symbolId: SymbolId.STICKY_GREEN,
+                        credit,
+                    };
+                    data.stickyCells.set(key, green);
+                    this._lockTopUpCell(green);
+                    Log.e(`[Matsuri] late-add Green ${key} credit=${credit}`);
+                }
+            }
+        }
+
+        // Sync từ topupReel nếu stickyCells thiếu (phòng parser)
+        const slots = resp.topupReel ?? [];
+        if (greenCount === 0 && slots.length > 0) {
+            for (let serverIdx = 0; serverIdx < slots.length; serverIdx++) {
+                const slot = slots[serverIdx];
+                if ((slot.type ?? TopupReelType.NONE) !== TopupReelType.GREEN) continue;
+                const apiRow = Math.floor(serverIdx / 5);
+                const reel = serverIdx % 5;
+                const row = rows - 1 - apiRow;
+                const key = `${reel}-${row}`;
+                const credit = slot.win ?? 0;
+                greenCount++;
+                spinWin += credit;
+                if (data.stickyCells.has(key)) continue;
+                const green: StickyCell = { reel, row, symbolId: SymbolId.STICKY_GREEN, credit };
+                data.stickyCells.set(key, green);
+                this._lockTopUpCell(green);
+            }
+        }
+
+        if (resp.remainRespinCount != null) {
+            data.respinRemaining = Math.max(0, resp.remainRespinCount);
+        } else if (greenCount > 0) {
+            data.respinRemaining = MATSURI_SPIN_COUNT;
+        }
+
+        const serverTotal = resp.featureSpinTotalWin;
+        if (serverTotal != null && serverTotal > data.respinTotalWin) {
+            data.respinTotalWin = serverTotal;
+        } else {
+            data.respinTotalWin += spinWin;
+        }
+
+        // Full grid Grand đã nằm trong resp.totalWin / featureSpinTotalWin từ mock
+        if ((resp.totalWin ?? 0) > spinWin) {
+            const extra = (resp.totalWin ?? 0) - spinWin;
+            if (extra > 0 && serverTotal == null) data.respinTotalWin += extra;
+        }
+
+        EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
+        EventBus.instance.emit(GameEvents.TOPUP_TOTAL_UPDATED, {
+            baseCredit: data.featureBaseCredit,
+            totalWin: data.respinTotalWin,
+        });
+
+        this._isSpinning = false;
+
+        let next = resp.nextStage as SlotStageType;
+        if (data.respinRemaining <= 0) {
+            next = SlotStageType.TOPUP_SPIN_END;
+        } else if (next !== SlotStageType.TOPUP_SPIN_END) {
+            next = SlotStageType.TOPUP_SPIN;
+        }
+
+        Log.e(
+            `[Matsuri] stopped green=${greenCount} filled=${data.stickyCells.size} ` +
+            `remain=${data.respinRemaining} total=${data.respinTotalWin} next=${next}`
+        );
+
+        this._transitionStage(next);
+        if (this._gameState !== GameState.POPUP) {
+            this._gameState = GameState.IDLE;
+        }
     }
 
     // ─── POT TRANSITION END: pot level transition animation hoàn tất ───
@@ -1269,8 +1450,8 @@ export class GameManager extends Component {
         const idx = isObj ? (reelIndex as any).reelIndex : reelIndex as number;
         if (idx == null) return;
 
-        // ★ TopUp mode: coin vàng/xanh/+1 hiện ngay k reel dừng — ko chờ REELS_STOPPED
-        if (GameData.instance.currentMode === 'respin' && isObj) {
+        // ★ TopUp / Matsuri: coin hiện ngay khi reel dừng — ko chờ REELS_STOPPED
+        if ((GameData.instance.currentMode === 'respin' || GameData.instance.currentMode === 'matsuri') && isObj) {
             const result = (reelIndex as any).result;
             if (result) {
                 if (
@@ -1345,8 +1526,11 @@ export class GameManager extends Component {
     /** Khi từng TopUp reel dừng và có coin mới → hiện ngay trên StickyOverlay */
     private _onTopUpReelCoinLanded(reelIdx: number, result: any): void {
         const data = GameData.instance;
-        const reel = Math.floor(reelIdx / 3);
-        const row  = reelIdx % 3;
+        const rows = data.currentMode === 'matsuri'
+            ? clampMatsuriRows(data.matsuriRows || 3)
+            : 3;
+        const reel = Math.floor(reelIdx / rows);
+        const row  = reelIdx % rows;
         const key  = `${reel}-${row}`;
 
         // Nếu ô đã có sticky (RED/...) thì bỏ qua
@@ -1369,18 +1553,27 @@ export class GameManager extends Component {
             return;
         }
 
-        // Yellow/Green mới chưa absorb → credit = 0
-        const isAbsorbCoin = symbolId === SymbolId.STICKY_YELLOW || symbolId === SymbolId.STICKY_GREEN;
+        // Matsuri: giữ Green trên stickyCells — StickyOverlay hiện xanh rồi flip sang Gold
+        const isMatsuri = data.currentMode === 'matsuri';
+
+        // TopUp Yellow/Green mới chưa absorb → credit = 0; Matsuri hiện credit ngay
+        const isAbsorbCoin = !isMatsuri
+            && (symbolId === SymbolId.STICKY_YELLOW || symbolId === SymbolId.STICKY_GREEN);
         const credit = isAbsorbCoin ? 0 : (result.win ?? 0);
         data.stickyCells.set(key, { reel, row, symbolId, credit });
         this._lockTopUpCell({ reel, row, symbolId, credit });
-        Log.d(`[TopUp-COIN-LAND] ADD ${key} ${SymbolId[symbolId]} credit=${credit}`);
+        Log.d(`[TopUp-COIN-LAND] ADD ${key} ${SymbolId[symbolId]} credit=${credit} matsuri=${isMatsuri ? 1 : 0}`);
 
         // ★ Đảm bảo TopUpReel tại index này được lock ngay — phòng trường hợp reel chưa block
         const topUpMgrs = this.node.scene?.getComponentsInChildren(TopUpManager) ?? [];
         for (const mgr of topUpMgrs) {
             const topUpReel = mgr.reels[reelIdx];
-            if (topUpReel && !topUpReel.isLocked) {
+            if (!topUpReel) continue;
+            if (isMatsuri) {
+                // Matsuri: ẩn Mid trên reel — overlay hiện Green rồi flip Gold
+                topUpReel.applyStickyResult(TopupReelType.GREEN, credit);
+                topUpReel.hideForOverlayResult();
+            } else if (!topUpReel.isLocked) {
                 const lockType = result.type ?? TopupReelType.NONE;
                 if (lockType > 0) {
                     Log.e(`[TopUp-COIN-LAND] FORCE LOCK reel ${reelIdx} type=${lockType} credit=${credit}`);
@@ -1431,7 +1624,7 @@ export class GameManager extends Component {
             Log.e(`[GOLD-FLY][REELS_STOPPED] SKIP — already processed`);
             return;
         }
-        if (!this._isTopUp() && !this._areSlotReelsSettled()) {
+        if (!this._isTopUp() && !this._isMatsuri() && !this._areSlotReelsSettled()) {
             this._logSpinState('REELS_STOPPED ignored because slot reels are not settled yet');
             // Log.e('[SPIN-HANG][GM] REELS_STOPPED ignored — slot reels are not settled yet');
             this.scheduleOnce(this._reelsStoppedTimeout, 0.2);
@@ -1450,6 +1643,11 @@ export class GameManager extends Component {
         }
 
         this._gameState = GameState.RESULT;
+
+        if (this._isMatsuri()) {
+            this._handleMatsuriReelsStopped(resp);
+            return;
+        }
 
         if (this._isTopUp()) {
             this._handleTopUpReelsStopped(resp);
@@ -2179,7 +2377,7 @@ export class GameManager extends Component {
         const pendingMatsuri = GameData.instance.pendingCarnivalMatsuri;
         if (pendingMatsuri && pendingMatsuri.matsuriRows > 0) {
             Log.e(`[DEBUG-PICK] _onPickGameClose → pending Matsuri "${pendingMatsuri.featureName}"`);
-            this._enterCarnivalMatsuriStub(pendingMatsuri);
+            void this._enterCarnivalMatsuri(pendingMatsuri);
             return;
         }
 
@@ -2549,7 +2747,11 @@ export class GameManager extends Component {
             case SlotStageType.TOPUP_SPIN_END:
             case SlotStageType.RESPIN_END:
                 this._gameState = GameState.POPUP;
-                this.scheduleOnce(() => this._handleTopUpClaim(), 0.6);
+                if (GameData.instance.currentMode === 'matsuri') {
+                    this.scheduleOnce(() => this._endCarnivalMatsuri(), 0.6);
+                } else {
+                    this.scheduleOnce(() => this._handleTopUpClaim(), 0.6);
+                }
                 break;
 
             case SlotStageType.NEED_CLAIM:
@@ -3345,6 +3547,7 @@ export class GameManager extends Component {
 
         // Lazy-load StickyOverlay (+ TopUpManager) trước khi emit TOPUP_START
         await this._ensureStickyOverlayLoaded();
+        this._applyStickyOverlayRowCount(3);
 
         EventBus.instance.emit(GameEvents.TOPUP_START, {
             spinsRemaining: data.respinRemaining,
@@ -3379,6 +3582,19 @@ export class GameManager extends Component {
         if (!overlay) {
             Log.e('[GameManager] StickyOverlayLoader.ensureLoaded() failed — TopUp overlay sẽ không hiện');
         }
+    }
+
+    /** Prefab StickyOverlay 5×5 — bật đúng số hàng (3|4|5). */
+    private _applyStickyOverlayRowCount(rows: number): void {
+        const loader = this.node.scene?.getComponentInChildren(StickyOverlayLoader) ?? null;
+        const overlay = loader?.overlay
+            ?? this.node.scene?.getComponentInChildren(StickyOverlayController)
+            ?? null;
+        const topUpMgr = loader?.topUpManager
+            ?? this.node.scene?.getComponentInChildren(TopUpManager)
+            ?? null;
+        overlay?.ensureRowCount(rows, topUpMgr);
+        if (!overlay && topUpMgr) topUpMgr.ensureRowCount(rows);
     }
 
     // ─── BUY BONUS ───
@@ -3753,6 +3969,7 @@ export class GameManager extends Component {
 
         // Lazy-load StickyOverlay (+ TopUpManager) trước khi emit TOPUP_START
         await this._ensureStickyOverlayLoaded();
+        this._applyStickyOverlayRowCount(3);
 
         EventBus.instance.emit(GameEvents.TOPUP_START, {
             spinsRemaining: data.respinRemaining,
@@ -4445,6 +4662,10 @@ export class GameManager extends Component {
         return GameData.instance.currentMode === 'freespin_gold';
     }
 
+    private _isMatsuri(): boolean {
+        return GameData.instance.currentMode === 'matsuri';
+    }
+
     private _isTopUp(): boolean {
         return (
             this._currentStage === SlotStageType.TOPUP_SPIN_START ||
@@ -4456,15 +4677,18 @@ export class GameManager extends Component {
 
     private _getTopUpLongSpinHints(): { reelIndex: number; rowIndex: number }[] {
         const data = GameData.instance;
+        const rows = data.currentMode === 'matsuri'
+            ? clampMatsuriRows(data.matsuriRows || 3)
+            : 3;
         const occupied = new Set<string>();
         for (const cell of data.stickyCells.values()) {
-            if (cell.reel >= 0 && cell.reel < 5 && cell.row >= 0 && cell.row < 3) {
+            if (cell.reel >= 0 && cell.reel < 5 && cell.row >= 0 && cell.row < rows) {
                 occupied.add(`${cell.reel}-${cell.row}`);
             }
         }
         const empty: { reelIndex: number; rowIndex: number }[] = [];
         for (let reel = 0; reel < 5; reel++) {
-            for (let row = 0; row < 3; row++) {
+            for (let row = 0; row < rows; row++) {
                 if (!occupied.has(`${reel}-${row}`)) empty.push({ reelIndex: reel, rowIndex: row });
             }
         }
@@ -4480,7 +4704,7 @@ export class GameManager extends Component {
         if (!this._bgLoadAllowed) return;
         if (!this.backgroundNode) return;
 
-        const isFeatureMode = this._isFreeSpin() || this._isTopUp() || this._isPickGameActive;
+        const isFeatureMode = this._isFreeSpin() || this._isTopUp() || this._isMatsuri() || this._isPickGameActive;
         const size = screen.windowSize;
         const isPortrait = size.height > size.width;
         const idx = isPortrait ? 0 : 1;
@@ -4610,10 +4834,12 @@ export class GameManager extends Component {
     private _updateDisplayVisibility(): void {
         const isFreeSpin     = this._isFreeSpin();
         const isTopUp        = this._isTopUp();
+        const isMatsuri      = this._isMatsuri();
         const isFreespinGold = this._isFreespinGold();
+        const isCellFeature  = isTopUp || isMatsuri;
 
         if (this.payOutDisplay) {
-            this.payOutDisplay.active = !isFreeSpin && !isTopUp;
+            this.payOutDisplay.active = !isFreeSpin && !isCellFeature;
         }
 
         if (this.multiplierDisplay) {
@@ -4622,15 +4848,15 @@ export class GameManager extends Component {
         }
 
         if (this.jackpotDisplay) {
-            this.jackpotDisplay.active = !isFreeSpin && !isTopUp;
+            this.jackpotDisplay.active = !isFreeSpin && !isCellFeature;
         }
 
         if (this.potDisplay) {
-            this.potDisplay.active = !isTopUp && !isFreeSpin;
+            this.potDisplay.active = !isCellFeature && !isFreeSpin;
         }
 
         if (this.topUpDisplay) {
-            this.topUpDisplay.active = isTopUp;
+            this.topUpDisplay.active = isCellFeature;
         }
 
         if (this.freeSpinGoldDisplay) {

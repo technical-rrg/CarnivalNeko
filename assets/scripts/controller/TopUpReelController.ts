@@ -16,6 +16,7 @@ import { Log } from '../core/Logger';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { SymbolId, TopupReelType } from '../data/SlotTypes';
+import { GameData } from '../data/GameData';
 import { SymbolView } from './SymbolView';
 
 const { ccclass, property } = _decorator;
@@ -266,6 +267,29 @@ export class TopUpReelController extends Component {
         for (const node of this.symbolNodes) {
             if (node) node.active = false;
         }
+    }
+
+    /**
+     * World-pos tâm ô (Mid restY) — không đọc mid.worldPosition.
+     * Snap mid về rest trước khi convert, tránh lệch Y sau stop-bounce.
+     */
+    getMidRestWorldPosition(out: Vec3 = new Vec3()): Vec3 {
+        const mid = this.symbolNodes[1];
+        if (!mid) {
+            this.node.updateWorldTransform();
+            this.node.getWorldPosition(out);
+            return out;
+        }
+        const restY = this._restY.length > 1 ? this._restY[1] : mid.position.y;
+        // Snap local về rest (bỏ qua tween/overshoot còn sót)
+        if (Math.abs(mid.position.y - restY) > 0.01) {
+            mid.setPosition(mid.position.x, restY, mid.position.z);
+        }
+        const parent = mid.parent ?? this.node;
+        parent.updateWorldTransform();
+        const local = new Vec3(mid.position.x, restY, mid.position.z);
+        Vec3.transformMat4(out, local, parent.worldMatrix);
+        return out;
     }
 
     prepareFreeCellForSpin(): void {
@@ -538,14 +562,16 @@ export class TopUpReelController extends Component {
 
     private _applyResult(type: number, win: number, midSymbolIndex: number): void {
         // ★ Lock reel: giữ node chính active để container còn tính position.
-        // Vàng/xanh: giữ Mid sticky visible dưới overlay (overlay bounce phủ lên, không ẩn).
+        // TopUp vàng/xanh: giữ Mid sticky visible dưới overlay (overlay bounce phủ lên).
+        // Matsuri: luôn ẩn Mid — chỉ StickyOverlay hiện Gold (tránh Green còn sót + lệch vị trí).
         // Đỏ / khác: ẩn ngay, overlay thay thế.
         this.isLocked = type > 0;
         this.node.active = true;
         if (this.isLocked) {
+            const isMatsuri = GameData.instance.currentMode === 'matsuri';
             const keepStickyMid =
-                type === TopupReelType.YELLOW ||
-                type === TopupReelType.GREEN;
+                !isMatsuri &&
+                (type === TopupReelType.YELLOW || type === TopupReelType.GREEN);
             for (let i = 0; i < this.symbolNodes.length; i++) {
                 const node = this.symbolNodes[i];
                 if (!node) continue;

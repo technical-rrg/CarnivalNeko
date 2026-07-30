@@ -44,6 +44,19 @@ const SYMBOL_FRAME_KEYS: Record<number, string> = {
     [SymbolId.STICKY_YELLOW]: '13_sticky_yellow',
     [SymbolId.STICKY_GREEN]: '14_sticky_green',
     [SymbolId.PLUS_ONE_SPIN]: '15_plus_one_spin',
+    // Carnival Trail — ưu tiên frame 21..24; fallback sticky trong _resolveSymbolFrame
+    [SymbolId.TRAIL_NORMAL]: '21_trail_normal',
+    [SymbolId.TRAIL_BLUE]: '22_trail_blue',
+    [SymbolId.TRAIL_RED]: '23_trail_red',
+    [SymbolId.TRAIL_GREEN]: '24_trail_green',
+};
+
+/** Fallback frame keys khi chưa gắn art Trail (dùng sticky hiện có để test). */
+const SYMBOL_FRAME_FALLBACKS: Record<number, string[]> = {
+    [SymbolId.TRAIL_NORMAL]: ['15_plus_one_spin', '12_sticky_red'],
+    [SymbolId.TRAIL_BLUE]: ['13_sticky_yellow', '12_sticky_red'],
+    [SymbolId.TRAIL_RED]: ['12_sticky_red'],
+    [SymbolId.TRAIL_GREEN]: ['14_sticky_green'],
 };
 
 /** Hoisted — tránh tạo mảng mới mỗi lần wrap symbol khi reel đang quay. */
@@ -699,6 +712,18 @@ export class SymbolView extends Component {
                 resolved = indexedFrame;
             } else {
                 resolved = this.symbolFrames.find(frame => this._frameMatches(frame, expectedKey)) ?? indexedFrame;
+            }
+        }
+        if (!resolved) {
+            const fallbacks = SYMBOL_FRAME_FALLBACKS[symbolId];
+            if (fallbacks) {
+                for (const key of fallbacks) {
+                    const found = this.symbolFrames.find(frame => this._frameMatches(frame, key));
+                    if (found) {
+                        resolved = found;
+                        break;
+                    }
+                }
             }
         }
         this._resolvedFrameCache.set(symbolId, resolved);

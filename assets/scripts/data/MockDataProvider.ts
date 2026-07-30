@@ -27,10 +27,21 @@ import {
     ForceFeatureEntryData,
     pickForcedStickyValue,
     FEATURE_ENTRY_REQUIRED_STICKY,
+    TrailColor,
+    CarnivalTrailHit,
+    CarnivalPotLevels,
+    CarnivalFeatureKind,
 } from './SlotTypes';
 import { INetworkAdapter } from '../manager/NetworkManager';
 import { GameData } from './GameData';
 import { WaysPayCalculator } from './WaysPayCalculator';
+import { Log } from '../core/Logger';
+import {
+    MOCK_FORCE_CARNIVAL_TRAILS,
+    MOCK_CARNIVAL_TRAIL_COUNT_MIN,
+    MOCK_CARNIVAL_TRAIL_COUNT_MAX,
+} from './ServerConfig';
+import { resolveMockCarnivalFeature } from './CarnivalFeatureResolve';
 
 export class MockDataProvider {
 
@@ -63,38 +74,48 @@ export class MockDataProvider {
         const totalBet = data.totalBet;
         const strips = data.getReelStrips(false);
 
-        const rands = strips.map((s) => Math.floor(Math.random() * s.length));
+        let rands = strips.map((s) => Math.floor(Math.random() * s.length));
+        let trails: CarnivalTrailHit[] | undefined;
+        let potLevels: CarnivalPotLevels | undefined;
+        let carnivalFeature = undefined as ReturnType<typeof resolveMockCarnivalFeature>;
+
+        // ★ Carnival Neko: force land Trail Normal → flip màu (mock)
+        if (MOCK_FORCE_CARNIVAL_TRAILS) {
+            const forced = MockDataProvider._forceCarnivalTrailRands(strips);
+            rands = forced.rands;
+            trails = forced.trails;
+            potLevels = MockDataProvider._applyCarnivalPotGrowth(trails);
+            data.potLevels = { ...potLevels };
+            data.pendingTrails = trails;
+            carnivalFeature = resolveMockCarnivalFeature(trails);
+        }
+
         const grid = data.getBaseGrid(rands, false);
 
-        // ══ DEBUG: log rands + grid strips ══
-        console.log(
-            `%c[MockDataProvider] _generateNormal()\n` +
-            `  strips.length=${strips.length} | stripLens=[${strips.map(s => s.length).join(',')}]\n` +
+        Log.e(
+            `[MockDataProvider] _generateNormal()\n` +
             `  rands=[${rands.join(',')}]\n` +
-            `  grid: ${grid.map((col, i) => `R${i}=[${col.join(',')}]`).join(' | ')}`,
-            'color:#8f8;font-weight:bold'
+            `  trails: ${(trails ?? []).map(t => `r${t.reel}row${t.row}→${TrailColor[t.color]}`).join(', ') || '(none)'}\n` +
+            `  feature: ${carnivalFeature ? `${carnivalFeature.featureName} (${CarnivalFeatureKind[carnivalFeature.kind]})` : '(none)'}`
         );
-        // ══════════════
 
         const { redCount, redReels, wildTrailCount } = MockDataProvider._countSpecials(grid);
 
         const waysPayWins = WaysPayCalculator.calculate(grid, totalBet);
         let totalWin = WaysPayCalculator.totalWin(waysPayWins);
 
-        // ★ Luôn build stickyCells cho MỌI red symbol để CreditLabel hiển thị đúng
         let stickyCells: StickyCell[] = redCount > 0
             ? MockDataProvider._buildRedStickies(grid, totalBet)
             : [];
         let nextStage = SlotStageType.SPIN;
 
-        // ★ Feature Select trigger (6+ Red)
-        if (redCount >= 6) {
+        // Khi đang test Carnival Trail — bỏ Feature Select / Pot Win GoF để không chen flow
+        if (!MOCK_FORCE_CARNIVAL_TRAILS && redCount >= 6) {
             nextStage = SlotStageType.FEATURE_SELECT_START;
         }
 
-        // ★ Tính potVisualLevel cho mock mode (dựa trên tổng wildTrailCount)
         let potVisualLevel = data.potLevel;
-        if (nextStage === SlotStageType.SPIN && wildTrailCount > 0) {
+        if (!MOCK_FORCE_CARNIVAL_TRAILS && nextStage === SlotStageType.SPIN && wildTrailCount > 0) {
             data.wildTrailCount += wildTrailCount;
             const thresholds = data.config?.potLevelThresholds ?? [1, 11, 31, 51, 81, 101];
             let lvl = 0;
@@ -104,13 +125,30 @@ export class MockDataProvider {
             potVisualLevel = Math.min(6, lvl);
         }
 
-        // ★ Pot Win trigger — khi đạt level 6 (hũ đầy)
         let triggerPotWin = false;
         let pickGame: PickGameState | undefined;
-        if (nextStage === SlotStageType.SPIN && potVisualLevel >= 6) {
+        if (!MOCK_FORCE_CARNIVAL_TRAILS && nextStage === SlotStageType.SPIN && potVisualLevel >= 6) {
             triggerPotWin = true;
             pickGame = MockDataProvider.buildPickGame();
             nextStage = SlotStageType.POT_WIN;
+        }
+
+        // ★ Carnival Feature Trigger → nextStage
+        if (carnivalFeature) {
+            if (carnivalFeature.jackpotFirst) {
+                triggerPotWin = true;
+                pickGame = MockDataProvider.buildPickGame();
+                nextStage = SlotStageType.POT_WIN;
+                // Combo: Matsuri chạy sau Pick
+                if (carnivalFeature.matsuriRows > 0) {
+                    data.pendingCarnivalMatsuri = carnivalFeature;
+                } else {
+                    data.pendingCarnivalMatsuri = null;
+                }
+            } else {
+                data.pendingCarnivalMatsuri = null;
+                nextStage = SlotStageType.CARNIVAL_MATSURI_START;
+            }
         }
 
         const updateCash = true;
@@ -131,10 +169,118 @@ export class MockDataProvider {
             redCount,
             redReels,
             stickyCells,
-            wildTrailCount,
-            potVisualLevel,
+            wildTrailCount: MOCK_FORCE_CARNIVAL_TRAILS ? 0 : wildTrailCount,
+            potVisualLevel: MOCK_FORCE_CARNIVAL_TRAILS ? data.potLevel : potVisualLevel,
             triggerPotWin,
             pickGame,
+            trails,
+            potLevels,
+            carnivalFeature: carnivalFeature ?? undefined,
+        };
+    }
+
+    /**
+     * Chọn rands sao cho mỗi Trail land đúng ô TRAIL_NORMAL trên strip.
+     * Mỗi hit gán random Blue/Red/Green (để flip).
+     */
+    private static _forceCarnivalTrailRands(strips: number[][]): {
+        rands: number[];
+        trails: CarnivalTrailHit[];
+    } {
+        const reelCount = strips.length;
+        const rowCount = 3;
+        const rands = strips.map((s) => Math.floor(Math.random() * Math.max(1, s.length)));
+        const trails: CarnivalTrailHit[] = [];
+        const used = new Set<string>();
+
+        const min = Math.max(1, MOCK_CARNIVAL_TRAIL_COUNT_MIN);
+        const max = Math.max(min, MOCK_CARNIVAL_TRAIL_COUNT_MAX);
+        const want = min + Math.floor(Math.random() * (max - min + 1));
+
+        const colors = [TrailColor.BLUE, TrailColor.RED, TrailColor.GREEN];
+        // Round-robin màu để luôn thấy đủ 3 Pot khi test
+        let colorIdx = 0;
+
+        const candidates: Array<{ reel: number; row: number; center: number }> = [];
+        for (let reel = 0; reel < reelCount; reel++) {
+            const strip = strips[reel] ?? [];
+            for (let i = 0; i < strip.length; i++) {
+                if (strip[i] !== SymbolId.TRAIL_NORMAL) continue;
+                // TN ở strip[i] có thể hiện ở top/mid/bot tùy center
+                // row0(top)=center-1 → center=i+1; row1=i; row2=i-1
+                for (const row of [0, 1, 2]) {
+                    let center = i;
+                    if (row === 0) center = i + 1;
+                    else if (row === 2) center = i - 1;
+                    const len = strip.length;
+                    center = ((center % len) + len) % len;
+                    candidates.push({ reel, row, center });
+                }
+            }
+        }
+
+        // Shuffle nhẹ
+        for (let i = candidates.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = candidates[i];
+            candidates[i] = candidates[j];
+            candidates[j] = tmp;
+        }
+
+        for (const c of candidates) {
+            if (trails.length >= want) break;
+            const key = `${c.reel}-${c.row}`;
+            if (used.has(key)) continue;
+            // Một reel một centerIndex — nếu đã set rand khác cho reel, chỉ thêm trail
+            // cùng center (các row khác cùng stop). Nếu conflict center → skip.
+            const existing = trails.find(t => t.reel === c.reel);
+            if (existing) {
+                // Cùng reel phải cùng rands[reel]
+                if (rands[c.reel] !== c.center) continue;
+            } else {
+                rands[c.reel] = c.center;
+            }
+            used.add(key);
+            trails.push({
+                reel: c.reel,
+                row: c.row,
+                color: colors[colorIdx % colors.length],
+            });
+            colorIdx++;
+        }
+
+        // Fallback: nếu strip thiếu TN, vẫn trả 1 trail mid reel 2 (visual sẽ setSymbol override)
+        if (trails.length === 0) {
+            trails.push({ reel: 2, row: 1, color: TrailColor.RED });
+        }
+
+        return { rands, trails };
+    }
+
+    /** Growth condition_2 đơn giản: mỗi Trail +1 accumulated; tier theo ngưỡng design. */
+    private static _applyCarnivalPotGrowth(trails: CarnivalTrailHit[]): CarnivalPotLevels {
+        const data = GameData.instance;
+        // Design doc: 10,20,40,... — mock dùng step nhỏ để thấy level lên nhanh khi test
+        const mockThresholds = [1, 2, 3, 5, 7, 9, 12, 15, 18, 22];
+
+        for (const t of trails) {
+            if (t.color === TrailColor.BLUE) data.trailAccumulated.blue += 1;
+            else if (t.color === TrailColor.RED) data.trailAccumulated.red += 1;
+            else data.trailAccumulated.green += 1;
+        }
+
+        const tierOf = (acc: number): number => {
+            let lvl = 0;
+            for (let i = 0; i < mockThresholds.length; i++) {
+                if (acc >= mockThresholds[i]) lvl = i + 1;
+            }
+            return Math.min(10, lvl);
+        };
+
+        return {
+            blue: tierOf(data.trailAccumulated.blue),
+            red: tierOf(data.trailAccumulated.red),
+            green: tierOf(data.trailAccumulated.green),
         };
     }
 
@@ -802,7 +948,7 @@ export class ForcedMockAdapter implements INetworkAdapter {
         await this._delay(100);
         return {
             cash: GameData.instance.player.balance,
-            slotName: 'GoldOfFortune', ps: '',
+            slotName: 'Carnival Neko', ps: '',
             betIndex: 0, coinValueIndex: 0,
             lastSpinResponse: null,
             isPractice: false, memberIdx: 0, smm: null,

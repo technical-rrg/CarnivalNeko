@@ -19,6 +19,7 @@ import { _decorator, Component, UIOpacity, tween, Tween, Node, Vec3, ParticleSys
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
+import { SKIP_GUIDE_TRANSITION } from '../data/ServerConfig';
 import { SoundManager } from '../manager/SoundManager';
 import { Log } from '../core/Logger';
 import { PotController } from './PotController';
@@ -185,9 +186,8 @@ export class TransitionController extends Component {
     // ─── TRANSITION EFFECT ───
 
     private _onGuideComplete(): void {
-        // Guide-first: GameEntryController.enterFromExternalGuide trigger sau khi lộ GameRoot
-        // (GUIDE_COMPLETE thường fire trước khi Base/Transition tồn tại nếu Continue sớm)
-        if (GameData.instance.guideFirstBoot) return;
+        // Guide-first / skip Transition: GameEntryController xử lý vào game
+        if (GameData.instance.guideFirstBoot || SKIP_GUIDE_TRANSITION) return;
         this._startGuideTransition();
     }
 

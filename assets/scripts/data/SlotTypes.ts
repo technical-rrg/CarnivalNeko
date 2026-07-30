@@ -51,6 +51,8 @@ export enum SlotStageType {
     PICK_GAME_END = 222,          // Pick Game kết thúc → claim jackpot
     BUY_RESPIN_START = 230,       // Mua Re-Spin
     BUY_RESPIN_END = 231,
+    // ★ Carnival Neko
+    CARNIVAL_MATSURI_START = 240, // Pot Blue/Green/Combo → Matsuri (Hold&Spin) — stub UI tạm
 }
 
 /** Secret Treasure — ReelIndex gửi trong SelectFeature cho 5 tier Free Spin (2=Highest … 6=Lowest). */
@@ -317,6 +319,115 @@ export enum SymbolId {
     JP_MAJOR = 19,
     JP_GRAND = 20,
 
+    // ── Carnival Neko Trail Coins (Base Game) ──
+    /** Coin úp / chưa biết màu — hiện trên reel trước khi flip. */
+    TRAIL_NORMAL = 21,
+    /** Blue Trail → bay vào Blue Pot (PS 41). */
+    TRAIL_BLUE = 22,
+    /** Red Trail → bay vào Red Pot (PS 43). */
+    TRAIL_RED = 23,
+    /** Green Trail → bay vào Green Pot (PS 42). */
+    TRAIL_GREEN = 24,
+}
+
+/** Màu Trail / Pot Carnival Neko — map 1-1 với 3 hũ trên UI. */
+export enum TrailColor {
+    BLUE = 0,
+    RED = 1,
+    GREEN = 2,
+}
+
+/** Một Trail vừa land trên grid (server / mock đã quyết định màu khi flip). */
+export interface CarnivalTrailHit {
+    reel: number;
+    row: number;
+    /** Màu sau khi flip — client luôn hiện TRAIL_NORMAL trước, rồi flip sang màu này. */
+    color: TrailColor;
+}
+
+/** Level 3 Pot (visual tier 1..10 theo design; mock dùng 0..10). */
+export interface CarnivalPotLevels {
+    blue: number;
+    red: number;
+    green: number;
+}
+
+export function trailColorToSymbolId(color: TrailColor): SymbolId {
+    switch (color) {
+        case TrailColor.BLUE: return SymbolId.TRAIL_BLUE;
+        case TrailColor.RED: return SymbolId.TRAIL_RED;
+        case TrailColor.GREEN: return SymbolId.TRAIL_GREEN;
+        default: return SymbolId.TRAIL_NORMAL;
+    }
+}
+
+export function isTrailSymbol(s: number): boolean {
+    return s === SymbolId.TRAIL_NORMAL
+        || s === SymbolId.TRAIL_BLUE
+        || s === SymbolId.TRAIL_RED
+        || s === SymbolId.TRAIL_GREEN;
+}
+
+/** Feature kích hoạt khi Pot nổ (Carnival Neko). */
+export enum CarnivalFeatureKind {
+    NONE = 0,
+    /** Red Pot → Jackpot Pick */
+    JACKPOT = 1,
+    /** Blue Pot → Mighty Matsuri 5×3 / StartCoin 6 */
+    MIGHTY = 2,
+    /** Green Pot → Mega Matsuri 5×4 / StartCoin 8 */
+    MEGA = 3,
+    /** Blue+Green → Super Matsuri 5×5 / StartCoin 10 */
+    SUPER = 4,
+    /** Blue+Red → Jackpot rồi Ultra Matsuri 5×3 */
+    ULTRA = 5,
+    /** Red+Green → Jackpot rồi Supreme Matsuri 5×4 */
+    SUPREME = 6,
+    /** Cả 3 → Jackpot rồi Ultimate Matsuri 5×5 */
+    ULTIMATE = 7,
+}
+
+export interface CarnivalFeatureTrigger {
+    kind: CarnivalFeatureKind;
+    /** Pot nào nổ spin này */
+    burstPots: TrailColor[];
+    /** Có chạy Jackpot Pick trước không */
+    jackpotFirst: boolean;
+    /** Matsuri rows: 3/4/5 — 0 nếu chỉ Jackpot */
+    matsuriRows: number;
+    /** Số Start Gold Sticky */
+    startCoins: number;
+    /** Tên hiển thị (Mighty Matsuri, …) */
+    featureName: string;
+}
+
+export function describeCarnivalFeature(kind: CarnivalFeatureKind): Omit<CarnivalFeatureTrigger, 'kind' | 'burstPots'> {
+    switch (kind) {
+        case CarnivalFeatureKind.JACKPOT:
+            return { jackpotFirst: true, matsuriRows: 0, startCoins: 0, featureName: 'Jackpot Feature' };
+        case CarnivalFeatureKind.MIGHTY:
+            return { jackpotFirst: false, matsuriRows: 3, startCoins: 6, featureName: 'Mighty Matsuri' };
+        case CarnivalFeatureKind.MEGA:
+            return { jackpotFirst: false, matsuriRows: 4, startCoins: 8, featureName: 'Mega Matsuri' };
+        case CarnivalFeatureKind.SUPER:
+            return { jackpotFirst: false, matsuriRows: 5, startCoins: 10, featureName: 'Super Matsuri' };
+        case CarnivalFeatureKind.ULTRA:
+            return { jackpotFirst: true, matsuriRows: 3, startCoins: 6, featureName: 'Ultra Matsuri + Jackpot' };
+        case CarnivalFeatureKind.SUPREME:
+            return { jackpotFirst: true, matsuriRows: 4, startCoins: 8, featureName: 'Supreme Matsuri + Jackpot' };
+        case CarnivalFeatureKind.ULTIMATE:
+            return { jackpotFirst: true, matsuriRows: 5, startCoins: 10, featureName: 'Ultimate Matsuri + Jackpot' };
+        default:
+            return { jackpotFirst: false, matsuriRows: 0, startCoins: 0, featureName: 'None' };
+    }
+}
+
+export function buildCarnivalFeatureTrigger(
+    kind: CarnivalFeatureKind,
+    burstPots: TrailColor[],
+): CarnivalFeatureTrigger | null {
+    if (kind === CarnivalFeatureKind.NONE) return null;
+    return { kind, burstPots, ...describeCarnivalFeature(kind) };
 }
 
 /** Helper: kiểm tra symbol là Major (6–10) */
@@ -359,14 +470,15 @@ export const PS_TO_CLIENT: Record<number, number> = {
     15: SymbolId.MAJOR_CLEOPATRA, // highest payout
     // ─── Wild ───
     21: SymbolId.WILD,           // Wild Trail (Bat + Peach, Base Game only)
-    // ─── Red Coins Trail (41–46) — tất cả hiển thị cùng 1 hình STICKY_RED ───
-    // Credit value của mỗi loại coin được lấy từ SymbolRates[id] và render dưới dạng text
-    41: SymbolId.STICKY_RED,     // Trail01 Red Coin (giá trị nhỏ nhất)
-    42: SymbolId.STICKY_RED,     // Trail02 Red Coin
-    43: SymbolId.STICKY_RED,     // Trail03 Red Coin
-    44: SymbolId.STICKY_RED,     // Trail04 Red Coin
-    45: SymbolId.STICKY_RED,     // Trail05 Red Coin
-    46: SymbolId.STICKY_RED,     // Trail06 Red Coin (giá trị lớn nhất)
+    // ─── Carnival Neko Trail Coins (doc: Blue=41, Green=42, Red=43) ───
+    // Client luôn hiện TRAIL_NORMAL trước khi flip; PS ID chỉ quyết định màu sau flip.
+    41: SymbolId.TRAIL_BLUE,
+    42: SymbolId.TRAIL_GREEN,
+    43: SymbolId.TRAIL_RED,
+    // Legacy Secret Treasure Red credit coins (giữ để mock cũ / resume không vỡ)
+    44: SymbolId.STICKY_RED,
+    45: SymbolId.STICKY_RED,
+    46: SymbolId.STICKY_RED,
     // ─── Feature special symbols ───
     47: SymbolId.STICKY_YELLOW,  // Yellow Coin — Free Spin (Wild + instant pay)
     48: SymbolId.STICKY_YELLOW,  // Yellow Coin — Top Up (hút tiền các đồng Đỏ)
@@ -396,9 +508,12 @@ export const CLIENT_TO_PS: Record<number, number> = {
     [SymbolId.MAJOR_RAMSES]:    14,
     [SymbolId.MAJOR_CLEOPATRA]: 15,
     [SymbolId.WILD]:         21,
-    [SymbolId.STICKY_RED]:   41,  // representative Trail01
+    [SymbolId.STICKY_RED]:   44,  // legacy red sticky
     [SymbolId.STICKY_YELLOW]:47,  // representative Yellow
     [SymbolId.STICKY_GREEN]: 49,
+    [SymbolId.TRAIL_BLUE]:   41,
+    [SymbolId.TRAIL_GREEN]:  42,
+    [SymbolId.TRAIL_RED]:    43,
     [SymbolId.PLUS_ONE_SPIN]:50,
     [SymbolId.JP_IDLE]:      81,
     [SymbolId.JP_GRAND]:     82,
@@ -590,6 +705,21 @@ export interface SpinResponse {
     stickyAccumulated?: number;
     /** Legacy alias (= stickyAccumulated). */
     potCount?: number;
+
+    // ★ Carnival Neko — 3 Trail / 3 Pot ─────────────────────────────────────
+    /**
+     * Trails land trên spin này.
+     * Client: hiện TRAIL_NORMAL → flip ra color → bay vào đúng Pot.
+     * Real API: parse từ PS Trail IDs (41=Blue, 42=Green, 43=Red) trên grid.
+     */
+    trails?: CarnivalTrailHit[];
+    /** Level 3 Pot sau spin (visual). Real API: map từ server pot state khi có. */
+    potLevels?: CarnivalPotLevels;
+    /**
+     * Feature trigger Carnival (Pot nổ).
+     * Client: sau CARNIVAL_TRAIL_FLY_DONE → pot burst → Jackpot và/hoặc Matsuri.
+     */
+    carnivalFeature?: CarnivalFeatureTrigger;
 }
 
 export interface PlayerData {

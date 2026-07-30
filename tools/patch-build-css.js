@@ -180,7 +180,7 @@ const CUSTOM_FAVICON_LINK = buildFaviconLink();
 const FAVICON_SENTINEL = CUSTOM_FAVICON_LINK ? 'data:image/' : null;
 
 // ─── Game title ──────────────────────────────────────────────────────────────
-const GAME_TITLE = 'Fortune of Ra - Secret Treasure';
+const GAME_TITLE = 'Carnival Neko';
 
 function patchGameTitle(content) {
   let patched = content.replace(/<title>Cocos Creator \| /g, '<title>');

@@ -7,7 +7,7 @@ import { _decorator, Component, Node, Sprite, SpriteFrame, screen, Color, game, 
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
-import { SlotStageType, SpinResponse, MatchedLinePay, JackpotType, SymbolId, GameState, FeatureItem, PickGameState, StickyCell, TopupReelSlot, TopupReelType, FeatureSelectChoiceId, isFreeSpinTierReelIndex, gaugeStageFromAccumulated } from '../data/SlotTypes';
+import { SlotStageType, SpinResponse, MatchedLinePay, JackpotType, SymbolId, GameState, FeatureItem, PickGameState, StickyCell, TopupReelSlot, TopupReelType, FeatureSelectChoiceId, isFreeSpinTierReelIndex, gaugeStageFromAccumulated, CarnivalTrailHit, CarnivalFeatureTrigger } from '../data/SlotTypes';
 import { FeatureSelectChoicePayload } from '../controller/FeatureSelectionPopup';
 import { NetworkManager } from './NetworkManager';
 import { WalletManager } from './WalletManager';
@@ -15,7 +15,7 @@ import { BetManager } from './BetManager';
 import { SoundManager } from './SoundManager';
 import { DebugManager } from './DebugManager';
 import { PROGRESSIVE_WIN_THRESHOLDS, ProgressiveWinTier } from '../controller/ProgressiveWinPopup';
-import { USE_REAL_API, MOCK_GAUGE_HOLD_SEC_BEFORE_FORCE_ENTRY } from '../data/ServerConfig';
+import { USE_REAL_API, MOCK_GAUGE_HOLD_SEC_BEFORE_FORCE_ENTRY, MOCK_FORCE_CARNIVAL_TRAILS } from '../data/ServerConfig';
 import { MockDataProvider } from '../data/MockDataProvider';
 import { LocalizationManager } from '../core/LocalizationManager';
 import { AutoSpinManager, SpeedMode } from './AutoSpinManager';
@@ -191,6 +191,23 @@ export class GameManager extends Component {
     /** Fallback: nếu WildTrailController không có trong scene, tự emit WILD_TRAIL_FLY_DONE sau 2s để không treo game */
     private _wildTrailFlyDoneFallback = () => {
         EventBus.instance.emit(GameEvents.WILD_TRAIL_FLY_DONE);
+    };
+    /** Fallback Carnival Trail — nếu chưa gắn CarnivalTrailController */
+    private _carnivalTrailFlyDoneFallback = () => {
+        EventBus.instance.emit(GameEvents.CARNIVAL_TRAIL_FLY_DONE);
+    };
+    /** Đã emit CARNIVAL_TRAIL_START trong spin hiện tại */
+    private _carnivalTrailStartedThisSpin: boolean = false;
+    private _carnivalTrailFlyDoneReceivedThisSpin: boolean = false;
+    private _pendingWinPresentRespCarnival: typeof GameData.instance.lastSpinResponse | null = null;
+    private _carnivalTrailReelsProcessed: Set<number> = new Set();
+    /** Đang chờ pot burst xong để vào Jackpot / Matsuri */
+    private _pendingCarnivalAfterBurst: CarnivalFeatureTrigger | null = null;
+    private _carnivalBurstFallback = () => {
+        const f = this._pendingCarnivalAfterBurst;
+        if (!f) return;
+        Log.e('[GameManager] carnival burst fallback → BURST_DONE');
+        EventBus.instance.emit(GameEvents.CARNIVAL_POT_BURST_DONE, f);
     };
     /** Fallback: pot spine transition không emit POT_TRANSITION_END → force nhả spin */
     private _potTransitionEndFallback = () => {
@@ -461,7 +478,7 @@ export class GameManager extends Component {
             // Re-emit ENTER_SUCCESS để SlotMachineController init reels
             EventBus.instance.emit(GameEvents.ENTER_SUCCESS, {
                 cash: WalletManager.instance.balance,
-                slotName: 'Gold of Fortunes',
+                slotName: 'Carnival Neko',
                 ps: '',
                 betIndex: data.player.betIndex,
                 coinValueIndex: 0,
@@ -558,6 +575,9 @@ export class GameManager extends Component {
         bus.on(GameEvents.FREE_SPIN_GOLD_FLY_DONE,         this._onGoldFlyDone,            this);
         bus.on(GameEvents.WIN_HIGHLIGHT_ANIM_DONE,         this._onHighlightAnimDone,      this);
         bus.on(GameEvents.WILD_TRAIL_FLY_DONE,              this._onWildTrailFlyDoneCancelFallback, this);
+        bus.on(GameEvents.CARNIVAL_TRAIL_FLY_DONE,          this._onCarnivalTrailFlyDone, this);
+        bus.on(GameEvents.CARNIVAL_POT_BURST_DONE,          this._onCarnivalPotBurstDone, this);
+        bus.on(GameEvents.CARNIVAL_MATSURI_STUB_DONE,       this._onCarnivalMatsuriStubDone, this);
         bus.on(GameEvents.POT_TRANSITION_END,                this._onPotTransitionEnd,       this);
         // LONG_SPIN_VFX events: chỉ SoundManager cần, GameManager không gate bằng VFX nữa.
     }
@@ -978,6 +998,10 @@ export class GameManager extends Component {
         this._longSpinHintPositions = [];
         this._pendingWinPresentRespWild = null;
         this._wildTrailFlyDoneReceivedThisSpin = false;
+        this._pendingWinPresentRespCarnival = null;
+        this._carnivalTrailFlyDoneReceivedThisSpin = false;
+        this._carnivalTrailStartedThisSpin = false;
+        this._carnivalTrailReelsProcessed.clear();
         this._pendingWinPresentRespFeature = null;
         this._pendingFeatureSelectAfterHighlight = false;
         this._awaitingFeatureSelectCreditDone = false;
@@ -1138,6 +1162,84 @@ export class GameManager extends Component {
         }
     }
 
+    /** Carnival Trail flip+fly xong → tiếp tục WIN_PRESENT nếu đang defer. */
+    private _onCarnivalTrailFlyDone(): void {
+        this._carnivalTrailFlyDoneReceivedThisSpin = true;
+        this.unschedule(this._carnivalTrailFlyDoneFallback);
+        if (this._pendingWinPresentRespCarnival) {
+            const resp = this._pendingWinPresentRespCarnival;
+            this._pendingWinPresentRespCarnival = null;
+            const hasRedSticky = !this._isFreeSpin()
+                && (resp.stickyCells?.some((c: StickyCell) => c.symbolId === SymbolId.STICKY_RED) ?? false);
+            this._logSpinState(
+                `CARNIVAL_TRAIL_FLY_DONE → emit WIN_PRESENT_START | totalWin=${resp.totalWin}`
+            );
+            this._emitWinPresentAfterRedLandBounce(resp, hasRedSticky);
+        } else {
+            this._logSpinState('CARNIVAL_TRAIL_FLY_DONE — no pending WIN_PRESENT');
+        }
+    }
+
+    /** Bắt đầu Pot burst — CarnivalPotBoard anim → CARNIVAL_POT_BURST_DONE. */
+    private _startCarnivalPotBurst(feature: CarnivalFeatureTrigger): void {
+        this._pendingCarnivalAfterBurst = feature;
+        this.unschedule(this._carnivalBurstFallback);
+        this.scheduleOnce(this._carnivalBurstFallback, 2.0);
+        EventBus.instance.emit(GameEvents.CARNIVAL_POT_BURST, feature);
+        // Sync level UI về 0 cho pot đã nổ (resolve đã/ sẽ reset trong PotBoard)
+        EventBus.instance.emit(GameEvents.CARNIVAL_POT_LEVELS_CHANGED, { ...GameData.instance.potLevels });
+    }
+
+    private _onCarnivalPotBurstDone(feature?: CarnivalFeatureTrigger): void {
+        this.unschedule(this._carnivalBurstFallback);
+        const f = feature ?? this._pendingCarnivalAfterBurst;
+        this._pendingCarnivalAfterBurst = null;
+        if (!f) {
+            Log.e('[GameManager] CARNIVAL_POT_BURST_DONE nhưng không có feature');
+            return;
+        }
+
+        Log.e(`[GameManager] BURST_DONE → ${f.featureName} jackpotFirst=${f.jackpotFirst} rows=${f.matsuriRows}`);
+
+        if (f.jackpotFirst) {
+            // Combo: stash Matsuri sau Pick
+            if (f.matsuriRows > 0) {
+                GameData.instance.pendingCarnivalMatsuri = f;
+            }
+            // Carnival không phụ thuộc PotController (Egypt chest) — mở Pick thẳng
+            Log.e('[GameManager] Carnival Jackpot → open PickGame ngay (skip PotController intro)');
+            this._onPotWinDone();
+            return;
+        }
+
+        // Matsuri-only (Mighty / Mega / Super)
+        this._enterCarnivalMatsuriStub(f);
+    }
+
+    /** Stub Matsuri — chưa có Hold&Spin; hiện log + chờ vài giây rồi DONE. */
+    private _enterCarnivalMatsuriStub(feature: CarnivalFeatureTrigger): void {
+        GameData.instance.pendingCarnivalMatsuri = null;
+        this._gameState = GameState.POPUP;
+        this._currentStage = SlotStageType.CARNIVAL_MATSURI_START;
+        EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB, feature);
+        Log.e(
+            `[CarnivalMatsuri STUB] ${feature.featureName} | grid=5x${feature.matsuriRows} ` +
+            `startCoins=${feature.startCoins} — gameplay Hold&Spin sẽ làm ở bước sau`
+        );
+        // Tạm: auto đóng stub sau 2s (sau này thay bằng Matsuri UI thật)
+        this.scheduleOnce(() => {
+            EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB_DONE);
+        }, 2.0);
+    }
+
+    private _onCarnivalMatsuriStubDone(): void {
+        Log.e('[GameManager] CARNIVAL_MATSURI_STUB_DONE → IDLE');
+        this._currentStage = SlotStageType.SPIN;
+        this._gameState = GameState.IDLE;
+        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
+        EventBus.instance.emit(GameEvents.NORMAL_SPIN_DONE);
+    }
+
     // ─── POT TRANSITION END: pot level transition animation hoàn tất ───
 
     /**
@@ -1190,19 +1292,43 @@ export class GameManager extends Component {
 
         if (!this._isSpinning) return;
         if (this._isFreeSpin()) return;
-        // Wild chỉ xuất hiện ở reel 1, 2, 3
+
+        const data = GameData.instance;
+        const resp = data.lastSpinResponse;
+        if (!resp) return;
+
+        // ★ Carnival Neko Trail — mọi reel 0..4 đều có thể có Trail
+        const carnivalHits = (resp.trails ?? []).filter((t: CarnivalTrailHit) => t.reel === idx);
+        if (carnivalHits.length > 0 && !this._carnivalTrailReelsProcessed.has(idx)) {
+            this._carnivalTrailReelsProcessed.add(idx);
+            if (!this._carnivalTrailStartedThisSpin) {
+                this._carnivalTrailStartedThisSpin = true;
+                EventBus.instance.emit(GameEvents.CARNIVAL_TRAIL_START, {
+                    trails: resp.trails ?? [],
+                    potLevels: resp.potLevels,
+                });
+                if (resp.potLevels) {
+                    data.potLevels = { ...resp.potLevels };
+                    EventBus.instance.emit(GameEvents.CARNIVAL_POT_LEVELS_CHANGED, resp.potLevels);
+                }
+                this.unschedule(this._carnivalTrailFlyDoneFallback);
+                this.scheduleOnce(this._carnivalTrailFlyDoneFallback, 3.5);
+            }
+            for (const hit of carnivalHits) {
+                EventBus.instance.emit(GameEvents.CARNIVAL_TRAIL_ONE, hit);
+            }
+        }
+
+        // Wild chỉ xuất hiện ở reel 1, 2, 3 (legacy GoF) — bỏ qua khi đang force Carnival Trail
+        if (MOCK_FORCE_CARNIVAL_TRAILS || (resp.trails?.length ?? 0) > 0) return;
         if (idx < 1 || idx > 3) return;
         const slotMachines = this.node.scene?.getComponentsInChildren(SlotMachineController) ?? [];
         if (slotMachines.some((smc) => !smc.canRunPerReelEffects(idx))) {
-            // Log.e(`[SPIN-HANG][GM] WILD_TRAIL_ONE held/ignored because longspin previous reels are not settled | reel=${idx} | ${this._getSlotReelDebugState()}`);
             return;
         }
         if (this._wildTrailReelsProcessed.has(idx)) return;
         this._wildTrailReelsProcessed.add(idx);
 
-        const data = GameData.instance;
-        const resp = data.lastSpinResponse;
-        if (!resp) return;
         Log.d(`[WildTrail] _onReelStoppedWild: reel=${reelIndex} isSpinning=${this._isSpinning} gameState=${this._gameState}`);
 
         const grid = data.getBaseGrid(resp.rands, false, resp.reelIndex);
@@ -1453,26 +1579,47 @@ export class GameManager extends Component {
 
         // ── WILD TRAIL: tính từ grid thực tế, emit WILD_TRAIL_START nếu có WILD trên reel 1-3 ──
         const positions: Array<{ reel: number; row: number }> = [];
-        const grid = data.getBaseGrid(resp.rands, false, resp.reelIndex);
-        for (let reel = 1; reel <= 3; reel++) {
-            const col = grid[reel] ?? [];
-            for (let row = 0; row < col.length; row++) {
-                if (col[row] === SymbolId.WILD) {
-                    positions.push({ reel, row });
+        const carnivalTrails = resp.trails ?? [];
+        const hasCarnivalTrails = carnivalTrails.length > 0 && !this._isFreeSpin();
+
+        if (!hasCarnivalTrails) {
+            const grid = data.getBaseGrid(resp.rands, false, resp.reelIndex);
+            for (let reel = 1; reel <= 3; reel++) {
+                const col = grid[reel] ?? [];
+                for (let row = 0; row < col.length; row++) {
+                    if (col[row] === SymbolId.WILD) {
+                        positions.push({ reel, row });
+                    }
                 }
             }
         }
 
-        // ★ POT LEVEL: dùng PotVisualLevel trực tiếp từ server (1..6)
+        // ★ Carnival Pot levels (nếu chưa emit khi per-reel stop)
+        if (hasCarnivalTrails && resp.potLevels) {
+            data.potLevels = { ...resp.potLevels };
+            if (!this._carnivalTrailStartedThisSpin) {
+                this._carnivalTrailStartedThisSpin = true;
+                EventBus.instance.emit(GameEvents.CARNIVAL_TRAIL_START, {
+                    trails: carnivalTrails,
+                    potLevels: resp.potLevels,
+                });
+                EventBus.instance.emit(GameEvents.CARNIVAL_POT_LEVELS_CHANGED, resp.potLevels);
+                this.unschedule(this._carnivalTrailFlyDoneFallback);
+                this.scheduleOnce(this._carnivalTrailFlyDoneFallback, 3.5);
+            } else {
+                EventBus.instance.emit(GameEvents.CARNIVAL_POT_LEVELS_CHANGED, resp.potLevels);
+            }
+        }
+
+        // ★ POT LEVEL: dùng PotVisualLevel trực tiếp từ server (1..6) — legacy single pot
         let potLevelChanged = false;
-        if (resp.potVisualLevel !== undefined && resp.potVisualLevel !== null && !this._isFreeSpin()) {
+        if (!hasCarnivalTrails && resp.potVisualLevel !== undefined && resp.potVisualLevel !== null && !this._isFreeSpin()) {
             const oldLevel = data.potLevel;
             const newLevel = Math.max(0, Math.min(6, resp.potVisualLevel as number));
             data.potLevel = newLevel;
             if (newLevel !== oldLevel) {
                 potLevelChanged = true;
                 this._isPotTransitioning = true;
-                // Safety: spine null/thiếu anim/complete không fire → vẫn nhả spin
                 this.unschedule(this._potTransitionEndFallback);
                 this.scheduleOnce(this._potTransitionEndFallback, GameManager.POT_TRANSITION_FALLBACK_SEC);
             }
@@ -1480,15 +1627,10 @@ export class GameManager extends Component {
 
         if (potLevelChanged) {
             EventBus.instance.emit(GameEvents.POT_LEVEL_CHANGED, { level: data.potLevel, total: data.wildTrailCount ?? 0 });
-            // Không auto-trigger POT_WIN — chỉ dựa vào server nextStage
         }
 
         if (positions.length > 0 && !this._isFreeSpin()) {
-            // Emit WILD_TRAIL_START cho WinPresenter biết có trail đang bay
             EventBus.instance.emit(GameEvents.WILD_TRAIL_START, { positions, count: positions.length });
-
-            // WILD_TRAIL_FLY_DONE thật sự được emit bởi WildTrailController khi particle cuối cùng hạ cánh.
-            // Fallback: nếu WildTrailController không có trong scene, tự emit sau 2s để không treo game.
             this.unschedule(this._wildTrailFlyDoneFallback);
             this.scheduleOnce(this._wildTrailFlyDoneFallback, 2.0);
         }
@@ -1567,9 +1709,9 @@ export class GameManager extends Component {
             return;
         }
 
-        // Nếu có wild trail: trì hoãn WIN_PRESENT_START cho đến khi WILD_TRAIL_FLY_DONE
-        // (cả trường hợp có win lẫn không có win) — đảm bảo wild animation diễn xong toàn bộ.
+        // Nếu có wild trail / carnival trail: trì hoãn WIN_PRESENT_START đến khi FLY_DONE
         const _hasWildTrail = positions.length > 0 && !this._isFreeSpin();
+        const _hasCarnivalTrail = hasCarnivalTrails;
 
         // Normal mode: nếu có red sticky symbols → đợi TẤT CẢ land zoom/bounce xong mới highlight
         const hasRedSticky = !this._isFreeSpin() && (resp.stickyCells?.some((c: StickyCell) => c.symbolId === SymbolId.STICKY_RED) ?? false);
@@ -1578,23 +1720,24 @@ export class GameManager extends Component {
         // để đảm bảo đồng vàng bay tới đích hết mới highlight line win
         const isFeatureSelect = resp.nextStage === SlotStageType.FEATURE_SELECT || resp.nextStage === SlotStageType.FEATURE_SELECT_START;
 
-        // Schedule fallback TRƯỚC khi emit WIN_PRESENT_START.
-        // Lý do: WinPresenter có thể emit WIN_PRESENT_END đồng bộ (sync) khi totalWin=0,
-        // khi đó _onWinPresentEnd.unschedule() cần fallback đã được đăng ký sẵn để hủy.
-        // Nếu schedule SAU emit → fallback trở thành zombie timer → double-process spin sau.
-        // Nếu có wild trail: WIN_PRESENT_END bị trì hoãn thêm flyDuration(~1s) + showAllHighlightDuration(~1.5s)
-        // nên fallback phải đủ lớn để không bắn trước WIN_PRESENT_END thật.
-        // Luôn đăng ký fallback (kể cả no-win+wild) vì WIN_PRESENT_END luôn được emit.
         this.unschedule(this._spinCycleFallback);
-        const _fallbackDelay = _hasWildTrail ? 4.0 : 2.0;
+        const _fallbackDelay = (_hasWildTrail || _hasCarnivalTrail) ? 4.5 : 2.0;
         this.scheduleOnce(this._spinCycleFallback, _fallbackDelay);
         this._logSpinState(
             `post-REELS_STOPPED schedule spinCycleFallback=${_fallbackDelay}s` +
-            ` wildTrail=${_hasWildTrail} redSticky=${hasRedSticky} featureSelect=${isFeatureSelect}` +
+            ` wildTrail=${_hasWildTrail} carnivalTrail=${_hasCarnivalTrail} redSticky=${hasRedSticky} featureSelect=${isFeatureSelect}` +
             ` totalWin=${resp.totalWin} ways=${resp.waysPayWins?.length ?? 0} lines=${resp.matchedLinePays?.length ?? 0}`
         );
 
-        if (_hasWildTrail) {
+        if (_hasCarnivalTrail) {
+            if (this._carnivalTrailFlyDoneReceivedThisSpin) {
+                this._logSpinState('emit WIN_PRESENT_START via carnivalTrail already done');
+                this._emitWinPresentAfterRedLandBounce(resp, hasRedSticky);
+            } else {
+                this._pendingWinPresentRespCarnival = resp;
+                this._logSpinState('DEFER WIN_PRESENT_START — wait CARNIVAL_TRAIL_FLY_DONE');
+            }
+        } else if (_hasWildTrail) {
             // Defer WIN_PRESENT_START — sẽ được emit trong _onWildTrailFlyDoneCancelFallback khi particle hạ cánh
             // Vẫn phải chờ sticky red land-bounce xong (nếu có) trước khi highlight.
             if (this._wildTrailFlyDoneReceivedThisSpin) {
@@ -2032,6 +2175,14 @@ export class GameManager extends Component {
         this._gameState = GameState.IDLE;
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
 
+        // ★ Carnival combo: sau Jackpot → Matsuri stub (Ultra / Supreme / Ultimate)
+        const pendingMatsuri = GameData.instance.pendingCarnivalMatsuri;
+        if (pendingMatsuri && pendingMatsuri.matsuriRows > 0) {
+            Log.e(`[DEBUG-PICK] _onPickGameClose → pending Matsuri "${pendingMatsuri.featureName}"`);
+            this._enterCarnivalMatsuriStub(pendingMatsuri);
+            return;
+        }
+
         // ★ Nếu có pending Free Spin end (từ _handleClaim trong Pick Game), xử lý trước
         if (this._pendingFreeSpinEnd) {
             Log.e(`[DEBUG-PICK] _onPickGameClose → pending free spin end detected`);
@@ -2419,18 +2570,37 @@ export class GameManager extends Component {
 
             case SlotStageType.POT_WIN:
                 // Block spin button trong suốt POT_WIN sequence.
-                // _onPotWinDone() sẽ restore IDLE và re-enable spin button.
                 this._gameState = GameState.POPUP;
-                // Delay POT_WIN_INTRO để đợi:
-                //   - Bat fly animation (~0.55s = FLY_DONE)
-                //   - Bounce confirm (~0.2s)
-                //   - Buffer (~0.1s)
-                // Level đã đổi ngay tại POT_LEVEL_CHANGED nên không cần chờ transition nữa.
-                Log.d('[GameManager] POT_WIN stage → POT_WIN_INTRO delayed 0.9s (wait for bat fly + bounce)');
-                this.scheduleOnce(() => {
-                    EventBus.instance.emit(GameEvents.POT_WIN_INTRO);
-                }, 0.9);
+                {
+                    const carnival = GameData.instance.lastSpinResponse?.carnivalFeature ?? null;
+                    if (carnival) {
+                        // Carnival: pot burst trước → rồi POT_WIN_INTRO / Pick
+                        Log.e(`[GameManager] POT_WIN (Carnival) → BURST "${carnival.featureName}"`);
+                        this._startCarnivalPotBurst(carnival);
+                    } else {
+                        Log.d('[GameManager] POT_WIN stage → POT_WIN_INTRO delayed 0.9s');
+                        this.scheduleOnce(() => {
+                            EventBus.instance.emit(GameEvents.POT_WIN_INTRO);
+                        }, 0.9);
+                    }
+                }
                 break;
+
+            case SlotStageType.CARNIVAL_MATSURI_START: {
+                this._gameState = GameState.POPUP;
+                const carnival = GameData.instance.lastSpinResponse?.carnivalFeature
+                    ?? GameData.instance.pendingCarnivalMatsuri;
+                if (!carnival) {
+                    Log.e('[GameManager] CARNIVAL_MATSURI_START nhưng thiếu carnivalFeature → IDLE');
+                    this._gameState = GameState.IDLE;
+                    EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
+                    EventBus.instance.emit(GameEvents.NORMAL_SPIN_DONE);
+                    break;
+                }
+                Log.e(`[GameManager] CARNIVAL_MATSURI_START → BURST "${carnival.featureName}"`);
+                this._startCarnivalPotBurst(carnival);
+                break;
+            }
 
             case SlotStageType.FEATURE_SELECT:
             case SlotStageType.FEATURE_SELECT_START: {

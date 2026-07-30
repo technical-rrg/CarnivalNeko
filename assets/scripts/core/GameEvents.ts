@@ -49,7 +49,7 @@ export const GameEvents = {
     /** Cycling từng way một (payload: WaysPayWin) */
     WIN_CYCLE_ONE_WAY: 'win:cycle:one:way',
 
-    // ─── WILD TRAIL + POT (Gold of Fortune) ───
+    // ─── WILD TRAIL + POT (Gold of Fortune — legacy single pot) ───
     /** Bat/Wild symbol vừa land — bắt đầu hiệu ứng bay vào hũ.
      *  Payload: { positions: {reel:number, row:number}[], count: number } */
     WILD_TRAIL_START: 'wildtrail:start',
@@ -68,6 +68,28 @@ export const GameEvents = {
     POT_WIN_DONE: 'pot:win:done',
     /** Pot level transition animation (spine) hoàn tất — GameManager có thể enable spin. No payload. */
     POT_TRANSITION_END: 'pot:transition:end',
+
+    // ─── CARNIVAL NEKO — 3 Trail / 3 Pot ───
+    /** Có Trail trên spin — bắt đầu flip+fly pipeline.
+     *  Payload: { trails: CarnivalTrailHit[], potLevels?: CarnivalPotLevels } */
+    CARNIVAL_TRAIL_START: 'carnival:trail:start',
+    /** Một Trail land trên 1 reel — flip Normal→Color rồi bay vào Pot màu tương ứng.
+     *  Payload: CarnivalTrailHit */
+    CARNIVAL_TRAIL_ONE: 'carnival:trail:one',
+    /** Một Trail vừa chạm Pot. Payload: { color: TrailColor } */
+    CARNIVAL_TRAIL_ONE_HIT: 'carnival:trail:one:hit',
+    /** Tất cả Trail đã flip+fly xong. No payload. */
+    CARNIVAL_TRAIL_FLY_DONE: 'carnival:trail:fly:done',
+    /** 3 Pot levels đổi. Payload: CarnivalPotLevels */
+    CARNIVAL_POT_LEVELS_CHANGED: 'carnival:pot:levels:changed',
+    /** Pot nổ — bắt đầu burst anim. Payload: CarnivalFeatureTrigger */
+    CARNIVAL_POT_BURST: 'carnival:pot:burst',
+    /** Burst anim xong — GameManager tiếp tục Jackpot / Matsuri. Payload: CarnivalFeatureTrigger */
+    CARNIVAL_POT_BURST_DONE: 'carnival:pot:burst:done',
+    /** Matsuri stub (chưa có gameplay Hold&Spin). Payload: CarnivalFeatureTrigger */
+    CARNIVAL_MATSURI_STUB: 'carnival:matsuri:stub',
+    /** Matsuri stub đóng / xong → về Base. No payload. */
+    CARNIVAL_MATSURI_STUB_DONE: 'carnival:matsuri:stub:done',
     /** Mở Pick Game popup. Payload: PickGameState */
     PICK_GAME_OPEN: 'pick:game:open',
     /** Pick Game popup đóng (người chơi đã pick xong + jackpot hiển thị xong). No payload. */

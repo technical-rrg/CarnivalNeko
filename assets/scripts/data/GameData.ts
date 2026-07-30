@@ -47,14 +47,16 @@ const R = SymbolId.STICKY_RED;
 const Y = SymbolId.STICKY_YELLOW;
 const G = SymbolId.STICKY_GREEN;
 const X = SymbolId.PLUS_ONE_SPIN;
+/** Carnival Neko — Trail Normal (úp, chưa biết màu) trên Base strip. */
+const TN = SymbolId.TRAIL_NORMAL;
 
-/** Normal Spin: 5 reels × 30 ô. Reel 0 và 4 không có Wild. */
+/** Normal Spin: 5 reels × 30 ô. Có TRAIL_NORMAL để mock luôn land được Trail. */
 const DEFAULT_REEL_STRIPS: number[][] = [
-    [N9, N10, NJ, Q, K, A, H, R, R, Q, Rm, Sb, K, A, R, H, Cl, Q, An, Rm, K, A, Sb, Q, H, Cl, R, K, An, A],
-    [A, Cl, An, H, K, W, Rm, R, R, H, A, K, Cl, R, Q, Rm, Sb, N10, K, A, Cl, H, R, An, K, Q, Rm, NJ, Sb, A],
-    [Cl, Rm, H, R, R, Sb, An, K, W, Cl, H, K, K, A, R, Sb, An, Cl, K, H, R, K, A, Rm, H, Sb, Cl, An, K, Q],
-    [Rm, A, Cl, R, R, K, An, K, H, W, Cl, K, H, A, Rm, R, Sb, Cl, K, H, A, K, Q, Rm, H, R, Cl, Sb, K, A],
-    [K, Cl, A, Rm, H, An, Sb, R, Cl, K, A, Q, Rm, Sb, An, Cl, R, K, A, Q, Rm, Sb, H, Cl, An, K, A, Rm, Sb, Cl],
+    [N9, N10, NJ, Q, K, A, H, TN, R, Q, Rm, Sb, K, A, TN, H, Cl, Q, An, Rm, K, A, Sb, Q, H, Cl, TN, K, An, A],
+    [A, Cl, An, H, K, W, Rm, TN, R, H, A, K, Cl, TN, Q, Rm, Sb, N10, K, A, Cl, H, TN, An, K, Q, Rm, NJ, Sb, A],
+    [Cl, Rm, H, TN, R, Sb, An, K, W, Cl, H, K, TN, A, R, Sb, An, Cl, K, H, TN, K, A, Rm, H, Sb, Cl, An, K, Q],
+    [Rm, A, Cl, TN, R, K, An, K, H, W, Cl, K, H, A, TN, R, Sb, Cl, K, H, A, K, Q, Rm, H, TN, Cl, Sb, K, A],
+    [K, Cl, A, Rm, H, An, Sb, TN, Cl, K, A, Q, Rm, Sb, An, Cl, TN, K, A, Q, Rm, Sb, H, Cl, An, K, TN, Rm, Sb, Cl],
 ];
 
 /**
@@ -204,6 +206,23 @@ export class GameData {
     potLevel: number = 0;
     /** Counter Wild Trail tích lũy từ đầu phiên chơi. */
     wildTrailCount: number = 0;
+
+    // ─── Carnival Neko — 3 Pot levels (0..10 visual) ─────────────────────────
+    potLevels: import('./SlotTypes').CarnivalPotLevels = { blue: 0, red: 0, green: 0 };
+    /** Trail hits của spin đang xử lý (để controller đọc). */
+    pendingTrails: import('./SlotTypes').CarnivalTrailHit[] = [];
+    /** Tích lũy số Trail theo màu (mock growth condition_2). */
+    trailAccumulated: import('./SlotTypes').CarnivalPotLevels = { blue: 0, red: 0, green: 0 };
+
+    /** Số Normal Spin đã có Trail kể từ lần Feature Trigger gần nhất (mock auto). */
+    carnivalTrailSpinCount: number = 0;
+    /** Index cycle cho MOCK_CARNIVAL_FEATURE_TRIGGER = 'cycle' | 'auto'. */
+    carnivalFeatureCycleIndex: number = 0;
+    /**
+     * Matsuri chờ chạy sau Jackpot (combo Ultra/Supreme/Ultimate).
+     * Set khi Jackpot-first; clear khi vào Matsuri stub / thật.
+     */
+    pendingCarnivalMatsuri: import('./SlotTypes').CarnivalFeatureTrigger | null = null;
 
     // ─── FEATURE ENTRY LOGIC ADDED — Reel UI Gauge state ─────────────────────
     /**

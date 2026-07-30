@@ -49,8 +49,10 @@ export const Log = {
         }
         return false;
     },
-    // TEMP: chặn enable tag khác — chỉ giữ DEBUG_ONLY_TAG
-    enable: (_tag: string): void => { /* blocked while spin-hang debug */ },
+    // Cho phép bật thêm tag khi đang làm Carnival (không block nữa)
+    enable: (tag: string): void => {
+        if (tag) _white.add(String(tag).toLowerCase());
+    },
     disable: (tag: string): void => { if (tag) _white.delete(String(tag).toLowerCase()); },
     setWhitelist: (tags: readonly string[] | string[]): void => {
         _white.clear();
@@ -62,5 +64,12 @@ export const Log = {
     clearWhitelist: (): void => { _white.clear(); },
 };
 
-// TEMP DEBUG session: spin hang + Progressive BGM
-Log.setWhitelist([DEBUG_ONLY_TAG, 'progressivebgm']);
+// Carnival Neko debug + legacy tags
+Log.setWhitelist([
+    DEBUG_ONLY_TAG,
+    'progressivebgm',
+    'carnival',       // [CarnivalTrail], [CarnivalPot], [CarnivalMatsuri], …
+    'gamemanager',    // [GameManager] POT_WIN / BURST routing
+    'mockdataprovider',
+    'debug-pick',
+]);

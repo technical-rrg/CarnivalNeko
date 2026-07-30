@@ -555,7 +555,7 @@ class MockNetworkAdapter implements INetworkAdapter {
 
         return {
             cash: GameData.instance.player.balance,
-            slotName: 'Gold of Fortunes',
+            slotName: 'Carnival Neko',
             ps: '',
             betIndex: 0,
             coinValueIndex: 0,

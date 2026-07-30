@@ -12,10 +12,52 @@
 //  ★★★  SWITCH CHÍNH: Mock Data ↔ Real API  ★★★
 // ═══════════════════════════════════════════════════════════
 
-export const USE_REAL_API: boolean = true; // true = gọi API thật, false = dùng MockDataProvider (dev/test)
+export const USE_REAL_API: boolean = false; // true = gọi API thật, false = dùng MockDataProvider (dev/test)
 
 /** Bật OpenDebug panel + DebugManager shortcuts (mọi build). Tắt trước release production. */
 export const ENABLE_DEBUG_TOOLS: boolean = true;
+
+/**
+ * ★ Carnival Neko mock: mỗi Normal Spin luôn land ≥1 Trail (Normal → flip màu → bay Pot).
+ * Tắt khi muốn mock feature cũ (Sticky Red / Wild Trail GoF).
+ * Real API: bỏ qua flag này — trails đến từ server grid (PS 41/42/43).
+ */
+export const MOCK_FORCE_CARNIVAL_TRAILS: boolean = true;
+
+/** Số Trail tối thiểu / tối đa mỗi spin khi MOCK_FORCE_CARNIVAL_TRAILS = true. */
+export const MOCK_CARNIVAL_TRAIL_COUNT_MIN: number = 2;
+export const MOCK_CARNIVAL_TRAIL_COUNT_MAX: number = 4;
+
+/**
+ * ★ Mock Feature Trigger sau khi Trail bay vào Pot.
+ *   none       — chỉ growth, không nổ Pot
+ *   auto       — mỗi N spin trail → force 1 trigger (xoay Red→Blue→Green→combo…)
+ *   red/blue/green/blue_green/blue_red/red_green/all — force cố định mỗi spin có trail
+ *   cycle      — mỗi lần trigger đổi loại (để test đủ case)
+ */
+export type MockCarnivalFeatureMode =
+    | 'none'
+    | 'auto'
+    | 'red'
+    | 'blue'
+    | 'green'
+    | 'blue_green'
+    | 'blue_red'
+    | 'red_green'
+    | 'all'
+    | 'cycle';
+
+/** Đổi mode để test: 'cycle' = xoay đủ loại feature mỗi lần trigger. */
+export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'blue';
+
+/** Khi mode='auto': sau bao nhiêu spin có Trail thì force trigger 1 lần. */
+export const MOCK_CARNIVAL_FEATURE_EVERY_N_SPINS: number = 2;
+
+/**
+ * ★ Tạm: Guide xong → vào thẳng game, bỏ TransitionController (chest fly).
+ * false = giữ intro Transition cũ (icon bay vào Pot).
+ */
+export const SKIP_GUIDE_TRANSITION: boolean = true;
 
 // ═══════════════════════════════════════════════════════════
 //  Server endpoints
@@ -149,7 +191,7 @@ export type MockScenario =
     | 'wild_trail';   // ★ TEST: mỗi spin 1 wild, tích lũy dần (nextStage=SPIN, không force POT_WIN ngay)
 
 // ★ Đổi sang 'wild_trail' để test tích lũy Pot | 'random' để test ngẫu nhiên | 'pot_win' để test POT_WIN trigger ngay
-export const MOCK_SPIN_SCENARIO: MockScenario = 'force_feature_entry';
+export const MOCK_SPIN_SCENARIO: MockScenario = 'random';
 
 /** Mock: giữ gauge sáng N giây trước reset khi Force Feature Entry (chỉ USE_REAL_API=false). 0 = reset ngay. */
 export const MOCK_GAUGE_HOLD_SEC_BEFORE_FORCE_ENTRY: number = 2;

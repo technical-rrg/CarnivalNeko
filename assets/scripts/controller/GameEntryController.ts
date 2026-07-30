@@ -34,6 +34,7 @@ import { FeatureEntryGuideLoader } from './FeatureEntryGuideLoader';
 import { OrientationLayout }       from './OrientationLayout';
 import { GuideShellLoader }        from '../core/GuideShellLoader';
 import { GameManager }             from '../manager/GameManager';
+import { SKIP_GUIDE_TRANSITION }   from '../data/ServerConfig';
 
 const LOGO_SKELETON_PATH = 'newSpine/Anim-TitleGame/TitleGame';
 
@@ -217,10 +218,24 @@ export class GameEntryController extends Component {
         // Reparent Logo TRƯỚC dismiss Guide — tái sử dụng spine TitleGame từ GuideView
         this._adoptGuideLogo(GuideShellLoader.logoNode);
 
-        // ★ Dưới màn đen: warm GameRoot + BG + Transition — chưa FadeIn
+        // ★ Dưới màn đen: warm GameRoot + BG — chưa FadeIn
         Log.d('[GameEntryController] enterFromExternalGuide — prep under black (no FadeIn yet)');
         await this.prepareGameRootBackground();
         this._showGameRoot();
+
+        // ★ Tạm bỏ Transition: Guide xong → reveal game ngay
+        if (SKIP_GUIDE_TRANSITION) {
+            const loader = this._transitionLoader;
+            if (loader) {
+                await loader.handoffChestForResume(); // quiet handoff + TRANSITION_DONE (Pot unlock)
+            } else {
+                EventBus.instance.emit(GameEvents.TRANSITION_DONE);
+            }
+            EventBus.instance.emit(GameEvents.GAME_ENTRY_EFFECT);
+            await onReadyToReveal?.();
+            Log.d('[GameEntryController] enterFromExternalGuide → SKIP_GUIDE_TRANSITION (straight to game)');
+            return;
+        }
 
         const loader = this._transitionLoader;
         const transitionCtrl = loader ? await loader.ensureLoaded() : null;
@@ -470,11 +485,13 @@ export class GameEntryController extends Component {
         // 1) Gán hết data/BG trước — chưa show Transition
         await this.prepareGameRootBackground();
 
-        // 2) Preload Transition (chưa play)
+        // 2) Preload Transition (chỉ khi còn dùng intro fly)
         const loader = this._transitionLoader;
-        const transitionCtrl = loader ? await loader.ensureLoaded() : null;
+        const transitionCtrl = SKIP_GUIDE_TRANSITION
+            ? null
+            : (loader ? await loader.ensureLoaded() : null);
 
-        // 3) Verify lại ngay trước reveal (tránh bị overwrite trong lúc load Transition)
+        // 3) Verify lại ngay trước reveal
         await this._waitUntilGameRootAssigned();
 
         // 4) Hoàn tất state nhưng vẫn giữ GameRoot opacity=0.
@@ -489,7 +506,19 @@ export class GameEntryController extends Component {
         // GameManager nghe GUIDE_COMPLETE → GAME_READY
         EventBus.instance.emit(GameEvents.GUIDE_COMPLETE);
 
-        // 5) Transition cover trên cùng rồi mới cho Loading dismiss (promise resolve)
+        // 5) Transition cover — hoặc skip thẳng vào game
+        if (SKIP_GUIDE_TRANSITION) {
+            if (loader) {
+                await loader.handoffChestForResume();
+            } else {
+                EventBus.instance.emit(GameEvents.TRANSITION_DONE);
+            }
+            EventBus.instance.emit(GameEvents.GAME_ENTRY_EFFECT);
+            this._skipIntroPrepared = true;
+            Log.d('[GameEntryController] _enterSkipIntro → SKIP_GUIDE_TRANSITION');
+            return;
+        }
+
         if (transitionCtrl && loader) {
             loader.bringToFront();
             transitionCtrl.triggerGuideTransition();

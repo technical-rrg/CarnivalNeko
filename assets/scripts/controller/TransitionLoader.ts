@@ -18,6 +18,7 @@ import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { Log } from '../core/Logger';
 import { GameData } from '../data/GameData';
+import { SKIP_GUIDE_TRANSITION } from '../data/ServerConfig';
 import { GuideShellLoader } from '../core/GuideShellLoader';
 import { TransitionController } from './TransitionController';
 import { PotController } from './PotController';
@@ -144,8 +145,8 @@ export class TransitionLoader extends Component {
         void this.ensureLoaded().then((ctrl) => {
             if (!ctrl) return;
             this._wireTarget();
-            // Guide-first: enterFromExternalGuide trigger khi bắt đầu FadeIn
-            if (GameData.instance.guideFirstBoot) return;
+            // Guide-first / SKIP_GUIDE_TRANSITION: GameEntryController xử lý handoff
+            if (GameData.instance.guideFirstBoot || SKIP_GUIDE_TRANSITION) return;
             ctrl.triggerGuideTransition();
         });
     }

@@ -44,6 +44,11 @@ export const CLIENT_SPRITE_MAP: Record<number, string> = {
     [SymbolId.STICKY_YELLOW]:  'sticky_yellow',
     [SymbolId.STICKY_GREEN]:   'sticky_green',
     [SymbolId.PLUS_ONE_SPIN]:  'plus_one_spin',
+    // ─── Carnival Neko Trail (temp: reuse sticky art until trail_* assets ready) ───
+    [SymbolId.TRAIL_NORMAL]:   'trail_normal',
+    [SymbolId.TRAIL_BLUE]:     'trail_blue',
+    [SymbolId.TRAIL_RED]:      'trail_red',
+    [SymbolId.TRAIL_GREEN]:    'trail_green',
     // ─── Jackpot icons (Pick Game) ───
     [SymbolId.JP_IDLE]:        'jp_idle',
     [SymbolId.JP_MINI]:        'jp_mini',

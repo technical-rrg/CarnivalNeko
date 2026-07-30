@@ -34,6 +34,10 @@ const FEATURE_SYMBOLS = new Set([
     SymbolId.JP_MINOR,
     SymbolId.JP_MAJOR,
     SymbolId.JP_GRAND,
+    SymbolId.TRAIL_NORMAL,
+    SymbolId.TRAIL_BLUE,
+    SymbolId.TRAIL_RED,
+    SymbolId.TRAIL_GREEN,
 ]);
 
 export class WaysPayCalculator {

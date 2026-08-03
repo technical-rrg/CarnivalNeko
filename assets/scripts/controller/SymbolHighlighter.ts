@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SymbolHighlighter — Highlight symbol thắng bằng fillBlack overlay per reel.
  *
  * Thay vì vẽ đường payline, component này dim các symbol KHÔNG thắng bằng cách:
@@ -36,7 +36,7 @@
  *   [idx ..] winning visible symbols (nổi bật trên fillBlack)
  */
 
-import { _decorator, Component, Node, Prefab, UIOpacity, tween, Tween, Vec3, sp, instantiate, Color, Sprite, isValid, assetManager } from 'cc';
+import { _decorator, Component, Node, Prefab, UIOpacity, tween, Tween, Vec3, sp, instantiate, Color, Sprite, isValid, assetManager, CCString, CCFloat } from 'cc';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -138,7 +138,7 @@ export class SymbolHighlighter extends Component {
     paylineManagerNode: Node | null = null;
 
     @property({
-        type: [String],
+        type: [CCString],
         tooltip: 'Path Prefab Spine trong MainBundle, index = SymbolId.\n'
                + 'Để trống slot = dùng DEFAULT_SPINE_PREFAB_PATHS hoặc không có spine.\n'
                + 'VD: SymbolSpine/0 … SymbolSpine/12.\n'
@@ -147,21 +147,21 @@ export class SymbolHighlighter extends Component {
     spineEffectPrefabPaths: string[] = [];
 
     @property({
-        type: [Number],
+        type: [CCFloat],
         tooltip: 'Local position X cho mỗi spine effect node, index = SymbolId.\n'
                + 'Y mặc định = 0, chỉ cần thiết lập X.',
     })
     spineLocalPosX: number[] = [];
 
     @property({
-        type: [Number],
+        type: [CCFloat],
         tooltip: 'Local position Y cho mỗi spine effect node, index = SymbolId.\n'
                + 'Dùng khi cần lệch Y so với symbol node.',
     })
     spineLocalPosY: number[] = [];
 
     @property({
-        type: [Number],
+        type: [CCFloat],
         tooltip: 'TimeScale cố định cho mỗi spine effect node, index = SymbolId.\n'
                + '0 hoặc không set = tự tính từ highlightDuration (hành vi cũ).',
     })

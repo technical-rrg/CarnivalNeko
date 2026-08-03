@@ -10,6 +10,11 @@
  *   5. CARNIVAL_TRAIL_ONE_HIT → CarnivalPotBoard bounce
  *   6. CARNIVAL_TRAIL_FLY_DONE
  *
+ * ĐƯỜNG BAY (dạng dấu hỏi "?"):
+ *   Một cubic Bezier liên tục: từ Trail (dưới) vòng cung lên hơi cao hơn Pot rồi đổ xuống.
+ *   Tốc độ linear đều — không slow-start / tăng tốc giật.
+ *   Timing Normal/Quick/Turbo khớp Wild Trail (0.8 / 0.65 / 0.5)
+ *
  * SETUP EDITOR:
  *   1. Node "CarnivalTrailController" + gắn component
  *   2. Kéo 5 ReelController → reels
@@ -61,17 +66,48 @@ export class CarnivalTrailController extends Component {
     @property({ tooltip: 'Flip half duration (giây)' })
     flipHalfDuration: number = 0.12;
 
-    @property({ tooltip: 'Fly duration Normal (giây)' })
-    flyDurationNormal: number = 0.75;
+    @property({ tooltip: 'Thời gian particle bay Normal (giây) — khớp Wild Trail' })
+    flyDurationNormal: number = 0.8;
 
-    @property({ tooltip: 'Fly duration Quick' })
-    flyDurationQuick: number = 0.55;
+    @property({ tooltip: 'Thời gian particle bay Quick — khớp Wild Trail' })
+    flyDurationQuick: number = 0.65;
 
-    @property({ tooltip: 'Fly duration Turbo' })
-    flyDurationTurbo: number = 0.4;
+    @property({ tooltip: 'Thời gian particle bay Turbo — khớp Wild Trail' })
+    flyDurationTurbo: number = 0.5;
 
     @property({ tooltip: 'Scale particle bay' })
     flyScale: number = 1.0;
+
+    @property({
+        tooltip: 'Độ cao APEX phía trên Pot (world) — điểm đỉnh trước khi rơi xuống Pot.',
+    })
+    apexHeight: number = 110;
+
+    @property({
+        tooltip: 'Độ rộng vòng cung Bezier (tỉ lệ so với khoảng cách symbol→apex).\n'
+               + 'Nhẹ vừa đủ thành dấu hỏi — không vòng lố như Wild Trail.',
+        range: [0.15, 1.5, 0.05],
+    })
+    flyCurvature: number = 0.45;
+
+    @property({
+        tooltip: 'Khoảng cách tối thiểu (world) dùng để tính vòng cung.\n'
+               + 'Giữ thấp để đường bay không bị ép vòng quá rộng khi gần Pot.',
+    })
+    minFlyPathDistance: number = 180;
+
+    @property({
+        tooltip: 'Delay tối thiểu trước khi bắt đầu bay (giây) — chờ particle/trail seed tại Symbol.\n'
+               + 'Turbo/Quick sẽ tự nâng thêm để kịp thấy trail xuất phát từ Symbol.',
+    })
+    flyLaunchDelay: number = 0.06;
+
+    @property({
+        tooltip: 'Thời gian giữ particle sau khi chạm Pot (giây).\n'
+               + 'Chạm Pot → loop=false, dừng emit, để particle/trail diễn hết rồi mới destroy.\n'
+               + 'Thực tế lấy max(giá trị này, startLifetime + trailLife).',
+    })
+    particleFadeOutDuration: number = 1.2;
 
     private _pending: CarnivalTrailHit[] = [];
     private _flyingCount = 0;
@@ -211,6 +247,11 @@ export class CarnivalTrailController extends Component {
             .start();
     }
 
+    /**
+     * Bay dạng dấu hỏi "?" — một cubic Bezier liên tục, tốc độ đều (linear):
+     *   start (dưới) → vòng cung lên cao hơn Pot một chút → đổ xuống miệng Pot.
+     * Timing: Normal 0.8 / Quick 0.65 / Turbo 0.5.
+     */
     private _flyToPot(symbolNode: Node, hit: CarnivalTrailHit, onDone: () => void): void {
         const pot = this._potFor(hit.color);
         if (!pot?.isValid) {
@@ -225,7 +266,6 @@ export class CarnivalTrailController extends Component {
             return;
         }
 
-        // Child của CarnivalTrailController
         particle.setParent(this.node, false);
         this._activateTree(particle);
         particle.setSiblingIndex(this.node.children.length - 1);
@@ -237,51 +277,160 @@ export class CarnivalTrailController extends Component {
         symbolNode.getWorldPosition(start);
         pot.getWorldPosition(end);
 
-        // Đặt local pos qua UITransform của controller (ổn định hơn setWorldPosition thuần)
+        const apexH = Math.max(20, this.apexHeight);
+        const side = this._resolveFlySide(hit.reel);
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const dist = Math.max(Math.sqrt(dx * dx + dy * dy), this.minFlyPathDistance * 0.5, 1);
+        const bulge = dist * Math.abs(this.flyCurvature);
+
+        // CP1 gần Symbol — tangent đầu không quá lớn (Turbo dễ "nhảy" xa Symbol nếu CP1 xa)
+        const riseY = Math.max(start.y, end.y) + apexH * 1.35;
+        const cp1X = start.x + dx * 0.18 + side * bulge * 0.55;
+        const cp1Y = start.y + (riseY - start.y) * 0.45;
+
+        // CP2: neo phía trên Pot — phần thân "?" trước khi rơi xuống
+        const cp2X = end.x + side * bulge * 0.2;
+        const cp2Y = end.y + apexH;
+
         this._setWorldPosUnderSelf(particle, start);
         particle.setScale(this.flyScale, this.flyScale, 1);
 
         Log.e(
-            `[CarnivalTrail] FLY ${TrailColor[hit.color]} template="${this.particleTemplate?.name}" ` +
-            `from(${start.x.toFixed(0)},${start.y.toFixed(0)}) → (${end.x.toFixed(0)},${end.y.toFixed(0)})`
+            `[CarnivalTrail] FLY? ${TrailColor[hit.color]} ` +
+            `from(${start.x.toFixed(0)},${start.y.toFixed(0)}) ` +
+            `rise(${cp1X.toFixed(0)},${cp1Y.toFixed(0)}) ` +
+            `apex(${cp2X.toFixed(0)},${cp2Y.toFixed(0)}) ` +
+            `→ pot(${end.x.toFixed(0)},${end.y.toFixed(0)})`
         );
 
-        // Play particle sau 1 frame (processor sẵn)
+        // Play ngay tại Symbol + 1 frame sau (processor sẵn) — seed trail trước khi bay
+        this._playParticleSystems(particle);
         this.scheduleOnce(() => {
             if (particle.isValid) this._playParticleSystems(particle);
         }, 0);
 
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const dist = Math.max(120, Math.sqrt(dx * dx + dy * dy));
-        const side = hit.reel < 2 ? -1 : hit.reel > 2 ? 1 : (Math.random() < 0.5 ? -1 : 1);
-        const cp1 = new Vec3(start.x + dx * 0.25 + side * dist * 0.35, start.y + dy * 0.25 + dist * 0.2, 0);
-        const cp2 = new Vec3(start.x + dx * 0.65 + side * dist * 0.2, start.y + dy * 0.65 + dist * 0.15, 0);
-
         const flyProxy = { t: 0 };
         const pos = new Vec3();
-        const dur = this._flyDuration();
+        const totalDur = this._flyDuration();
+        const launchDelay = this._getLaunchDelay(totalDur);
+        const moveDur = Math.max(0.01, totalDur - launchDelay);
 
+        const updatePos = (rawT: number) => {
+            if (!particle.isValid) return;
+            // Linear — diễn đều sau khi đã hold tại Symbol
+            const t = Math.min(1, Math.max(0, rawT));
+            const u = 1 - t;
+            const uu = u * u;
+            const tt = t * t;
+            pos.x = uu * u * start.x + 3 * uu * t * cp1X + 3 * u * tt * cp2X + tt * t * end.x;
+            pos.y = uu * u * start.y + 3 * uu * t * cp1Y + 3 * u * tt * cp2Y + tt * t * end.y;
+            pos.z = 0;
+            this._setWorldPosUnderSelf(particle, pos);
+        };
+
+        updatePos(0);
+
+        // Hold tại Symbol suốt launchDelay — mỗi frame pin lại start (tránh drift / frame đầu lệch)
         tween(flyProxy)
-            .to(dur, { t: 1 }, {
-                easing: 'quadIn',
-                onUpdate: () => {
-                    if (!particle.isValid) return;
-                    const t = flyProxy.t;
-                    const u = 1 - t;
-                    pos.x = u * u * u * start.x + 3 * u * u * t * cp1.x + 3 * u * t * t * cp2.x + t * t * t * end.x;
-                    pos.y = u * u * u * start.y + 3 * u * u * t * cp1.y + 3 * u * t * t * cp2.y + t * t * t * end.y;
-                    pos.z = 0;
-                    this._setWorldPosUnderSelf(particle, pos);
-                },
+            .delay(launchDelay)
+            .call(() => {
+                if (particle.isValid) this._setWorldPosUnderSelf(particle, start);
+            })
+            .to(moveDur, { t: 1 }, {
+                easing: 'linear',
+                onUpdate: () => updatePos(flyProxy.t),
             })
             .call(() => {
-                if (particle.isValid) particle.destroy();
-                const idx = this._activeParticles.indexOf(particle);
-                if (idx >= 0) this._activeParticles.splice(idx, 1);
+                // Chạm Pot → không destroy ngay: loop=false, để particle diễn hết rồi mới hủy
+                this._beginParticleFadeOut(particle);
                 onDone();
             })
             .start();
+    }
+
+    /**
+     * Hold tại Symbol trước khi bay — Turbo giữ lâu hơn (tỉ lệ + tuyệt đối)
+     * để particle/trail kịp hiện ngay tại Symbol, không nhảy ra giữa đường.
+     */
+    private _getLaunchDelay(totalDur: number): number {
+        const mode = AutoSpinManager.instance.speedMode;
+        let minHold = this.flyLaunchDelay;
+        let maxFrac = 0.25;
+        switch (mode) {
+            case SpeedMode.TURBO:
+                minHold = Math.max(this.flyLaunchDelay, 0.14);
+                maxFrac = 0.35;
+                break;
+            case SpeedMode.QUICK:
+                minHold = Math.max(this.flyLaunchDelay, 0.09);
+                maxFrac = 0.3;
+                break;
+            default:
+                minHold = Math.max(this.flyLaunchDelay, 0.06);
+                maxFrac = 0.25;
+                break;
+        }
+        return Math.min(Math.max(0, minHold), totalDur * maxFrac);
+    }
+
+    /** Tắt emit nhưng giữ ParticleSystem playing để particle/trail tàn dần. */
+    private _stopParticleEmission(ps: ParticleSystem): void {
+        ps.loop = false;
+        if (ps.rateOverTime) {
+            ps.rateOverTime.mode = 0;
+            ps.rateOverTime.constant = 0;
+        }
+        if (ps.rateOverDistance) {
+            ps.rateOverDistance.mode = 0;
+            ps.rateOverDistance.constant = 0;
+        }
+        // Không stop()/clear() — Trail sẽ biến mất ngay nếu dừng simulate
+        if (!ps.isPlaying) {
+            ps.play();
+        }
+    }
+
+    private _estimateParticleFadeDelay(root: Node): number {
+        let maxLife = Math.max(0, this.particleFadeOutDuration);
+        for (const ps of root.getComponentsInChildren(ParticleSystem)) {
+            if (!ps.isValid) continue;
+            const startLife = ps.startLifetime?.constant ?? 0;
+            const trail = (ps as unknown as {
+                trailModule?: { enable?: boolean; lifeTime?: { constant?: number } };
+            }).trailModule;
+            const trailLife = (trail?.enable && trail.lifeTime?.constant) ? trail.lifeTime.constant : 0;
+            maxLife = Math.max(maxLife, startLife + trailLife + 0.15);
+        }
+        return maxLife;
+    }
+
+    private _beginParticleFadeOut(root: Node): void {
+        if (!root?.isValid) return;
+        root.active = true;
+        for (const ps of root.getComponentsInChildren(ParticleSystem)) {
+            if (!ps.isValid || !ps.enabled) continue;
+            this._stopParticleEmission(ps);
+        }
+        const delay = this._estimateParticleFadeDelay(root);
+        this.scheduleOnce(() => {
+            this._destroyParticle(root);
+        }, delay);
+    }
+
+    private _destroyParticle(root: Node): void {
+        const idx = this._activeParticles.indexOf(root);
+        if (idx >= 0) this._activeParticles.splice(idx, 1);
+        if (root?.isValid) root.destroy();
+    }
+
+    /** -1 trái / +1 phải màn hình. */
+    private _resolveFlySide(reelIndex: number): number {
+        const reelCount = this.reels.length > 0 ? this.reels.length : 5;
+        const center = Math.floor(reelCount / 2);
+        if (reelIndex < center) return -1;
+        if (reelIndex > center) return 1;
+        return Math.random() < 0.5 ? -1 : 1;
     }
 
     private _setWorldPosUnderSelf(node: Node, world: Vec3): void {
@@ -372,10 +521,22 @@ export class CarnivalTrailController extends Component {
             if (!ps.isValid || !ps.enabled) continue;
             try {
                 ps.loop = true;
-                ps.stop();
-                const maybeClear = (ps as unknown as { clear?: () => void }).clear;
-                if (maybeClear) maybeClear.call(ps);
-                ps.play();
+                if ('prewarm' in ps) {
+                    (ps as unknown as { prewarm: boolean }).prewarm = false;
+                }
+                const trail = (ps as unknown as {
+                    trailModule?: { enable?: boolean; _enable?: boolean };
+                }).trailModule;
+                const hasTrail = !!(trail?.enable ?? trail?._enable);
+                // Trail: không stop+clear — dễ làm ribbon nhảy lệch khỏi Symbol
+                if (hasTrail) {
+                    if (!ps.isPlaying) ps.play();
+                } else {
+                    ps.stop();
+                    const maybeClear = (ps as unknown as { clear?: () => void }).clear;
+                    if (maybeClear) maybeClear.call(ps);
+                    ps.play();
+                }
             } catch (err) {
                 Log.e('[CarnivalTrail] play particle failed:', err);
             }

@@ -237,8 +237,14 @@ export class TopUpReelController extends Component {
     /** Set symbols tĩnh tại centerIndex (dùng cho init khi vào TopUp) */
     setSymbols(centerIndex: number, forcedMidSymbol?: number, allowPlusOneVisual: boolean = false): void {
         this._showSymbolNodes();
-        const syms = this._getSymbolsAt(centerIndex).map(sym => this._sanitizeTopUpSymbol(sym, allowPlusOneVisual));
-        if (forcedMidSymbol != null) syms[1] = this._sanitizeTopUpSymbol(forcedMidSymbol, allowPlusOneVisual);
+        // Top/Bot luôn bỏ sticky; Mid chỉ cho Sticky xanh khi forced (land).
+        const syms = this._getSymbolsAt(centerIndex).map(sym =>
+            this._sanitizeTopUpSymbol(sym, allowPlusOneVisual, false),
+        );
+        if (forcedMidSymbol != null) {
+            const allowSticky = forcedMidSymbol === SymbolId.STICKY_GREEN;
+            syms[1] = this._sanitizeTopUpSymbol(forcedMidSymbol, allowPlusOneVisual, allowSticky);
+        }
         this._debugMidSymbolId = syms[1] ?? -1;
         for (let i = 0; i < this.symbolNodes.length; i++) {
             this._setSymbol(i, syms[i], true);
@@ -445,11 +451,9 @@ export class TopUpReelController extends Component {
         this._applyStickyScale(node, symId);
     }
 
-    /** Sticky vàng/xanh scale TOPUP_STICKY_SYMBOL_SCALE; symbol còn lại = 1. */
+    /** Carnival: chỉ Sticky xanh scale sticky; còn lại = 1. */
     private _applyStickyScale(node: Node, symId: number): void {
-        const s = (symId === SymbolId.STICKY_YELLOW || symId === SymbolId.STICKY_GREEN)
-            ? TOPUP_STICKY_SYMBOL_SCALE
-            : 1;
+        const s = (symId === SymbolId.STICKY_GREEN) ? TOPUP_STICKY_SYMBOL_SCALE : 1;
         node.setScale(s, s, 1);
     }
 
@@ -503,13 +507,15 @@ export class TopUpReelController extends Component {
         }
     }
 
+    /**
+     * Carnival: chỉ Sticky XANH sáng trắng trên reel.
+     * Symbol thường + Sticky vàng (nếu lỡ hiện) → tối.
+     */
     private _applySymbolColor(node: Node | null | undefined, symId: number): void {
         if (!node) return;
-        const color = (
-            symId === SymbolId.STICKY_YELLOW ||
-            symId === SymbolId.STICKY_GREEN ||
-            symId === SymbolId.PLUS_ONE_SPIN
-        ) ? LIT_SYMBOL_COLOR : DIM_SYMBOL_COLOR;
+        const color = (symId === SymbolId.STICKY_GREEN)
+            ? LIT_SYMBOL_COLOR
+            : DIM_SYMBOL_COLOR;
 
         const sprites = node.getComponentsInChildren(Sprite);
         for (const sprite of sprites) {
@@ -517,9 +523,26 @@ export class TopUpReelController extends Component {
         }
     }
 
-    private _sanitizeTopUpSymbol(symId: number, allowPlusOneVisual: boolean): number {
-        if (symId !== SymbolId.PLUS_ONE_SPIN || allowPlusOneVisual) return symId;
-        return this._fallbackNonBonusSymbol() ?? SymbolId.MAJOR_CLEOPATRA;
+    /**
+     * Carnival: không để Sticky vàng/xanh nằm sẵn trên reel filler.
+     * Green chỉ hiện khi result force mid (land) — truyền allowStickyVisual=true.
+     */
+    private _sanitizeTopUpSymbol(
+        symId: number,
+        allowPlusOneVisual: boolean,
+        allowStickyVisual: boolean = false,
+    ): number {
+        if (!allowStickyVisual
+            && (symId === SymbolId.STICKY_YELLOW
+                || symId === SymbolId.STICKY_GREEN
+                || symId === SymbolId.STICKY_RED
+                || symId === SymbolId.JP_GRAND)) {
+            return this._fallbackNonBonusSymbol() ?? SymbolId.MAJOR_CLEOPATRA;
+        }
+        if (symId === SymbolId.PLUS_ONE_SPIN && !allowPlusOneVisual) {
+            return this._fallbackNonBonusSymbol() ?? SymbolId.MAJOR_CLEOPATRA;
+        }
+        return symId;
     }
 
     private _fallbackNonBonusSymbol(): number | undefined {

@@ -419,7 +419,6 @@ export class MockDataProvider {
         const stickyMap = data.stickyCells;
         const newGreens: StickyCell[] = [];
         let landedGreen = false;
-        let spinWin = 0;
 
         // Spawn Green trên ô trống (~28%)
         for (let reel = 0; reel < MATSURI_COL_COUNT; reel++) {
@@ -429,14 +428,12 @@ export class MockDataProvider {
                 if (Math.random() >= 0.28) continue;
                 const credit = pickMatsuriCredit(totalBet);
                 landedGreen = true;
-                const cell: StickyCell = {
+                newGreens.push({
                     reel,
                     row,
                     symbolId: SymbolId.STICKY_GREEN,
                     credit,
-                };
-                newGreens.push(cell);
-                spinWin += credit;
+                });
             }
         }
 
@@ -445,15 +442,26 @@ export class MockDataProvider {
         // remain: GM đã −1 trước request → không green = giữ data.respinRemaining; green = reset 3
         let remainRespinCount = landedGreen ? MATSURI_SPIN_COUNT : Math.max(0, data.respinRemaining);
 
+        // Design: khi có Green → acquire tổng Credit của mọi Gold đang trên grid (+ Grand nếu full)
+        let collectWin = 0;
+        if (landedGreen) {
+            for (const c of stickyMap.values()) {
+                if (c.symbolId === SymbolId.STICKY_YELLOW && (c.credit ?? 0) > 0) {
+                    collectWin += c.credit ?? 0;
+                }
+            }
+        }
+
         const filledAfter = stickyMap.size + newGreens.length;
         const fullGrid = filledAfter >= cellCount;
         if (fullGrid) {
             const grandMult = data.config.jackpotMultipliers?.GRAND ?? 1000;
-            spinWin += grandMult * totalBet;
+            collectWin += grandMult * totalBet;
             remainRespinCount = 0;
             Log.e(`[Matsuri MOCK] FULL GRID 5×${rows} → Grand + end`);
         }
 
+        const spinWin = collectWin;
         const nextStage = (fullGrid || remainRespinCount <= 0)
             ? SlotStageType.TOPUP_SPIN_END
             : SlotStageType.TOPUP_SPIN;
@@ -464,7 +472,7 @@ export class MockDataProvider {
 
         Log.e(
             `[Matsuri MOCK] rows=${rows} newGreen=${newGreens.length} filled=${filledAfter}/${cellCount}` +
-            ` remain=${remainRespinCount} win=${spinWin} next=${nextStage}`
+            ` remain=${remainRespinCount} collect=${spinWin} next=${nextStage}`
         );
 
         return {

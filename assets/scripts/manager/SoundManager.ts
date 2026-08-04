@@ -24,6 +24,7 @@ const LAZY_AUDIO_PATHS: Record<string, string> = {
     mxNormalLoop: 'sound/mx_normal_loop',
     sxAmbience: 'sound/sx_ambience',
     sxUiClick: 'sound/sx_ui_click',
+    sxBuyBonusButton: 'sound/sx_buy_bonus_button',
     sxReelSpin: 'sound/sx_reel_spin',
     mxBonusIdle: 'sound/mx_bonus_idle',
     mxBonusLoop: 'sound/mx_bonus_loop',
@@ -123,6 +124,7 @@ export class SoundManager extends Component {
 
     @property({ type: AudioClip }) sxAmbience: AudioClip | null = null;
     @property({ type: AudioClip }) sxUiClick: AudioClip | null = null;
+    @property({ type: AudioClip }) sxBuyBonusButton: AudioClip | null = null;
     @property({ type: AudioClip }) sxReelSpin: AudioClip | null = null;
     @property({ type: AudioClip }) sxReelSpinQuickTurbo: AudioClip | null = null;
     @property({ type: AudioClip }) sxReelLand1: AudioClip | null = null;
@@ -278,6 +280,17 @@ export class SoundManager extends Component {
         bus.on(GameEvents.RED_CREDIT_UPDATED, this._onRedCreditUpdated, this);
         bus.on(GameEvents.TOPUP_ABSORB_START, this._onTopUpAbsorbStart, this);
         bus.on(GameEvents.FREE_SPIN_GOLD_COIN_LAND, this._onGoldCoinLand, this);
+
+        bus.on(GameEvents.BUY_BONUS_REQUEST, this._onBuyBonusRequest, this);
+        bus.on(GameEvents.BUY_BONUS_DEACTIVATE, this._onBuyBonusDeactivate, this);
+    }
+
+    private _onBuyBonusRequest(): void {
+        this._playSfxProp('sxBuyBonusButton');
+    }
+
+    private _onBuyBonusDeactivate(): void {
+        this._playSfxProp('sxBuyBonusButton');
     }
 
     private _loadMuteSettings(): void {
@@ -1182,7 +1195,7 @@ export class SoundManager extends Component {
     }
 
     playBuyBonusButton(): void {
-        this.playButtonClick();
+        this._playSfxProp('sxBuyBonusButton');
     }
 
     playNormalIntro(): void {

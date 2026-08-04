@@ -48,7 +48,7 @@ export type MockCarnivalFeatureMode =
     | 'cycle';
 
 /** Đổi mode để test: 'cycle' = xoay đủ loại feature mỗi lần trigger. */
-export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'none';
+export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'blue';
 
 /** Khi mode='auto': sau bao nhiêu spin có Trail thì force trigger 1 lần. */
 export const MOCK_CARNIVAL_FEATURE_EVERY_N_SPINS: number = 2;

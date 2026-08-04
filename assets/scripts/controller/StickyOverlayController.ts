@@ -134,6 +134,19 @@ export class StickyOverlayController extends Component {
     private _goldLandBounceEndMs: number = 0;
     /** Matsuri: đang flip Green→Gold — _refreshAll không đụng slot này. */
     private _matsuriFlippingKeys: Set<string> = new Set();
+    /** Matsuri: Green đã land, chờ collect Gold xong mới flip. */
+    private _matsuriPendingFlipKeys: Set<string> = new Set();
+    private _matsuriFlipDonePending = 0;
+    /**
+     * Matsuri seed: hiện Gold tĩnh khi orb land (không nhún từng cái).
+     * MatsuriEffect sẽ nhún lần lượt sau khi bắn xong hết.
+     */
+    private _matsuriDeferGoldLandBounce = false;
+
+    /** Bật khi đang seed — Gold chỉ hiện, không land-bounce. */
+    setMatsuriDeferGoldLandBounce(defer: boolean): void {
+        this._matsuriDeferGoldLandBounce = defer;
+    }
 
     /** true trong _refreshAll lần đầu vào TopUp — nhún chậm + stagger. */
     private _isEnteringTopUp: boolean = false;
@@ -152,6 +165,12 @@ export class StickyOverlayController extends Component {
     private static readonly POOL_ROWS = 5;
 
     get rowCount(): number { return this._rowCount; }
+
+    /** Public: vị trí coin slot theo reel/row (Matsuri collect fly). */
+    getCoinSlot(reel: number, row: number): Node | null {
+        const idx = this._cellIdx(reel, row);
+        return this.coinSlots[idx] ?? null;
+    }
 
     private _cellIdx(reel: number, row: number): number {
         return reel * this._rowCount + row;
@@ -293,6 +312,7 @@ export class StickyOverlayController extends Component {
         EventBus.instance.on(GameEvents.FREE_SPIN_GOLD_END, this._onTopUpEnd,     this);
         EventBus.instance.on(GameEvents.FREE_SPIN_END,       this._onTopUpEnd,     this);
         EventBus.instance.on(GameEvents.REELS_START_SPIN,   this._onReelsStartSpin, this);
+        EventBus.instance.on(GameEvents.MATSURI_COLLECT_DONE, this._onMatsuriCollectDone, this);
 
         // Defer inactive: nếu set active=false ngay trong onLoad, child TopUpManager
         // có thể chưa kịp onLoad khi lazy-instantiate Prefab.
@@ -314,6 +334,7 @@ export class StickyOverlayController extends Component {
         EventBus.instance.off(GameEvents.FREE_SPIN_GOLD_END, this._onTopUpEnd,     this);
         EventBus.instance.off(GameEvents.FREE_SPIN_END,       this._onTopUpEnd,     this);
         EventBus.instance.off(GameEvents.REELS_START_SPIN,   this._onReelsStartSpin, this);
+        EventBus.instance.off(GameEvents.MATSURI_COLLECT_DONE, this._onMatsuriCollectDone, this);
     }
 
     // ── EVENT HANDLERS ─────────────────────────────────────────────────────────
@@ -393,10 +414,13 @@ export class StickyOverlayController extends Component {
         this._fadeInOverlay();
         const isMatsuri = GameData.instance.currentMode === 'matsuri';
         if (isMatsuri) {
-            // Matsuri: không stagger bounce — coin hiện sẵn sau fade overlay
+            // Matsuri enter: grid trống — Start Gold chỉ hiện khi seed orb land
             this.alignPositionsFromTopUpManager();
-            this._refreshAll(false, false);
-            Log.d('[StickyOverlay] Matsuri enter — static coins (no stagger bounce)');
+            this._previouslyActiveSlots.clear();
+            this._matsuriPendingFlipKeys.clear();
+            this._matsuriFlippingKeys.clear();
+            this._hideAll();
+            Log.d('[StickyOverlay] Matsuri enter — blank overlay (chờ seed)');
             return;
         }
         this._isEnteringTopUp = true;
@@ -443,10 +467,63 @@ export class StickyOverlayController extends Component {
         this._topUpSpinCounter = 0;
         this._goldLandBounceEndMs = 0;
         this._matsuriFlippingKeys.clear();
+        this._matsuriPendingFlipKeys.clear();
+        this._matsuriFlipDonePending = 0;
         this._deferEnterAnim = false;
         this._pendingEnterAnim = false;
         this._enterAnimPlayed = false;
         this.node.active = false;
+    }
+
+    /** Collect Gold xong → flip mọi Green đang pending. */
+    private _onMatsuriCollectDone(): void {
+        if (GameData.instance.currentMode !== 'matsuri') {
+            EventBus.instance.emit(GameEvents.MATSURI_FLIP_DONE);
+            return;
+        }
+
+        const keys = [...this._matsuriPendingFlipKeys];
+        this._matsuriPendingFlipKeys.clear();
+
+        if (keys.length === 0) {
+            // Có thể Green chưa kịp refresh — quét stickyCells
+            for (const [key, cell] of GameData.instance.stickyCells) {
+                if (cell.symbolId === SymbolId.STICKY_GREEN) keys.push(key);
+            }
+        }
+
+        if (keys.length === 0) {
+            Log.e('[StickyOverlay] MATSURI_COLLECT_DONE — no Green to flip');
+            EventBus.instance.emit(GameEvents.MATSURI_FLIP_DONE);
+            return;
+        }
+
+        this._matsuriFlipDonePending = keys.length;
+        Log.e(`[StickyOverlay] flip ${keys.length} Green→Gold after collect`);
+
+        for (const key of keys) {
+            const [reelStr, rowStr] = key.split('-');
+            const reel = parseInt(reelStr, 10);
+            const row = parseInt(rowStr, 10);
+            const idx = this._cellIdx(reel, row);
+            const slotNode = this.coinSlots[idx];
+            const cell = GameData.instance.stickyCells.get(key);
+            if (!slotNode || !cell) {
+                this._onOneMatsuriFlipDone();
+                continue;
+            }
+            // Green trước flip: ẩn CreditLabel; credit thật áp khi lật ra Gold
+            this._applyCoin(slotNode, SymbolId.STICKY_GREEN, 0);
+            slotNode.active = true;
+            this._playMatsuriGreenFlipToGold(slotNode, key, idx, cell.credit ?? 0);
+        }
+    }
+
+    private _onOneMatsuriFlipDone(): void {
+        this._matsuriFlipDonePending = Math.max(0, this._matsuriFlipDonePending - 1);
+        if (this._matsuriFlipDonePending <= 0) {
+            EventBus.instance.emit(GameEvents.MATSURI_FLIP_DONE);
+        }
     }
 
     // ── CORE LOGIC ─────────────────────────────────────────────────────────────
@@ -511,17 +588,26 @@ export class StickyOverlayController extends Component {
                 if (this._matsuriFlippingKeys.has(key)) {
                     continue;
                 }
+                // Đang chờ collect → giữ Green, không refresh đè
+                if (this._matsuriPendingFlipKeys.has(key) && cell.symbolId === SymbolId.STICKY_GREEN) {
+                    newActiveSlots.add(key);
+                    continue;
+                }
 
                 // Detect if this is a NEW coin (wasn't in previous set)
                 const isNewCoin = !this._previouslyActiveSlots.has(key);
                 // TopUp: Yellow/Green mới chờ absorb → credit=0 tạm.
-                // Matsuri Gold(=YELLOW)/Green: hiện credit ngay, không absorb.
+                // Matsuri Green: ẩn credit đến khi flip → Gold; Gold hiện credit ngay.
                 const isMatsuri = GameData.instance.currentMode === 'matsuri';
                 const isAbsorbTarget = !isMatsuri && isNewCoin && (
                     cell.symbolId === SymbolId.STICKY_YELLOW ||
                     cell.symbolId === SymbolId.STICKY_GREEN
                 );
-                const creditToShow = isAbsorbTarget ? 0 : (cell.credit ?? 0);
+                const isMatsuriGreenPending =
+                    isMatsuri && cell.symbolId === SymbolId.STICKY_GREEN;
+                const creditToShow = (isAbsorbTarget || isMatsuriGreenPending)
+                    ? 0
+                    : (cell.credit ?? 0);
                 if (idx < 3 || cell.symbolId !== SymbolId.STICKY_RED) {
                     Log.e(
                         `[TOPUP-ENTER-CHECK][OVERLAY] idx=${idx} node=${slotNode.name} key=${key}` +
@@ -557,24 +643,31 @@ export class StickyOverlayController extends Component {
 
                 // Fade in + Bounce: chỉ cho coin MỚI hoặc lần đầu mở (fadeOnlyNew=false)
                 if (!fadeOnlyNew || isNewCoin) {
-                    // Matsuri Green land: hiện xanh → flip sang vàng (không jump Y)
+                    // Matsuri Green land: hiện xanh + chờ collect Gold → rồi mới flip
                     if (isMatsuri && isNewCoin && cell.symbolId === SymbolId.STICKY_GREEN) {
                         const op = slotNode.getComponent(UIOpacity)
                             ?? slotNode.addComponent(UIOpacity);
                         Tween.stopAllByTarget(op);
                         op.opacity = 255;
-                        this._playMatsuriGreenFlipToGold(slotNode, key, idx, creditToShow);
+                        this._matsuriPendingFlipKeys.add(key);
+                        this._playMatsuriGreenLandOnly(slotNode, idx);
                         continue;
                     }
 
-                    // Matsuri Gold (start coins / đã flip): không nhún Y
+                    // Matsuri Gold mới (seed / spin land / sau flip)
                     if (isMatsuri && isNewCoin && cell.symbolId === SymbolId.STICKY_YELLOW) {
                         const op = slotNode.getComponent(UIOpacity)
                             ?? slotNode.addComponent(UIOpacity);
                         Tween.stopAllByTarget(op);
                         op.opacity = 255;
-                        this._applyBaseScale(slotNode, cell.symbolId);
                         this._alignSlotToTopUpCell(idx);
+                        if (this._matsuriDeferGoldLandBounce) {
+                            // Seed đang bắn: hiện tĩnh, chờ highlight lần lượt sau khi đủ grid
+                            const base = this._getBaseScale(cell.symbolId);
+                            slotNode.setScale(base, base, 1);
+                        } else {
+                            this._playMatsuriGoldLandBounce(slotNode, cell.symbolId);
+                        }
                         continue;
                     }
 
@@ -831,9 +924,19 @@ export class StickyOverlayController extends Component {
         return { labelNode, sn };
     }
 
-    /** Red luôn hiện label; Yellow/Green chỉ hiện khi đã có credit (sau absorb). */
+    /**
+     * Red: luôn hiện label.
+     * Matsuri Green (chưa flip): không hiện CreditLabel — chỉ hiện sau khi lật thành Gold.
+     * Yellow / TopUp Green: hiện khi credit > 0.
+     */
     private _shouldShowCreditLabel(symbolId: number, credit: number): boolean {
         if (symbolId === SymbolId.STICKY_RED) return true;
+        if (
+            symbolId === SymbolId.STICKY_GREEN
+            && GameData.instance.currentMode === 'matsuri'
+        ) {
+            return false;
+        }
         return credit > 0;
     }
 
@@ -857,7 +960,7 @@ export class StickyOverlayController extends Component {
         // ★ Giữ nguyên scale cho coin đã có (existing) — new coin set base scale qua _playCoinBounce.
 
         // ── Credit label (SpriteNumber trên child "CreditLabel") ──
-        // Red: luôn hiện label (kể cả credit=0). Yellow/Green: ẩn cho đến khi absorb xong.
+        // Red: luôn hiện. Matsuri Green: ẩn đến khi flip Gold. Yellow: credit > 0.
         const displayCredit = credit > 0 ? credit : safeLastCredit;
         const shouldActive  = this._shouldShowCreditLabel(symbolId, displayCredit);
         const { labelNode, sn } = this._resolveCreditLabel(slotNode);
@@ -978,9 +1081,22 @@ export class StickyOverlayController extends Component {
         slotNode.setWorldPosition(reel.getMidRestWorldPosition());
     }
 
+    /** Matsuri: Gold vừa seed/land — nhún giống TopUp sticky handoff. */
+    private _playMatsuriGoldLandBounce(slotNode: Node, symbolId: number): void {
+        this._playCoinBounce(slotNode, symbolId, false, true);
+    }
+
+    /** Matsuri: Green vừa land — nhún TopUp sticky, chưa flip; ẩn CreditLabel. */
+    private _playMatsuriGreenLandOnly(slotNode: Node, idx: number): void {
+        this._alignSlotToTopUpCell(idx);
+        slotNode.setRotationFromEuler(0, 0, 0);
+        const { labelNode } = this._resolveCreditLabel(slotNode);
+        if (labelNode) labelNode.active = false;
+        this._playCoinBounce(slotNode, SymbolId.STICKY_GREEN, false, true);
+    }
+
     /**
-     * Matsuri: hiện Green trên overlay → squeeze flip sang Gold.
-     * Không nhảy Y (tránh lệch vị trí đến spin sau).
+     * Matsuri: squeeze flip Green → Gold (sau khi collect Gold xong).
      */
     private _playMatsuriGreenFlipToGold(
         slotNode: Node,
@@ -989,6 +1105,7 @@ export class StickyOverlayController extends Component {
         credit: number,
     ): void {
         this._matsuriFlippingKeys.add(key);
+        this._matsuriPendingFlipKeys.delete(key);
         Tween.stopAllByTarget(slotNode);
         this._alignSlotToTopUpCell(idx);
         slotNode.setRotationFromEuler(0, 0, 0);
@@ -996,19 +1113,20 @@ export class StickyOverlayController extends Component {
         const greenS = this._getBaseScale(SymbolId.STICKY_GREEN);
         const goldS = this._getBaseScale(MATSURI_GOLD_SYMBOL);
         const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
-        const landDur = 0.12 * m;
-        const holdDur = 0.1 * m;
+        const holdDur = 0.06 * m;
         const flipDur = 0.14 * m;
 
         SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
 
-        slotNode.setScale(greenS * TOPUP_STICKY_SYMBOL_SCALE, greenS * TOPUP_STICKY_SYMBOL_SCALE, 1);
+        slotNode.setScale(greenS, greenS, 1);
         tween(slotNode)
-            .to(landDur, { scale: new Vec3(greenS, greenS, 1) }, { easing: 'backOut' })
             .delay(holdDur)
             .to(flipDur, { scale: new Vec3(0.02, greenS, 1) }, { easing: 'sineIn' })
             .call(() => {
-                if (!slotNode?.isValid) return;
+                if (!slotNode?.isValid) {
+                    this._onOneMatsuriFlipDone();
+                    return;
+                }
                 this._applyCoin(slotNode, MATSURI_GOLD_SYMBOL, credit);
                 const cell = GameData.instance.stickyCells.get(key);
                 if (cell) {
@@ -1020,11 +1138,13 @@ export class StickyOverlayController extends Component {
             })
             .to(flipDur, { scale: new Vec3(goldS, goldS, 1) }, { easing: 'sineOut' })
             .call(() => {
-                if (!slotNode?.isValid) return;
-                this._alignSlotToTopUpCell(idx);
-                slotNode.setScale(goldS, goldS, 1);
-                slotNode.setRotationFromEuler(0, 0, 0);
+                if (slotNode?.isValid) {
+                    this._alignSlotToTopUpCell(idx);
+                    slotNode.setScale(goldS, goldS, 1);
+                    slotNode.setRotationFromEuler(0, 0, 0);
+                }
                 this._matsuriFlippingKeys.delete(key);
+                this._onOneMatsuriFlipDone();
             })
             .start();
     }

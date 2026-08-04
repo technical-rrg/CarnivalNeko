@@ -321,11 +321,11 @@ export class TopUpManager extends Component {
         }
         this.initFromGameData();
 
+        const isMatsuri = GameData.instance.currentMode === 'matsuri';
         const lastResp = GameData.instance.lastSpinResponse;
         const lockedIndices = new Set<number>();
 
-        // Lock reels có coin từ stickyCells.
-        // TopUp reels trong Editor sắp xếp 1:1 với StickyOverlay: idx = reel*3+row.
+        // Lock ô đã có sticky (Matsuri enter: stickyCells rỗng).
         const cells = GameData.instance.stickyCells;
         for (const [key, cell] of cells) {
             const [reelStr, rowStr] = key.split('-');
@@ -336,48 +336,33 @@ export class TopUpManager extends Component {
             if (!topUpReel) continue;
 
             const type = this._symbolIdToTopupType(cell.symbolId);
-            if (idx < 3 || cell.symbolId !== SymbolId.STICKY_RED) {
-                Log.e(
-                    `[TOPUP-ENTER-CHECK][TOPUP-REEL] key=${key} idx=${idx}` +
-                    ` symbol=${SymbolId[cell.symbolId] ?? cell.symbolId} type=${type}` +
-                    ` credit=${cell.credit ?? 0}`
-                );
-            }
-            if (type !== TopupReelType.NONE) {
+            if (type === TopupReelType.NONE) continue;
+
+            if (isMatsuri) {
+                topUpReel.blockInPlace();
+                topUpReel.hideForOverlayResult();
+            } else {
                 topUpReel.applyStickyResult(type, cell.credit ?? 0);
-                lockedIndices.add(idx);
             }
+            lockedIndices.add(idx);
         }
 
-        // Set symbols cho các reel trống
+        // Ô trống: symbol thường (màu tối). Sanitize bỏ sticky vàng/xanh trên reel.
         for (let i = 0; i < this.cellCount; i++) {
             if (lockedIndices.has(i)) continue;
             const reel = this.reels[i];
             if (!reel) continue;
             const serverIdx = this._topUpIdxToServerIdx(i);
-            const slot = lastResp?.topupReel?.[serverIdx];
+            const slot = isMatsuri ? undefined : lastResp?.topupReel?.[serverIdx];
             const idx = slot?.index ?? Math.floor(Math.random() * (reel['_strip'].length || 1));
-            const stripMidSymbol = reel.getSymbolAtIndex(idx);
-            const forcedMidSymbol = this._isTopUpSpecialSymbol(stripMidSymbol)
-                ? this._fallbackNonBonusSymbol(reel)
-                : undefined;
-            if (i < 3) {
-                Log.e(
-                    `[TOPUP-ENTER-CHECK][TOPUP-REEL] free idx=${i}` +
-                    ` serverIdx=${serverIdx} slotType=${slot?.type ?? 'n/a'}` +
-                    ` slotIndex=${slot?.index ?? 'n/a'} setIndex=${idx}` +
-                    ` stripMid=${stripMidSymbol == null ? 'none' : (SymbolId[stripMidSymbol] ?? stripMidSymbol)}` +
-                    ` forcedMid=${forcedMidSymbol == null ? 'none' : (SymbolId[forcedMidSymbol] ?? forcedMidSymbol)}`
-                );
-            }
-            reel.setSymbols(idx, forcedMidSymbol, false);
-            if (i < 3) {
-                const childStates = reel.symbolNodes.map((node, childIdx) => `${childIdx}:${node ? (node.active ? 1 : 0) : 'null'}`).join(',');
-                Log.e(`[TOPUP-ENTER-CHECK][TOPUP-REEL] active idx=${i} node=${reel.node.active ? 1 : 0} symbols=${childStates}`);
-            }
+            const forcedMid = this._fallbackNonBonusSymbol(reel);
+            reel.setSymbols(idx, forcedMid, false);
         }
 
-        Log.d(`[TopUpManager] _onTopUpStart — ${lockedIndices.size} reels locked (coins), ${this.cellCount - lockedIndices.size} reels free`);
+        Log.e(
+            `[TopUpManager] _onTopUpStart mode=${isMatsuri ? 'matsuri' : 'topup'} ` +
+            `locked=${lockedIndices.size} free=${this.cellCount - lockedIndices.size} (reel = normal dim symbols)`,
+        );
     }
 
     /** Map SymbolId (STICKY_RED/YELLOW/GREEN/JP_GRAND) → TopupReelType */
@@ -397,6 +382,13 @@ export class TopUpManager extends Component {
         // ★ PLUS_ONE_SPIN KHÔNG lock reel — chỉ hiển thị tạm thời trên overlay
         //    Reel vẫn phải quay được ở lượt tiếp theo
         if (symbolId === SymbolId.PLUS_ONE_SPIN) {
+            return;
+        }
+
+        // Matsuri: chỉ lock + ẩn reel — coin hiện trên StickyOverlay (tránh vàng/xanh dưới overlay)
+        if (GameData.instance.currentMode === 'matsuri') {
+            topUpReel.blockInPlace();
+            topUpReel.hideForOverlayResult();
             return;
         }
 

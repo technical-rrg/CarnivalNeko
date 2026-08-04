@@ -1,0 +1,62 @@
+
+Anim-button-buybonus.png
+size: 475, 849
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+20260414_2335_Image Generation_remix_01kp6dfvjcfh0tkpc761e9t32k
+  rotate: true
+  xy: 303, 486
+  size: 180, 171
+  orig: 180, 171
+  offset: 0, 0
+  index: -1
+20260414_2335_Image Generation_remix_01kp6dfvjcfh0tkpc761e9t32k - buy-bonus
+  rotate: true
+  xy: 303, 668
+  size: 180, 171
+  orig: 180, 171
+  offset: 0, 0
+  index: -1
+Cancel
+  rotate: false
+  xy: 303, 328
+  size: 151, 65
+  orig: 151, 65
+  offset: 0, 0
+  index: -1
+Cancel-shine
+  rotate: false
+  xy: 1, 548
+  size: 300, 300
+  orig: 300, 300
+  offset: 0, 0
+  index: -1
+Group 5
+  rotate: false
+  xy: 303, 395
+  size: 135, 89
+  orig: 135, 89
+  offset: 0, 0
+  index: -1
+buybonus-shine
+  rotate: false
+  xy: 1, 246
+  size: 300, 300
+  orig: 300, 300
+  offset: 0, 0
+  index: -1
+highlight
+  rotate: true
+  xy: 237, 1
+  size: 243, 234
+  orig: 243, 234
+  offset: 0, 0
+  index: -1
+highlight - buybonus
+  rotate: true
+  xy: 1, 1
+  size: 243, 234
+  orig: 243, 234
+  offset: 0, 0
+  index: -1

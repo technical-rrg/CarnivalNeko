@@ -28,6 +28,7 @@ import { SlotMachineController } from './SlotMachineController';
 import { StickyOverlayController } from './StickyOverlayController';
 import { TopUpManager } from './TopUpManager';
 import { TopUpAbsorbEffect } from './TopUpAbsorbEffect';
+import { MatsuriEffect } from './MatsuriEffect';
 
 const { ccclass, property } = _decorator;
 
@@ -55,6 +56,14 @@ export class StickyOverlayLoader extends Component {
         tooltip: '(Optional) TopUpAbsorbEffect trên Base — wire stickyOverlay sau khi load.',
     })
     absorbEffect: TopUpAbsorbEffect | null = null;
+
+    @property({
+        type: MatsuriEffect,
+        tooltip:
+            'MatsuriEffect — GẮN 1 LẦN trên node này, gán seedSourceNode + collectTargetNode tại đó.\n' +
+            'Để trống → auto-add MatsuriEffect trên node loader.',
+    })
+    matsuriEffect: MatsuriEffect | null = null;
 
     @property({
         tooltip: 'Path Prefab trong MainBundle (không extension). Mặc định: StickyOverlay',
@@ -209,11 +218,22 @@ export class StickyOverlayLoader extends Component {
         this._overlay?.bindSlotMachine(smc);
         this._topUpManager?.bindSlotMachine(smc);
 
-        if (this.absorbEffect) {
-            this.absorbEffect.bindStickyOverlay(this._overlay);
-        } else {
-            const absorb = this.node.scene?.getComponentInChildren(TopUpAbsorbEffect) ?? null;
-            absorb?.bindStickyOverlay(this._overlay);
+        const absorb = this.absorbEffect
+            ?? this.node.scene?.getComponentInChildren(TopUpAbsorbEffect)
+            ?? null;
+        absorb?.bindStickyOverlay(this._overlay);
+
+        // Một class MatsuriEffect — gán node tại Inspector của chính nó
+        let matsuri = this.matsuriEffect
+            ?? this.node.getComponent(MatsuriEffect)
+            ?? this.node.scene?.getComponentInChildren(MatsuriEffect)
+            ?? null;
+        if (!matsuri) {
+            matsuri = this.node.addComponent(MatsuriEffect);
+            this.matsuriEffect = matsuri;
+            Log.e('[StickyOverlayLoader] auto-add MatsuriEffect — gán seedSourceNode + collectTargetNode trên component này');
         }
+        matsuri.bindStickyOverlay(this._overlay);
+        matsuri.topUpAbsorbEffect = absorb;
     }
 }

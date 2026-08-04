@@ -68,19 +68,18 @@ export function pickMatsuriCredit(totalBet: number, rng: () => number = Math.ran
 }
 
 /**
- * Đặt ngẫu nhiên `startCoins` ô Gold lúc vào Matsuri.
- * Mỗi Gold có credit label (pickMatsuriCredit × totalBet).
+ * Chọn ngẫu nhiên vị trí Start Gold (không ghi stickyCells).
+ * Dùng cho anim seed bay vào grid trước khi hiện coin.
  */
-export function seedMatsuriStartCoins(
-    stickyCells: Map<string, StickyCell>,
+export function pickMatsuriStartCoinCells(
     rows: number,
     startCoins: number,
     totalBet: number,
+    rng: () => number = Math.random,
 ): StickyCell[] {
     const r = clampMatsuriRows(rows);
     const total = matsuriCellCount(r);
     const count = Math.max(0, Math.min(startCoins, total));
-    stickyCells.clear();
 
     const keys: string[] = [];
     for (let reel = 0; reel < MATSURI_COL_COUNT; reel++) {
@@ -88,26 +87,37 @@ export function seedMatsuriStartCoins(
             keys.push(`${reel}-${row}`);
         }
     }
-    // Fisher–Yates shuffle
     for (let i = keys.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(rng() * (i + 1));
         [keys[i], keys[j]] = [keys[j], keys[i]];
     }
 
     const placed: StickyCell[] = [];
     for (let i = 0; i < count; i++) {
         const [reelStr, rowStr] = keys[i].split('-');
-        const reel = parseInt(reelStr, 10);
-        const row = parseInt(rowStr, 10);
-        const credit = pickMatsuriCredit(totalBet);
-        const cell: StickyCell = {
-            reel,
-            row,
+        placed.push({
+            reel: parseInt(reelStr, 10),
+            row: parseInt(rowStr, 10),
             symbolId: MATSURI_GOLD_SYMBOL,
-            credit,
-        };
-        stickyCells.set(keys[i], cell);
-        placed.push(cell);
+            credit: pickMatsuriCredit(totalBet, rng),
+        });
+    }
+    return placed;
+}
+
+/**
+ * Đặt ngẫu nhiên `startCoins` ô Gold vào stickyCells ngay (không anim).
+ */
+export function seedMatsuriStartCoins(
+    stickyCells: Map<string, StickyCell>,
+    rows: number,
+    startCoins: number,
+    totalBet: number,
+): StickyCell[] {
+    stickyCells.clear();
+    const placed = pickMatsuriStartCoinCells(rows, startCoins, totalBet);
+    for (const cell of placed) {
+        stickyCells.set(`${cell.reel}-${cell.row}`, cell);
     }
     return placed;
 }

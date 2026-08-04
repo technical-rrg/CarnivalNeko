@@ -989,7 +989,12 @@ export class TopUpAbsorbEffect extends Component {
 
     private _getSlotNode(reel: number, row: number): Node | null {
         if (!this.stickyOverlay) return null;
-        return this.stickyOverlay.coinSlots[reel * 3 + row] ?? null;
+        // Ưu tiên API rowCount (Matsuri 5×3|4|5); fallback 3 hàng.
+        if (typeof this.stickyOverlay.getCoinSlot === 'function') {
+            return this.stickyOverlay.getCoinSlot(reel, row);
+        }
+        const rows = this.stickyOverlay.rowCount || 3;
+        return this.stickyOverlay.coinSlots[reel * rows + row] ?? null;
     }
 
     private _getCellsBySymbol(cells: Map<string, StickyCell>, symbolId: number): StickyCell[] {

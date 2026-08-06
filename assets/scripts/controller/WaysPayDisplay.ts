@@ -6,7 +6,7 @@
  * FLOW:
  *   1. WIN_SHOW_ALL_WAYS / WIN_SHOW_ALL_LINES → hiện TOÀN BỘ ô thắng
  *   2. WIN_CYCLE_ONE_WAY / UI_UPDATE_WIN_LABEL → diff update từng way/line
- *   3. REELS_START_SPIN   → trả tất cả về pool
+ *   3. REELS_START_SPIN / WIN_HIGHLIGHT_CLEAR / Feature entry → trả tất cả về pool
  *
  * SETUP:
  *   1. Tạo 1 Node "HighlightSpine" trong scene: gắn sp.Skeleton, SkeletonData đúng, đặt inactive.
@@ -78,6 +78,12 @@ export class WaysPayDisplay extends Component {
     /** SymbolHighlighter — chờ SymbolSpine sẵn sàng trước khi bật underlay. */
     private _symbolHighlighter: SymbolHighlighter | null = null;
 
+    /**
+     * Tăng mỗi lần clear — hủy apply async còn pending
+     * (tránh ensureSpines xong rồi bật lại highlight khi đã vào Feature).
+     */
+    private _applyGen: number = 0;
+
     // ─── LIFECYCLE ─────────────────────────────────────────────────────────
 
     onLoad(): void {
@@ -98,10 +104,14 @@ export class WaysPayDisplay extends Component {
         bus.on(GameEvents.FREE_SPIN_GOLD_START, this._onFeatureStart, this);
         bus.on(GameEvents.TOPUP_START,         this._onFeatureStart, this);
         bus.on(GameEvents.CREDIT_FLY_IN_START, this._onFeatureStart, this);
+        // Carnival Feature entry (có thể kèm lineWin cùng spin)
+        bus.on(GameEvents.CARNIVAL_POT_BURST,      this._onFeatureStart, this);
+        bus.on(GameEvents.MATSURI_START_POPUP,     this._onFeatureStart, this);
+        bus.on(GameEvents.CARNIVAL_MATSURI_START,  this._onFeatureStart, this);
         bus.on(GameEvents.FREE_SPIN_END,       this._onFeatureEnd,   this);
         bus.on(GameEvents.FREE_SPIN_GOLD_END, this._onFeatureEnd,   this);
         bus.on(GameEvents.TOPUP_END,          this._onFeatureEnd,   this);
-        bus.on(GameEvents.PICK_GAME_OPEN,     this._onFeatureEnd,   this);
+        bus.on(GameEvents.PICK_GAME_OPEN,     this._onFeatureStart, this);
         bus.on(GameEvents.PICK_GAME_CLOSE,    this._onFeatureEnd,   this);
     }
 
@@ -163,6 +173,7 @@ export class WaysPayDisplay extends Component {
      * đồng bộ với SymbolHighlighter để tránh highlight hiện trước spine symbol.
      */
     private async _applyCellsWhenSpinesReady(wanted: Set<string>): Promise<void> {
+        const gen = this._applyGen;
         const hl = this._symbolHighlighter
             ?? this.node.scene?.getComponentInChildren(SymbolHighlighter)
             ?? null;
@@ -175,10 +186,14 @@ export class WaysPayDisplay extends Component {
             }
             await hl.ensureSpinesForDisplayCells(cells);
         }
-        if (!this.isValid || !this._ready) return;
+        // Đã clear / vào Feature trong lúc await → bỏ apply
+        if (!this.isValid || !this._ready || gen !== this._applyGen) return;
         this._applyCells(wanted);
         // SymbolHighlighter có thể append clone/spine sau → pin lại underlay cuối frame
-        this.scheduleOnce(() => this._pinOverlaysToBottom(), 0);
+        this.scheduleOnce(() => {
+            if (gen !== this._applyGen) return;
+            this._pinOverlaysToBottom();
+        }, 0);
     }
 
     /** Gom unique display cells từ ways (grid row → visual row). */
@@ -248,41 +263,32 @@ export class WaysPayDisplay extends Component {
         this._pinOverlaysToBottom();
     }
 
-    /** Reset khi spin mới bắt đầu */
+    /** Reset khi spin mới bắt đầu / WIN_HIGHLIGHT_CLEAR */
     private _onSpinStart(): void {
+        this._invalidatePendingApply();
         this._returnAll();
-
-        // Đảm bảo sprite của tất cả visible symbols được bật lại —
-        // tránh trường hợp spine/highlight effect trước đó đã ẩn sprite
-        // và chưa kịp restore khi lượt quay mới bắt đầu.
-        for (const reel of this.reels) {
-            if (!reel) continue;
-            for (let i = VISIBLE_ROW_OFFSET; i < VISIBLE_ROW_OFFSET + VISIBLE_ROWS; i++) {
-                const symNode = reel.symbolNodes[i];
-                if (!symNode) continue;
-                const view = symNode.getComponent(SymbolView);
-                if (view) view.setSpriteVisible(true);
-            }
-        }
+        this._restoreVisibleSprites();
     }
 
-    /** Cleanup khi bắt đầu feature game (FreeSpin, FreeSpin Gold, TopUp) — trả overlay về pool trước khi vào màn hình Select Feature */
+    /** Cleanup khi bắt đầu feature (FreeSpin / TopUp / Carnival / Pick) */
     private _onFeatureStart(): void {
+        this._invalidatePendingApply();
         this._returnAll();
-        for (const reel of this.reels) {
-            if (!reel) continue;
-            for (let i = VISIBLE_ROW_OFFSET; i < VISIBLE_ROW_OFFSET + VISIBLE_ROWS; i++) {
-                const symNode = reel.symbolNodes[i];
-                if (!symNode) continue;
-                const view = symNode.getComponent(SymbolView);
-                if (view) view.setSpriteVisible(true);
-            }
-        }
+        this._restoreVisibleSprites();
     }
 
-    /** Cleanup khi kết thúc feature game (FreeSpin, FreeSpin Gold, TopUp) */
+    /** Cleanup khi kết thúc feature game */
     private _onFeatureEnd(): void {
+        this._invalidatePendingApply();
         this._returnAll();
+        this._restoreVisibleSprites();
+    }
+
+    private _invalidatePendingApply(): void {
+        this._applyGen++;
+    }
+
+    private _restoreVisibleSprites(): void {
         for (const reel of this.reels) {
             if (!reel) continue;
             for (let i = VISIBLE_ROW_OFFSET; i < VISIBLE_ROW_OFFSET + VISIBLE_ROWS; i++) {

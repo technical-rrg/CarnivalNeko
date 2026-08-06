@@ -47,8 +47,23 @@ export type MockCarnivalFeatureMode =
     | 'all'
     | 'cycle';
 
-/** Đổi mode để test: 'cycle' = xoay đủ loại feature mỗi lần trigger. */
-export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'blue';
+/** Đổi mode để test: 'cycle' = xoay đủ loại feature mỗi lần trigger. 'red' = vào Pick Game. */
+export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'blue_red';
+
+/**
+ * ★ Mock Pick Game grid khi vào Jackpot Feature.
+ *   random              — random wonTier + đôi khi có Upgrade
+ *   plain_mini          — match 3 Mini, không Upgrade
+ *   upgrade_to_major    — 3 Upgrade + 3 Minor → trả Major
+ *   upgrade_grand_x2    — 3 Upgrade + 3 Grand → Grand ×2
+ */
+export type MockPickGameMode =
+    | 'random'
+    | 'plain_mini'
+    | 'upgrade_to_major'
+    | 'upgrade_grand_x2';
+
+export const MOCK_PICK_GAME_MODE: MockPickGameMode = 'upgrade_to_major';
 
 /** Khi mode='auto': sau bao nhiêu spin có Trail thì force trigger 1 lần. */
 export const MOCK_CARNIVAL_FEATURE_EVERY_N_SPINS: number = 2;

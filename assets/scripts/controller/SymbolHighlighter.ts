@@ -268,6 +268,10 @@ export class SymbolHighlighter extends Component {
         // FeatureEntryGuide xuất hiện → tắt highlight symbol ngay trước khi guide chạy
         bus.on(GameEvents.FORCE_FEATURE_ENTRY_START, this._onFeatureSelectOpen, this);
         bus.on(GameEvents.FEATURE_ENTRY_GUIDE_SHOW, this._onFeatureSelectOpen, this);
+        // Carnival Feature (Normal + lineWin cùng spin) → clear spine/highlight ngay khi pot burst
+        bus.on(GameEvents.CARNIVAL_POT_BURST, this._onFeatureSelectOpen, this);
+        bus.on(GameEvents.MATSURI_START_POPUP, this._onFeatureSelectOpen, this);
+        bus.on(GameEvents.CARNIVAL_MATSURI_START, this._onFeatureGameStart, this);
         bus.on(GameEvents.PICK_GAME_OPEN, this._onPickGameBoundary, this);
         bus.on(GameEvents.PICK_GAME_CLOSE, this._onPickGameBoundary, this);
         // Red symbol bounce trước khi fly-in (6+ Red → feature)

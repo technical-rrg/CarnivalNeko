@@ -41,7 +41,10 @@ import {
     MOCK_FORCE_CARNIVAL_TRAILS,
     MOCK_CARNIVAL_TRAIL_COUNT_MIN,
     MOCK_CARNIVAL_TRAIL_COUNT_MAX,
+    MOCK_PICK_GAME_MODE,
+    MockPickGameMode,
 } from './ServerConfig';
+import { PICK_GAME_CELL_COUNT } from './PickGameUtil';
 import { resolveMockCarnivalFeature } from './CarnivalFeatureResolve';
 import {
     MATSURI_COL_COUNT,
@@ -371,7 +374,8 @@ export class MockDataProvider {
         // TopUp không spawn Red mới → totalWin = yellowSum + greenSum
         let totalWin = yellowSum + greenSum;
 
-        let remainRespinCount = data.respinRemaining - 1 + plusOneSpin;
+        // GM đã −1 trước request → cộng +1 Spin (nếu có), không trừ thêm lần nữa
+        let remainRespinCount = Math.max(0, data.respinRemaining) + plusOneSpin;
 
         // +1 Spin không sticky — chỉ đếm Yellow/Green mới cho fullGrid check
         const newStickyCount = newStickies.filter(c => c.symbolId !== SymbolId.PLUS_ONE_SPIN).length;
@@ -382,6 +386,7 @@ export class MockDataProvider {
             totalWin += grand * totalBet;
         }
 
+        // Hết lượt → END ngay; full grid cũng END (Grand). Không bắt buộc full mới kết thúc.
         let nextStage: number;
         if (fullGrid || remainRespinCount <= 0) {
             nextStage = SlotStageType.TOPUP_SPIN_END;
@@ -408,7 +413,9 @@ export class MockDataProvider {
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  MATSURI HOLD & SPIN (5×3|4|5) — Green → Gold, reset 3 spins
+    //  MATSURI HOLD & SPIN (5×3|4|5) — ★ MOCK tạm
+    //  Client chỉ tin field API: remainRespinCount / nextStage / stickyCells / topupReel.
+    //  Khi USE_REAL_API=true: bỏ qua hàm này — NetworkManager parse RemainFeatureSpinCount.
     // ═══════════════════════════════════════════════════════════
 
     private static _generateMatsuri(): SpinResponse {
@@ -420,12 +427,12 @@ export class MockDataProvider {
         const newGreens: StickyCell[] = [];
         let landedGreen = false;
 
-        // Spawn Green trên ô trống (~28%)
+        // ★ MOCK spawn Green (~10% / ô trống). Real API: Green đến từ TopupReel server.
         for (let reel = 0; reel < MATSURI_COL_COUNT; reel++) {
             for (let row = 0; row < rows; row++) {
                 const key = `${reel}-${row}`;
                 if (stickyMap.has(key)) continue;
-                if (Math.random() >= 0.28) continue;
+                if (Math.random() >= 0.10) continue;
                 const credit = pickMatsuriCredit(totalBet);
                 landedGreen = true;
                 newGreens.push({
@@ -439,8 +446,12 @@ export class MockDataProvider {
 
         const topupReel = buildMatsuriTopupReel(stickyMap, newGreens, rows);
 
-        // remain: GM đã −1 trước request → không green = giữ data.respinRemaining; green = reset 3
-        let remainRespinCount = landedGreen ? MATSURI_SPIN_COUNT : Math.max(0, data.respinRemaining);
+        // ★ remainRespinCount = field API (mock gán tạm, client chỉ đọc resp.remainRespinCount)
+        // Design Matsuri: mỗi spin GM đã −1 trước request;
+        //   • không Green → giữ remain hiện tại (có thể 2→1→0 rồi END)
+        //   • có Green  → RESET về 3  ← đây là lý do UI thấy 3→2 rồi lại lên 3
+        const remainBefore = Math.max(0, data.respinRemaining);
+        let remainRespinCount = landedGreen ? MATSURI_SPIN_COUNT : remainBefore;
 
         // Design: khi có Green → acquire tổng Credit của mọi Gold đang trên grid (+ Grand nếu full)
         let collectWin = 0;
@@ -472,7 +483,9 @@ export class MockDataProvider {
 
         Log.e(
             `[Matsuri MOCK] rows=${rows} newGreen=${newGreens.length} filled=${filledAfter}/${cellCount}` +
-            ` remain=${remainRespinCount} collect=${spinWin} next=${nextStage}`
+            ` remain ${remainBefore}→${remainRespinCount}` +
+            `${landedGreen ? ' (GREEN reset→3)' : ''}` +
+            ` collect=${spinWin} next=${nextStage}`
         );
 
         return {
@@ -650,26 +663,94 @@ export class MockDataProvider {
         return sum;
     }
 
-    public static buildPickGame(): PickGameState {
-        const tiers: Array<'GRAND' | 'MAJOR' | 'MINOR' | 'MINI'> = ['MINI', 'MINI', 'MINI', 'MINOR', 'MINOR', 'MAJOR', 'GRAND'];
-        const wonTier = tiers[Math.floor(Math.random() * tiers.length)];
+    /**
+     * Carnival Pick Game 5×3 = 15 ô.
+     * Grid prefill (mock); real API chỉ lộ từng ô khi /Pick.
+     * Mode lấy từ MOCK_PICK_GAME_MODE — có thể override qua tham số.
+     */
+    public static buildPickGame(mode?: MockPickGameMode): PickGameState {
+        const m = mode ?? MOCK_PICK_GAME_MODE;
         const tierToSym: Record<string, number> = {
             GRAND: SymbolId.JP_GRAND,
             MAJOR: SymbolId.JP_MAJOR,
             MINOR: SymbolId.JP_MINOR,
             MINI:  SymbolId.JP_MINI,
         };
-        const winSym = tierToSym[wonTier];
-        const grid: number[] = [winSym, winSym, winSym];
-        for (const t of ['GRAND', 'MAJOR', 'MINOR', 'MINI']) {
-            if (t === wonTier) continue;
-            grid.push(tierToSym[t], tierToSym[t], tierToSym[t]);
+
+        let matchTier: 'GRAND' | 'MAJOR' | 'MINOR' | 'MINI' = 'MINI';
+        let paidTier: 'GRAND' | 'MAJOR' | 'MINOR' | 'MINI' = 'MINI';
+        let withUpgrade = false;
+
+        switch (m) {
+            case 'plain_mini':
+                matchTier = 'MINI';
+                paidTier = 'MINI';
+                break;
+            case 'upgrade_to_major':
+                matchTier = 'MINOR';
+                paidTier = 'MAJOR';
+                withUpgrade = true;
+                break;
+            case 'upgrade_grand_x2':
+                matchTier = 'GRAND';
+                paidTier = 'GRAND';
+                withUpgrade = true;
+                break;
+            case 'random':
+            default: {
+                const tiers: Array<'GRAND' | 'MAJOR' | 'MINOR' | 'MINI'> =
+                    ['MINI', 'MINI', 'MINOR', 'MINOR', 'MAJOR', 'GRAND'];
+                matchTier = tiers[Math.floor(Math.random() * tiers.length)];
+                withUpgrade = Math.random() < 0.35;
+                if (withUpgrade) {
+                    if (matchTier === 'MINI') paidTier = 'MINOR';
+                    else if (matchTier === 'MINOR') paidTier = 'MAJOR';
+                    else if (matchTier === 'MAJOR') paidTier = 'GRAND';
+                    else paidTier = 'GRAND';
+                } else {
+                    paidTier = matchTier;
+                }
+                break;
+            }
         }
+
+        const winSym = tierToSym[matchTier];
+        const grid: number[] = [winSym, winSym, winSym];
+        if (withUpgrade) {
+            grid.push(SymbolId.JP_UPGRADE, SymbolId.JP_UPGRADE, SymbolId.JP_UPGRADE);
+        }
+        for (const t of ['GRAND', 'MAJOR', 'MINOR', 'MINI'] as const) {
+            if (t === matchTier) continue;
+            // Mỗi tier còn lại tối đa 2 (tránh match sớm tier khác)
+            grid.push(tierToSym[t], tierToSym[t]);
+        }
+        // Pad đủ 15 ô — không cho tier JP nào khác winSym đạt 3; dư thì thêm winSym
+        const countOf = (sym: number) => grid.reduce((n, s) => n + (s === sym ? 1 : 0), 0);
+        const padPool = [
+            SymbolId.JP_GRAND, SymbolId.JP_MAJOR, SymbolId.JP_MINOR, SymbolId.JP_MINI,
+        ].filter((s) => s !== winSym);
+        while (grid.length < PICK_GAME_CELL_COUNT) {
+            const candidates = padPool.filter((s) => countOf(s) < 2);
+            grid.push(candidates.length > 0
+                ? candidates[grid.length % candidates.length]
+                : winSym);
+        }
+        grid.length = PICK_GAME_CELL_COUNT;
+
         for (let i = grid.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [grid[i], grid[j]] = [grid[j], grid[i]];
         }
-        return { grid, revealed: [], wonTier };
+
+        Log.e(`[MockPick] buildPickGame mode=${m} match=${matchTier} paid=${paidTier} upgrade=${withUpgrade} cells=${grid.length}`);
+        return {
+            grid,
+            revealed: [],
+            wonTier: paidTier,
+            upgradeArmed: false,
+            upgradeCount: 0,
+            doubleGrand: withUpgrade && matchTier === 'GRAND',
+        };
     }
 
     private static _getWinGrade(totalWin: number, totalBet: number): string | undefined {
@@ -943,16 +1024,7 @@ export class MockDataProvider {
             }
 
             case TestScenario.GRAND_JACKPOT: {
-                const pick: PickGameState = {
-                    grid: [
-                        SymbolId.JP_GRAND, SymbolId.JP_MINOR, SymbolId.JP_GRAND,
-                        SymbolId.JP_MINI,  SymbolId.JP_GRAND, SymbolId.JP_MAJOR,
-                        SymbolId.JP_MINOR, SymbolId.JP_MINI,  SymbolId.JP_MAJOR,
-                        SymbolId.JP_MINI,  SymbolId.JP_MAJOR, SymbolId.JP_MINOR,
-                    ],
-                    revealed: [],
-                    wonTier: 'GRAND',
-                };
+                const pick = MockDataProvider.buildPickGame('upgrade_grand_x2');
                 return enrich({
                     rands: [0, 0, 0, 0, 0],
                     waysPayWins: [], matchedLinePays: [],

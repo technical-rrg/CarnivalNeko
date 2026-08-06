@@ -1,0 +1,13 @@
+{
+  "ver": "1.1.50",
+  "importer": "prefab",
+  "imported": true,
+  "uuid": "c4e8a12b-7f3d-4a91-b6e2-9d05f8c31a70",
+  "files": [
+    ".json"
+  ],
+  "subMetas": {},
+  "userData": {
+    "syncNodeName": "MatsuriStartPopup"
+  }
+}

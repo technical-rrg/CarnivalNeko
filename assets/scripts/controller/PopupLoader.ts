@@ -11,7 +11,7 @@
  *   2. Không cần kéo gì vào Editor — tên prefab được định nghĩa trong PREFAB_NAMES.
  */
 
-import { _decorator, Component, Prefab, instantiate, Node, assetManager } from 'cc';
+import { _decorator, Component, Prefab, instantiate, Node, assetManager, Label } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { JackpotType, PickGameState } from '../data/SlotTypes';
@@ -29,6 +29,9 @@ import { SettingPopup } from './SettingPopup';
 import { FeatureSelectPayload } from './FeatureSelectionPopup';
 import { TopUpEndPopup } from './TopUpEndPopup';
 import { TransitionMode } from './TopUpTransitionPopup';
+import { MatsuriStartPopup } from './MatsuriStartPopup';
+import { JackpotStartPopup } from './JackpotStartPopup';
+import { CarnivalFeatureTrigger } from '../data/SlotTypes';
 import { Log } from '../core/Logger';
 
 const { ccclass, property } = _decorator;
@@ -50,7 +53,8 @@ const PREFAB_NAMES = {
     topUpTransition:  'TransitionPopup',
     featureSelection: 'FeatureSelectPopUp',
     topUpEnd:         'TopUpEndPopup',
-    
+    matsuriStart:     'MatsuriStartPopup',
+    jackpotStart:     'JackpotStartPopup',
 } as const;
 
 @ccclass('PopupLoader')
@@ -74,6 +78,8 @@ export class PopupLoader extends Component {
     private _topUpTransitionNode: Node | null = null;
     private _featureSelectionNode: Node | null = null;
     private _topUpEndNode: Node | null = null;
+    private _matsuriStartNode: Node | null = null;
+    private _jackpotStartNode: Node | null = null;
 
     /** Các prefab đang trong quá trình load — tránh double-instantiate */
     private _loadingSet: Set<string> = new Set();
@@ -94,6 +100,8 @@ export class PopupLoader extends Component {
         EventBus.instance.on(GameEvents.TOPUP_TRANSITION_SHOW,   this._onTopUpTransitionShow,   this);
         EventBus.instance.on(GameEvents.FEATURE_SELECT_OPEN,     this._onFeatureSelectOpen,     this);
         EventBus.instance.on(GameEvents.TOPUP_END_POPUP,         this._onTopUpEndPopup,         this);
+        EventBus.instance.on(GameEvents.MATSURI_START_POPUP,     this._onMatsuriStartPopup,     this);
+        EventBus.instance.on(GameEvents.PICK_GAME_START_POPUP,   this._onJackpotStartPopup,     this);
         // Any popup opened → re-raise PayTable to top if active/present
         EventBus.instance.on(GameEvents.POPUP_OPENED, this._ensurePayTableOnTop, this);
 
@@ -365,6 +373,94 @@ export class PopupLoader extends Component {
             const popup = node.getComponent(TopUpEndPopup);
             if (popup) popup.showPopup(totalWin);
         });
+    }
+
+    private _onMatsuriStartPopup(feature: CarnivalFeatureTrigger): void {
+        if (this._matsuriStartNode?.isValid) {
+            this._matsuriStartNode.setSiblingIndex(this.node.children.length - 1);
+            this._showMatsuriStart(this._matsuriStartNode, feature);
+            return;
+        }
+        this._loadPrefab(PREFAB_NAMES.matsuriStart, (node) => {
+            this._matsuriStartNode = node;
+            node.setSiblingIndex(this.node.children.length - 1);
+            this._showMatsuriStart(node, feature);
+        });
+    }
+
+    /** Prefab thiếu script / UUID lệch → addComponent fallback để vẫn vào được TopUp. */
+    private _showMatsuriStart(node: Node, feature: CarnivalFeatureTrigger): void {
+        let popup = node.getComponent(MatsuriStartPopup);
+        if (!popup) {
+            Log.w('[PopupLoader] MatsuriStartPopup missing on prefab — addComponent fallback');
+            popup = node.addComponent(MatsuriStartPopup);
+            this._wireStartPopupNodes(node, popup);
+        }
+        popup.showPopup(feature);
+    }
+
+    private _onJackpotStartPopup(state: PickGameState): void {
+        if (this._jackpotStartNode?.isValid) {
+            this._jackpotStartNode.setSiblingIndex(this.node.children.length - 1);
+            this._showJackpotStart(this._jackpotStartNode, state);
+            return;
+        }
+        this._loadPrefab(PREFAB_NAMES.jackpotStart, (node) => {
+            this._jackpotStartNode = node;
+            node.setSiblingIndex(this.node.children.length - 1);
+            this._showJackpotStart(node, state);
+        });
+    }
+
+    private _showJackpotStart(node: Node, state: PickGameState): void {
+        let popup = node.getComponent(JackpotStartPopup);
+        if (!popup) {
+            Log.w('[PopupLoader] JackpotStartPopup missing on prefab — addComponent fallback');
+            popup = node.addComponent(JackpotStartPopup);
+            this._wireStartPopupNodes(node, popup);
+        }
+        popup.showPopup(state);
+        // Đảm bảo hiện — tránh onLoad defer tắt lại node sau showPopup
+        node.active = true;
+        node.setSiblingIndex(this.node.children.length - 1);
+        Log.e(`[PopupLoader] JackpotStartPopup show active=${node.active}`);
+    }
+
+    /** Wire Overlay/Panel/Labels theo tên node (khi script mới addComponent). */
+    private _wireStartPopupNodes(
+        node: Node,
+        popup: MatsuriStartPopup | JackpotStartPopup,
+    ): void {
+        const overlay = node.getChildByName('Overlay');
+        const panel = node.getChildByName('Panel');
+        if (overlay) {
+            popup.overlayNode = overlay;
+            popup.clickOverlay = overlay;
+        }
+        if (panel) {
+            popup.popupNode = panel;
+            const title = panel.getChildByName('TitleLabel')?.getComponent(Label)
+                ?? panel.getChildByName('Title')?.getComponent(Label);
+            const feature = panel.getChildByName('FeatureLabel')?.getComponent(Label)
+                ?? panel.getChildByName('Feature')?.getComponent(Label);
+            const reel = panel.getChildByName('ReelLabel')?.getComponent(Label)
+                ?? panel.getChildByName('Reel')?.getComponent(Label)
+                ?? panel.getChildByName('Desc')?.getComponent(Label);
+            const hint = panel.getChildByName('HintLabel')?.getComponent(Label)
+                ?? panel.getChildByName('Hint')?.getComponent(Label);
+            if (title) popup.titleLabel = title;
+            if (feature) popup.featureLabel = feature;
+            if (reel) popup.reelLabel = reel;
+            if (hint) popup.hintLabel = hint;
+            // Fallback theo thứ tự Label trong Panel
+            if (!popup.titleLabel || !popup.hintLabel) {
+                const labels = panel.getComponentsInChildren(Label);
+                if (!popup.titleLabel && labels[0]) popup.titleLabel = labels[0];
+                if (!popup.featureLabel && labels[1]) popup.featureLabel = labels[1];
+                if (!popup.reelLabel && labels[2]) popup.reelLabel = labels[2];
+                if (!popup.hintLabel && labels[3]) popup.hintLabel = labels[3];
+            }
+        }
     }
 
     // ── PUBLIC API - Mở popup trực tiếp (không qua event) ────────────────

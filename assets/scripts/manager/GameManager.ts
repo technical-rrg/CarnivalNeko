@@ -6,6 +6,13 @@
 import { _decorator, Component, Node, Sprite, SpriteFrame, screen, Color, game, ParticleSystem, assetManager } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
+import {
+    crossfadeSpriteFrame,
+    fadeInNode,
+    fadeOutNode,
+    setNodeOpacity,
+    DEFAULT_UI_FADE_DURATION,
+} from '../core/OpacityFadeUtil';
 import { GameData } from '../data/GameData';
 import { SlotStageType, SpinResponse, MatchedLinePay, JackpotType, SymbolId, GameState, FeatureItem, PickGameState, StickyCell, TopupReelSlot, TopupReelType, FeatureSelectChoiceId, isFreeSpinTierReelIndex, gaugeStageFromAccumulated, CarnivalTrailHit, CarnivalFeatureTrigger } from '../data/SlotTypes';
 import { FeatureSelectChoicePayload } from '../controller/FeatureSelectionPopup';
@@ -17,6 +24,7 @@ import { DebugManager } from './DebugManager';
 import { PROGRESSIVE_WIN_THRESHOLDS, ProgressiveWinTier } from '../controller/ProgressiveWinPopup';
 import { USE_REAL_API, MOCK_GAUGE_HOLD_SEC_BEFORE_FORCE_ENTRY, MOCK_FORCE_CARNIVAL_TRAILS } from '../data/ServerConfig';
 import { MockDataProvider } from '../data/MockDataProvider';
+import { psPickToClient, PICK_GAME_CELL_COUNT } from '../data/PickGameUtil';
 import { LocalizationManager } from '../core/LocalizationManager';
 import { AutoSpinManager, SpeedMode } from './AutoSpinManager';
 import { PopUpMessage, PopupCase } from '../core/PopUpMessage';
@@ -94,6 +102,11 @@ export class GameManager extends Component {
 
     @property({ type: Node, tooltip: 'Background node để thay đổi sprite theo orientation' })
     backgroundNode: Node | null = null;
+
+    @property({
+        tooltip: 'Thời gian crossfade background / fade UI khi vào-ra Feature/Pick (giây)',
+    })
+    uiFadeDuration: number = DEFAULT_UI_FADE_DURATION;
 
     @property({ type: SpriteFrame, tooltip: 'Background sprites NORMAL SPIN — [0]=portrait, [1]=landscape' })
     backgroundSprites: SpriteFrame[] = [];
@@ -257,6 +270,8 @@ export class GameManager extends Component {
     /** Snapshot stickyCells keys trước mỗi TopUp spin — dùng để detect new cells khi có pre-add per-reel */
     private _topUpStickySnapshot: Set<string> = new Set();
     private _topUpRemainBeforeSpin: number = 0;
+    /** Cache TopUpManager — tránh getComponent(s)InChildren(scene) mỗi lần lock seed coin. */
+    private _cachedTopUpMgr: TopUpManager | null = null;
     /** Pending resume data khi Enter trả về lastSpinResponse đang dở Free Spin */
     private _pendingResume: PendingResumeData | null = null;
     /** Pending resume sau khi jackpot popup đóng (resume interrupted by jackpot) */
@@ -269,6 +284,10 @@ export class GameManager extends Component {
     private _isPickGameActive: boolean = false;
     /** Chờ TransitionPopup SHOW rồi mới đổi background Pick Game (dưới overlay) */
     private _pickGameBgPending: boolean = false;
+    /** Twin node cho crossfade background (tạo runtime). */
+    private _bgFadeTwin: Node | null = null;
+    /** SpriteFrame đang hiển thị trên backgroundNode — tránh crossfade trùng. */
+    private _currentBgFrame: SpriteFrame | null = null;
     /** TopUp: UI đã prepare dưới TransitionPopup; gameplay (SPIN) chờ DONE */
     private _topUpUiPrepared: boolean = false;
     private _topUpStartGameplayPending: boolean = false;
@@ -594,6 +613,8 @@ export class GameManager extends Component {
         bus.on(GameEvents.MATSURI_FLIP_DONE,                this._onMatsuriFlipDone, this);
         bus.on(GameEvents.MATSURI_SEED_CELL,                this._onMatsuriSeedCell, this);
         bus.on(GameEvents.MATSURI_SEED_DONE,                this._onMatsuriSeedDone, this);
+        bus.on(GameEvents.MATSURI_START_POPUP_CLOSED,       this._onMatsuriStartPopupClosed, this);
+        bus.on(GameEvents.PICK_GAME_START_POPUP_CLOSED,     this._onJackpotStartPopupClosed, this);
         bus.on(GameEvents.POT_TRANSITION_END,                this._onPotTransitionEnd,       this);
         // LONG_SPIN_VFX events: chỉ SoundManager cần, GameManager không gate bằng VFX nữa.
     }
@@ -947,6 +968,12 @@ export class GameManager extends Component {
             this._logSpinState('SPIN_REQUEST ignored because GameManager is spinning');
             return;
         }
+        // Matsuri: chặn mọi spin cho tới khi seed sticky vàng hiện xong hết
+        if (this._matsuriAwaitingSeed) {
+            this._logSpinState('SPIN_REQUEST ignored — waiting Matsuri seed stickies');
+            EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+            return;
+        }
         if (!this._areSlotReelsSettled()) {
             // Log.e('[SPIN-HANG][GM] SPIN_REQUEST ignored — slot reels are still settling');
             this._logSpinState('SPIN_REQUEST ignored because slot reels are still settling');
@@ -1202,6 +1229,8 @@ export class GameManager extends Component {
         this._pendingCarnivalAfterBurst = feature;
         this.unschedule(this._carnivalBurstFallback);
         this.scheduleOnce(this._carnivalBurstFallback, 2.0);
+        // Line/Ways win cùng spin → tắt highlight + dừng WinPresenter cycle trước khi vào Feature
+        EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
         EventBus.instance.emit(GameEvents.CARNIVAL_POT_BURST, feature);
         // Sync level UI về 0 cho pot đã nổ (resolve đã/ sẽ reset trong PotBoard)
         EventBus.instance.emit(GameEvents.CARNIVAL_POT_LEVELS_CHANGED, { ...GameData.instance.potLevels });
@@ -1229,7 +1258,44 @@ export class GameManager extends Component {
             return;
         }
 
-        // Matsuri-only (Mighty / Mega / Super)
+        // Matsuri-only (Mighty / Mega / Super) — hiện popup Press to Start trước khi vào
+        this._showMatsuriStartPopupThenEnter(f);
+    }
+
+    /** Stash feature đang chờ Press to Start. */
+    private _pendingMatsuriStartFeature: CarnivalFeatureTrigger | null = null;
+
+    /**
+     * Hiện popup thông báo feature (Mega Feature Award / with 5xN Reel / PRESS TO START).
+     * Chỉ sau khi đóng mới _enterCarnivalMatsuri.
+     */
+    private _showMatsuriStartPopupThenEnter(feature: CarnivalFeatureTrigger): void {
+        this._pendingMatsuriStartFeature = feature;
+        this._gameState = GameState.IDLE;
+        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+        // Đảm bảo WaysPay/Symbol highlight không còn khi hiện Press to Start
+        EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
+        Log.e(`[GameManager] MATSURI_START_POPUP → "${feature.featureName}" 5x${feature.matsuriRows}`);
+        EventBus.instance.emit(GameEvents.MATSURI_START_POPUP, feature);
+        // Failsafe nếu PopupLoader miss event
+        this.unschedule(this._matsuriStartPopupFailsafe);
+        this.scheduleOnce(this._matsuriStartPopupFailsafe, 25.0);
+    }
+
+    private _matsuriStartPopupFailsafe = (): void => {
+        if (!this._pendingMatsuriStartFeature) return;
+        Log.w('[GameManager] Matsuri start popup failsafe — enter feature');
+        this._onMatsuriStartPopupClosed(this._pendingMatsuriStartFeature);
+    };
+
+    private _onMatsuriStartPopupClosed(feature?: CarnivalFeatureTrigger): void {
+        this.unschedule(this._matsuriStartPopupFailsafe);
+        const f = feature ?? this._pendingMatsuriStartFeature;
+        this._pendingMatsuriStartFeature = null;
+        if (!f) {
+            Log.w('[GameManager] MATSURI_START_POPUP_CLOSED nhưng không có feature');
+            return;
+        }
         void this._enterCarnivalMatsuri(f);
     }
 
@@ -1293,9 +1359,9 @@ export class GameManager extends Component {
 
         EventBus.instance.emit(GameEvents.MATSURI_SEED_START, { cells: placed });
 
-        // Failsafe nếu thiếu MatsuriEffect / seed
+        // Failsafe nếu thiếu MatsuriEffect / seed (đủ dài cho 10 orb + pop + highlight)
         this.unschedule(this._matsuriSeedFailsafe);
-        this.scheduleOnce(this._matsuriSeedFailsafe, 6.0);
+        this.scheduleOnce(this._matsuriSeedFailsafe, 20.0);
     }
 
     private _matsuriSeedFailsafe = (): void => {
@@ -1318,17 +1384,8 @@ export class GameManager extends Component {
 
     private _onMatsuriSeedCell(cell: StickyCell): void {
         if (!cell) return;
-        // Chỉ lock ô + ẩn reel — KHÔNG applyStickyResult (tránh hiện vàng/xanh trên reel dưới overlay)
+        // lockCellAt (matsuri) đã blockInPlace + hideForOverlay — không scan scene lần 2
         this._lockTopUpCell(cell);
-        const rows = clampMatsuriRows(GameData.instance.matsuriRows || 3);
-        const reelIdx = cell.reel * rows + cell.row;
-        const topUpMgrs = this.node.scene?.getComponentsInChildren(TopUpManager) ?? [];
-        for (const mgr of topUpMgrs) {
-            const reel = mgr.reels[reelIdx];
-            if (!reel) continue;
-            reel.blockInPlace();
-            reel.hideForOverlayResult();
-        }
     }
 
     private _onMatsuriSeedDone(): void {
@@ -1338,9 +1395,10 @@ export class GameManager extends Component {
         this.unschedule(this._matsuriSeedFailsafe);
 
         Log.e('[CarnivalMatsuri] seed done → first spin');
+        // Seed/highlight đã xong trong MatsuriEffect — nghỉ ngắn rồi mới quay
         this.scheduleOnce(() => {
             EventBus.instance.emit(GameEvents.SPIN_REQUEST);
-        }, 0.25);
+        }, 0.35);
     }
 
     private _onCarnivalMatsuriStubDone(): void {
@@ -1350,37 +1408,25 @@ export class GameManager extends Component {
         }
     }
 
-    /** Kết thúc Matsuri — cộng win, unload overlay, về Base. */
+    /**
+     * Kết thúc Matsuri — cộng win (mock) rồi hiện TopUpEndPopup tổng kết.
+     * Cleanup thật sự chạy trong _onTopUpEndPopupClosed (mode matsuri).
+     */
     private _endCarnivalMatsuri(): void {
         const data = GameData.instance;
         if (data.currentMode !== 'matsuri') return;
 
         const total = data.respinTotalWin;
-        Log.e(`[CarnivalMatsuri] END "${data.matsuriFeatureName}" total=${total}`);
+        Log.e(`[CarnivalMatsuri] END → TopUpEndPopup "${data.matsuriFeatureName}" total=${total}`);
 
         if (!USE_REAL_API && total > 0) {
             WalletManager.instance.add(total);
             EventBus.instance.emit(GameEvents.BALANCE_UPDATED, WalletManager.instance.balance);
         }
 
-        data.currentMode = 'normal';
-        data.respinRemaining = 0;
-        data.respinTotalWin = 0;
-        data.matsuriRows = 3;
-        data.matsuriFeatureName = '';
-        data.stickyCells.clear();
-        data.pendingCarnivalMatsuri = null;
-
-        EventBus.instance.emit(GameEvents.TOPUP_END);
-        EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_END);
-        EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB_DONE);
-
-        this._currentStage = SlotStageType.SPIN;
-        this._gameState = GameState.IDLE;
-        this._updateDisplayVisibility();
-        this._updateBackgroundSprite();
-        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
-        EventBus.instance.emit(GameEvents.NORMAL_SPIN_DONE);
+        this._gameState = GameState.POPUP;
+        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+        EventBus.instance.emit(GameEvents.TOPUP_END_POPUP, total);
     }
 
     /** Đợi collect+flip Matsuri xong mới transition stage. */
@@ -1403,12 +1449,21 @@ export class GameManager extends Component {
 
         if (resp.stickyCells) {
             for (const cell of resp.stickyCells) {
+                // Chỉ đếm Green mới — tránh coi mọi stickyCells là green → reset spin mãi
+                if (cell.symbolId != null && cell.symbolId !== SymbolId.STICKY_GREEN) continue;
                 const key = `${cell.reel}-${cell.row}`;
                 const credit = cell.credit ?? 0;
+                const existing = data.stickyCells.get(key);
+                // Ô đã là Gold/Red từ trước → không phải Green mới
+                if (existing
+                    && existing.symbolId !== SymbolId.STICKY_GREEN
+                    && existing.symbolId !== SymbolId.PLUS_ONE_SPIN) {
+                    continue;
+                }
                 greenCount++;
 
                 // Per-reel land có thể đã add Green — chỉ bổ sung nếu thiếu
-                if (!data.stickyCells.has(key)) {
+                if (!existing) {
                     const green: StickyCell = {
                         reel: cell.reel,
                         row: cell.row,
@@ -1418,12 +1473,8 @@ export class GameManager extends Component {
                     data.stickyCells.set(key, green);
                     this._lockTopUpCell(green);
                     Log.e(`[Matsuri] late-add Green ${key} credit=${credit}`);
-                } else {
-                    // Đồng bộ credit Green (per-reel có thể đã set)
-                    const existing = data.stickyCells.get(key)!;
-                    if (existing.symbolId === SymbolId.STICKY_GREEN && credit > 0) {
-                        existing.credit = credit;
-                    }
+                } else if (existing.symbolId === SymbolId.STICKY_GREEN && credit > 0) {
+                    existing.credit = credit;
                 }
             }
         }
@@ -1438,29 +1489,36 @@ export class GameManager extends Component {
                 const reel = serverIdx % 5;
                 const row = rows - 1 - apiRow;
                 const key = `${reel}-${row}`;
+                const existing = data.stickyCells.get(key);
+                if (existing
+                    && existing.symbolId !== SymbolId.STICKY_GREEN
+                    && existing.symbolId !== SymbolId.PLUS_ONE_SPIN) {
+                    continue;
+                }
                 const credit = slot.win ?? 0;
                 greenCount++;
-                if (data.stickyCells.has(key)) continue;
+                if (existing) continue;
                 const green: StickyCell = { reel, row, symbolId: SymbolId.STICKY_GREEN, credit };
                 data.stickyCells.set(key, green);
                 this._lockTopUpCell(green);
             }
         }
 
+        // ★ remain chỉ lấy từ API (mock cũng trả cùng field remainRespinCount).
+        // Green reset 3 spins = server/mock set remainRespinCount=3 — client không tự +1.
         if (resp.remainRespinCount != null) {
             data.respinRemaining = Math.max(0, resp.remainRespinCount);
         } else if (greenCount > 0) {
+            // Fallback khi response thiếu field (không nên xảy ra với API chuẩn)
             data.respinRemaining = MATSURI_SPIN_COUNT;
         }
 
         this._isSpinning = false;
 
-        let next = resp.nextStage as SlotStageType;
-        if (data.respinRemaining <= 0) {
-            next = SlotStageType.TOPUP_SPIN_END;
-        } else if (next !== SlotStageType.TOPUP_SPIN_END) {
-            next = SlotStageType.TOPUP_SPIN;
-        }
+        // remain từ response là source of truth: hết lượt → END ngay
+        const next = data.respinRemaining > 0
+            ? SlotStageType.TOPUP_SPIN
+            : SlotStageType.TOPUP_SPIN_END;
 
         Log.e(
             `[Matsuri] stopped green=${greenCount} filled=${data.stickyCells.size} ` +
@@ -1538,10 +1596,6 @@ export class GameManager extends Component {
         this.unschedule(this._matsuriCollectFailsafe);
 
         const data = GameData.instance;
-        // Design: có Green → Free Spin reset 3 (mock/server có thể đã set remain)
-        if (data.respinRemaining <= 0 && this._pendingMatsuriNext !== SlotStageType.TOPUP_SPIN_END) {
-            data.respinRemaining = MATSURI_SPIN_COUNT;
-        }
 
         // Sync Grand / server total sau collect (full grid)
         const resp = data.lastSpinResponse;
@@ -1556,7 +1610,12 @@ export class GameManager extends Component {
             totalWin: data.respinTotalWin,
         });
 
-        const next = this._pendingMatsuriNext ?? SlotStageType.TOPUP_SPIN;
+        // remain <= 0 → END (không reset 3 / không default tiếp tục quay)
+        let next = this._pendingMatsuriNext
+            ?? (data.respinRemaining > 0 ? SlotStageType.TOPUP_SPIN : SlotStageType.TOPUP_SPIN_END);
+        if (data.respinRemaining <= 0) {
+            next = SlotStageType.TOPUP_SPIN_END;
+        }
         this._pendingMatsuriNext = null;
 
         Log.e(`[Matsuri] flip done → next=${next} remain=${data.respinRemaining} total=${data.respinTotalWin}`);
@@ -1728,11 +1787,27 @@ export class GameManager extends Component {
             }
         }
 
+        // Matsuri Green: reveal trực tiếp trên overlay (trước collect/flip)
+        if (isMatsuri && symbolId === SymbolId.STICKY_GREEN) {
+            const overlay = this.node.scene?.getComponentInChildren(StickyOverlayController) ?? null;
+            overlay?.revealMatsuriGreenCoin({ reel, row, credit });
+            return;
+        }
+
         // Refresh overlay ngay → coin hiện lần lượt theo reel stop
         EventBus.instance.emit(GameEvents.TOPUP_TOTAL_UPDATED, {
             baseCredit: data.featureBaseCredit,
             totalWin: data.respinTotalWin,
         });
+    }
+
+    private _getTopUpManagerCached(): TopUpManager | null {
+        if (this._cachedTopUpMgr?.isValid) return this._cachedTopUpMgr;
+        const overlay = this.node.scene?.getComponentInChildren(StickyOverlayController) ?? null;
+        this._cachedTopUpMgr = overlay?.node?.getComponentInChildren(TopUpManager)
+            ?? this.node.scene?.getComponentInChildren(TopUpManager)
+            ?? null;
+        return this._cachedTopUpMgr;
     }
 
     private _lockTopUpCell(cell: StickyCell): void {
@@ -1744,11 +1819,10 @@ export class GameManager extends Component {
             return;
         }
 
-        const topUpMgrs = this.node.scene?.getComponentsInChildren(TopUpManager) ?? [];
-        for (const mgr of topUpMgrs) {
+        const mgr = this._getTopUpManagerCached();
+        if (mgr) {
             mgr.lockCellAt(cell.reel, cell.row, cell.symbolId, cell.credit ?? 0);
         }
-        Log.e(`[TOPUP-LOCK] lock ${cell.reel}-${cell.row} ${SymbolId[cell.symbolId] ?? cell.symbolId} credit=${cell.credit ?? 0}`);
     }
 
     private _onReelsStopped(): void {
@@ -2423,25 +2497,65 @@ export class GameManager extends Component {
     }
 
     /**
-     * POT_WIN_DONE: PotController đã play xong intro animation.
-     * Mở PickGamePopup — reset sẽ xảy ra khi PickGamePopup đóng (PICK_GAME_CLOSE).
+     * POT_WIN_DONE / Carnival Jackpot: hiện JackpotStartPopup (Press to Start)
+     * thay TransitionPopup. Sau khi đóng → PICK_GAME_OPEN.
      */
     private _onPotWinDone(): void {
-        Log.e('[DEBUG-PICK] _onPotWinDone ENTER');
-        this._isPickGameActive = true;
-        this._pickGameBgPending = true;
-        Log.d('[POT-DEBUG] POT_WIN_DONE → opening PickGamePopup');
+        Log.e('[DEBUG-PICK] _onPotWinDone ENTER → JackpotStartPopup');
         const data = GameData.instance;
         const resp = data.lastSpinResponse;
 
-        // Lấy pickGame data từ response, hoặc build mới nếu mock không có sẵn
         let pickState: PickGameState | undefined = resp?.pickGame;
         if (!pickState) {
             pickState = MockDataProvider.buildPickGame();
             Log.d('[POT-DEBUG] resp.pickGame missing → built mock PickGameState');
         }
+        data.pickGameState = pickState;
+        if (resp) (resp as any).pickGame = pickState;
 
+        this._showJackpotStartPopupThenEnter(pickState);
+    }
+
+    /** Stash PickGame đang chờ Press to Start. */
+    private _pendingJackpotStartPick: PickGameState | null = null;
+
+    private _showJackpotStartPopupThenEnter(pickState: PickGameState): void {
+        this._pendingJackpotStartPick = pickState;
+        this._gameState = GameState.POPUP;
+        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+        EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
+        Log.e('[GameManager] PICK_GAME_START_POPUP → PRESS TO START');
+        EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP, pickState);
+        this.unschedule(this._jackpotStartPopupFailsafe);
+        this.scheduleOnce(this._jackpotStartPopupFailsafe, 25.0);
+    }
+
+    private _jackpotStartPopupFailsafe = (): void => {
+        if (!this._pendingJackpotStartPick) return;
+        Log.w('[GameManager] Jackpot start popup failsafe — enter Pick Game');
+        this._onJackpotStartPopupClosed(this._pendingJackpotStartPick);
+    };
+
+    private _onJackpotStartPopupClosed(pickState?: PickGameState | null): void {
+        this.unschedule(this._jackpotStartPopupFailsafe);
+        const pick = pickState ?? this._pendingJackpotStartPick
+            ?? GameData.instance.pickGameState
+            ?? MockDataProvider.buildPickGame();
+        this._pendingJackpotStartPick = null;
+        this._openPickGameNow(pick);
+    }
+
+    /** Mở PickGamePopup thật sự (sau Press to Start / resume). */
+    private _openPickGameNow(pickState: PickGameState): void {
+        Log.e('[DEBUG-PICK] _openPickGameNow → PICK_GAME_OPEN');
+        this._isPickGameActive = true;
+        this._pickGameBgPending = true;
+        this._gameState = GameState.POPUP;
+        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+        EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
         EventBus.instance.emit(GameEvents.PICK_GAME_OPEN, pickState);
+        // Không còn TransitionPopup — đổi BG Pick ngay khi entry
+        this.scheduleOnce(() => this._applyPickGameBackgroundIfPending(), 0);
     }
 
     /**
@@ -2519,11 +2633,12 @@ export class GameManager extends Component {
         this._gameState = GameState.IDLE;
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
 
-        // ★ Carnival combo: sau Jackpot → Matsuri stub (Ultra / Supreme / Ultimate)
+        // ★ Carnival combo: sau Jackpot → popup Press to Start rồi Matsuri
         const pendingMatsuri = GameData.instance.pendingCarnivalMatsuri;
         if (pendingMatsuri && pendingMatsuri.matsuriRows > 0) {
-            Log.e(`[DEBUG-PICK] _onPickGameClose → pending Matsuri "${pendingMatsuri.featureName}"`);
-            void this._enterCarnivalMatsuri(pendingMatsuri);
+            GameData.instance.pendingCarnivalMatsuri = null;
+            Log.e(`[DEBUG-PICK] _onPickGameClose → Matsuri start popup "${pendingMatsuri.featureName}"`);
+            this._showMatsuriStartPopupThenEnter(pendingMatsuri);
             return;
         }
 
@@ -2883,6 +2998,12 @@ export class GameManager extends Component {
             case SlotStageType.TOPUP_SPIN:
             case SlotStageType.RESPIN_START:
             case SlotStageType.RESPIN:
+                // Hết lượt → chuyển END, không schedule spin thêm (tránh quay tới full reel)
+                if (GameData.instance.respinRemaining <= 0) {
+                    Log.e('[TopUp/Matsuri] TOPUP_SPIN nhưng remain=0 → ép TOPUP_SPIN_END');
+                    this._transitionStage(SlotStageType.TOPUP_SPIN_END);
+                    break;
+                }
                 this._currentStage = SlotStageType.TOPUP_SPIN;
                 this._gameState = GameState.IDLE;
                 this.scheduleOnce(() => {
@@ -3367,28 +3488,39 @@ export class GameManager extends Component {
 
         // Client form đã có grid
         if (rawPick && Array.isArray(rawPick.grid) && rawPick.grid.length > 0) {
+            const grid = rawPick.grid.slice();
+            while (grid.length < PICK_GAME_CELL_COUNT) grid.push(SymbolId.JP_MINI);
             return {
-                grid: rawPick.grid.slice(),
+                grid,
                 revealed: Array.isArray(rawPick.revealed) ? rawPick.revealed.slice() : [],
                 wonTier: rawPick.wonTier,
+                upgradeArmed: rawPick.upgradeArmed,
+                upgradeCount: rawPick.upgradeCount,
+                doubleGrand: rawPick.doubleGrand,
             };
         }
 
-        // Server array form: [{ Index, SymbolId }]
+        // Server array form: [{ Index, SymbolId }] hoặc number[] PS IDs
         if (Array.isArray(rawPick) && rawPick.length > 0) {
-            const serverToClient: Record<number, number> = {
-                82: SymbolId.JP_GRAND, 83: SymbolId.JP_MAJOR,
-                84: SymbolId.JP_MINOR, 85: SymbolId.JP_MINI,
-            };
-            const grid: number[] = [];
+            const grid: number[] = new Array(PICK_GAME_CELL_COUNT).fill(SymbolId.JP_IDLE);
             const revealed: number[] = [];
-            for (const item of rawPick) {
-                const idx = item?.Index ?? item?.index ?? grid.length;
-                const sym = item?.SymbolId ?? item?.symbolId ?? -1;
-                grid[idx] = serverToClient[sym] ?? SymbolId.JP_MINI;
-                if (sym !== -1) revealed.push(idx);
+            if (typeof rawPick[0] === 'number') {
+                for (let i = 0; i < Math.min(rawPick.length, PICK_GAME_CELL_COUNT); i++) {
+                    const ps = rawPick[i] as number;
+                    if (ps === -1) continue;
+                    grid[i] = psPickToClient(ps);
+                    if (ps !== 81) revealed.push(i);
+                }
+            } else {
+                for (const item of rawPick) {
+                    const idx = item?.Index ?? item?.index ?? 0;
+                    const sym = item?.SymbolId ?? item?.symbolId ?? -1;
+                    if (idx < 0 || idx >= PICK_GAME_CELL_COUNT) continue;
+                    grid[idx] = psPickToClient(sym);
+                    if (sym !== -1 && sym !== 81) revealed.push(idx);
+                }
             }
-            if (grid.length > 0) return { grid, revealed, wonTier: undefined };
+            return { grid, revealed, wonTier: undefined };
         }
 
         Log.d('[RESUME-DEBUG] _parseResumePickGame → thiếu PickGame data, build mock PickGameState');
@@ -4631,6 +4763,37 @@ export class GameManager extends Component {
     private async _onTopUpEndPopupClosed(): Promise<void> {
         const data = GameData.instance;
 
+        // ── Matsuri Hold&Spin: đóng popup tổng kết → cleanup về Base ──
+        if (data.currentMode === 'matsuri') {
+            const totalWin = data.respinTotalWin;
+            Log.e(`[CarnivalMatsuri] TopUpEndPopup closed — totalWin=${totalWin}`);
+
+            data.currentMode = 'normal';
+            data.respinRemaining = 0;
+            data.respinTotalWin = 0;
+            data.featureBaseCredit = 0;
+            data.matsuriRows = 3;
+            data.matsuriFeatureName = '';
+            data.stickyCells.clear();
+            data.pendingCarnivalMatsuri = null;
+            data.topUpDisplayedEachWin = 0;
+            this._topUpStickySnapshot.clear();
+            this._topUpRemainBeforeSpin = 0;
+            this._currentStage = SlotStageType.SPIN;
+            this._gameState = GameState.IDLE;
+            this._resetFeatureGauge();
+
+            EventBus.instance.emit(GameEvents.TOPUP_END, totalWin);
+            EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_END);
+            EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB_DONE);
+            this._updateDisplayVisibility();
+            this._updateBackgroundSprite();
+            EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
+            EventBus.instance.emit(GameEvents.NORMAL_SPIN_DONE);
+            this._checkProgressiveWinForFeatureEnd(totalWin);
+            return;
+        }
+
         // ── FreeSpin Gold: kết thúc FreeSpin Gold, dọn trạng thái FS, phát sự kiện ──
         if (data.currentMode === 'freespin_gold') {
             const localTotalWin = truncateMoney3(data.freeSpinTotalWin + data.freeSpinGoldTotalWin);
@@ -4917,12 +5080,40 @@ export class GameManager extends Component {
         if (!this.backgroundNode) return;
         const spriteComponent = this.backgroundNode.getComponent(Sprite);
         if (spriteComponent) spriteComponent.spriteFrame = null;
+        this._currentBgFrame = null;
+        if (this._bgFadeTwin?.isValid) {
+            setNodeOpacity(this._bgFadeTwin, 0);
+            this._bgFadeTwin.active = false;
+        }
     }
 
+    /**
+     * Gán / crossfade background.
+     * Hình cũ mờ dần + hình mới hiện dần (không cắt cứng 1 frame).
+     */
     private _applyBackgroundSprite(sf: SpriteFrame | null): void {
         if (!sf || !this.backgroundNode?.isValid) return;
-        const spriteComponent = this.backgroundNode.getComponent(Sprite);
-        if (spriteComponent) spriteComponent.spriteFrame = sf;
+        if (this._currentBgFrame === sf) {
+            setNodeOpacity(this.backgroundNode, 255);
+            return;
+        }
+        const hadPrevious = !!this._currentBgFrame
+            || !!this.backgroundNode.getComponent(Sprite)?.spriteFrame;
+        this._currentBgFrame = sf;
+
+        if (!hadPrevious) {
+            const spriteComponent = this.backgroundNode.getComponent(Sprite);
+            if (spriteComponent) spriteComponent.spriteFrame = sf;
+            setNodeOpacity(this.backgroundNode, 255);
+            return;
+        }
+
+        this._bgFadeTwin = crossfadeSpriteFrame(
+            this.backgroundNode,
+            this._bgFadeTwin,
+            sf,
+            this.uiFadeDuration,
+        );
     }
 
     private _loadBackgroundSprite(
@@ -4983,26 +5174,25 @@ export class GameManager extends Component {
         const isMatsuri      = this._isMatsuri();
         const isFreespinGold = this._isFreespinGold();
         const isCellFeature  = isTopUp || isMatsuri;
+        const dur = this.uiFadeDuration;
 
-        if (this.payOutDisplay) {
-            this.payOutDisplay.active = !isFreeSpin && !isCellFeature;
-        }
+        const setVisible = (node: Node | null, visible: boolean) => {
+            if (!node?.isValid) return;
+            if (visible) fadeInNode(node, dur);
+            else fadeOutNode(node, dur, true);
+        };
 
-        if (this.multiplierDisplay) {
-            // Multiplier chỉ hiển thị khi FreeSpin thường (không phải FreeSpin Gold)
-            this.multiplierDisplay.active = isFreeSpin && !isFreespinGold;
-        }
+        setVisible(this.payOutDisplay, !isFreeSpin && !isCellFeature);
 
-        if (this.jackpotDisplay) {
-            this.jackpotDisplay.active = !isFreeSpin && !isCellFeature;
-        }
+        // Multiplier chỉ hiển thị khi FreeSpin thường (không phải FreeSpin Gold)
+        setVisible(this.multiplierDisplay, isFreeSpin && !isFreespinGold);
 
-        if (this.potDisplay) {
-            this.potDisplay.active = !isCellFeature && !isFreeSpin;
-        }
+        setVisible(this.jackpotDisplay, !isFreeSpin && !isCellFeature);
+
+        setVisible(this.potDisplay, !isCellFeature && !isFreeSpin);
 
         // Carnival: bỏ TopUpUI — luôn ẩn
-        if (this.topUpDisplay) {
+        if (this.topUpDisplay?.isValid) {
             this.topUpDisplay.active = false;
         }
         const topUpByName = this._findNodeByName('TopUpUI');
@@ -5010,9 +5200,7 @@ export class GameManager extends Component {
 
         // FreeSpinUI: active khi Matsuri hoặc FreeSpin Gold
         const fsUI = this.freeSpinUI ?? this.freeSpinGoldDisplay ?? this._findNodeByName('FreeSpinUI');
-        if (fsUI) {
-            fsUI.active = isMatsuri || isFreespinGold;
-        }
+        setVisible(fsUI, isMatsuri || isFreespinGold);
 
         // multiplierEffect được điều khiển riêng bằng FREE_SPIN_MULTIPLIER_SPIN / FREE_SPIN_END
         // để đảm bảo active cùng lúc với MultiplierDisplay rolling bắt đầu

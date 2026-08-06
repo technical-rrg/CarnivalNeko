@@ -101,6 +101,10 @@ export class WinPresenter extends Component {
         EventBus.instance.on(GameEvents.PICK_GAME_CLOSE, this._onPickGameClose, this);
         EventBus.instance.on(GameEvents.FORCE_FEATURE_ENTRY_START, this._onWinHighlightClear, this);
         EventBus.instance.on(GameEvents.FEATURE_ENTRY_GUIDE_SHOW, this._onWinHighlightClear, this);
+        // Carnival Feature entry — dừng cycle line/ways trước khi pot burst / Matsuri popup
+        EventBus.instance.on(GameEvents.CARNIVAL_POT_BURST, this._onWinHighlightClear, this);
+        EventBus.instance.on(GameEvents.MATSURI_START_POPUP, this._onWinHighlightClear, this);
+        EventBus.instance.on(GameEvents.CARNIVAL_MATSURI_START, this._onWinHighlightClear, this);
         EventBus.instance.on(GameEvents.FREE_SPIN_COUNT_UPDATED, (remaining: number) => {
             this._isFreeSpinMode = remaining > 0;
         }, this);

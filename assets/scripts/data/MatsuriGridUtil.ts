@@ -13,6 +13,11 @@
 import { StickyCell, SymbolId, TopupReelSlot, TopupReelType } from './SlotTypes';
 
 export const MATSURI_COL_COUNT = 5;
+/**
+ * Số Free Spin Matsuri lúc vào feature / khi Green land (reset).
+ * ★ MOCK + client fallback dùng const này.
+ * Real API: lấy RemainFeatureSpinCount / remainRespinCount từ response — không hardcode phía client.
+ */
 export const MATSURI_SPIN_COUNT = 3;
 export const MATSURI_MIN_ROWS = 3;
 export const MATSURI_MAX_ROWS = 5;
@@ -22,6 +27,36 @@ export function clampMatsuriRows(rows: number): number {
     if (n < MATSURI_MIN_ROWS) return MATSURI_MIN_ROWS;
     if (n > MATSURI_MAX_ROWS) return MATSURI_MAX_ROWS;
     return n;
+}
+
+/**
+ * Scale root StickyOverlay (GridMiniReel + coin) theo số hàng.
+ * Baseline = 5×3 (scale 1). 5×4 / 5×5 thu nhỏ nhẹ để vừa viewport.
+ */
+export function matsuriGridFitScale(rows: number): number {
+    const r = clampMatsuriRows(rows);
+    if (r <= MATSURI_MIN_ROWS) return 1;
+    if (r === 4) return 0.85; // Mega — to hơn 0.75
+    return 0.72;              // Super 5×5 — to hơn 0.6
+}
+
+/**
+ * Hệ số chiều cao local của FillBlackFrame / mask theo số hàng
+ * (trước khi root scale xuống). 5×3 = 1, 5×4 ≈ 1.33, 5×5 ≈ 1.67.
+ */
+export function matsuriGridFrameHeightMul(rows: number): number {
+    return clampMatsuriRows(rows) / MATSURI_MIN_ROWS;
+}
+
+/**
+ * Đẩy Y local StickyOverlay lên (px) theo số hàng.
+ * 5×3 → 16, 5×4 → 52, 5×5 → 78.
+ */
+export function matsuriGridYOffset(rows: number): number {
+    const r = clampMatsuriRows(rows);
+    if (r <= MATSURI_MIN_ROWS) return 16;
+    if (r === 4) return 152;
+    return 178;
 }
 
 export function matsuriCellCount(rows: number): number {

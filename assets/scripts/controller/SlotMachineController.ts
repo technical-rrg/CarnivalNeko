@@ -30,6 +30,14 @@ import { AutoSpinManager, SpeedMode } from '../manager/AutoSpinManager';
 import { Log } from '../core/Logger';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { LongSpinVFXLoader } from './LongSpinVFXLoader';
+import {
+    crossfadeSpriteFrame,
+    fadeInNode,
+    fadeNodeOpacity,
+    fadeOutNode,
+    setNodeOpacity,
+    DEFAULT_UI_FADE_DURATION,
+} from '../core/OpacityFadeUtil';
 
 const { ccclass, property } = _decorator;
 
@@ -175,6 +183,9 @@ export class SlotMachineController extends Component {
 
     @property({ type: SpriteFrame, tooltip: 'Slot background sprite - Free Spin' })
     freeSpinSprite: SpriteFrame | null = null;
+
+    @property({ tooltip: 'Fade SlotMachine / ReelMask / slot BG khi vào Feature/Pick (giây)' })
+    uiFadeDuration: number = DEFAULT_UI_FADE_DURATION;
 
     @property({ tooltip: 'Delay giữa việc bắt đầu quay mỗi reel (seconds)' })
     startStaggerDelay: number = 0.3;
@@ -385,6 +396,8 @@ export class SlotMachineController extends Component {
     private _isTopUp: boolean = false;
     /** PickGame mode: đổi slot background giống FreeSpin/TopUp */
     private _isPickGame: boolean = false;
+    /** Twin sprite cho crossfade slot frame BG. */
+    private _slotBgFadeTwin: Node | null = null;
     /** Ẩn SlotMachine khi vào Pick Game; hiện lại khi PICK_GAME_CLOSE */
     private _wasActiveBeforePickGame: boolean = true;
     private _pendingPickGameHide: boolean = false;
@@ -654,9 +667,19 @@ export class SlotMachineController extends Component {
 
         const isFeature = this._isFreeSpin || this._isTopUp || this._isPickGame;
         const sprite = isFeature ? this.freeSpinSprite : this.normalSprite;
-        if (sprite) {
+        if (!sprite) return;
+
+        if (spriteComponent.spriteFrame === sprite || !spriteComponent.spriteFrame) {
             spriteComponent.spriteFrame = sprite;
+            setNodeOpacity(this.slotBackgroundNode, 255);
+            return;
         }
+        this._slotBgFadeTwin = crossfadeSpriteFrame(
+            this.slotBackgroundNode,
+            this._slotBgFadeTwin,
+            sprite,
+            this.uiFadeDuration,
+        );
     }
 
     /** FREE_SPIN_START event → cập nhật slot background sprite sang FreeSpin */
@@ -685,11 +708,14 @@ export class SlotMachineController extends Component {
         //   1. Áp dụng freespin speed settings (minSpinDurationFreeSpin, decelDurationFreeSpin)
         //   2. Bỏ qua response.reelIndex khi set strip index → reel dùng normal strips khi dừng
         this._isTopUp = true;
+        // Ẩn SlotReel chính (ReelMask) — giữ StickyOverLayparent sibling vẫn hiện
+        this._setMainSlotReelsVisible(false);
         this._updateSlotBackgroundSprite();
     }
 
     private _onTopUpEnd(): void {
         this._isTopUp = false;
+        this._setMainSlotReelsVisible(true);
         this._updateSlotBackgroundSprite();
         // Defer refreshSymbols sang frame tiếp theo để đảm bảo SymbolHighlighter/WaysPayDisplay
         // đã cleanup xong trước khi emit symbol-changed.
@@ -700,17 +726,43 @@ export class SlotMachineController extends Component {
         }, 0);
     }
 
+    /**
+     * Ẩn/hiện ReelMask (5 ReelController chính) bằng opacity fade.
+     * Không đụng StickyOverLayparent (sibling) — StickyOverlay vẫn hiện.
+     */
+    private _setMainSlotReelsVisible(visible: boolean): void {
+        const mask = this.node.getChildByName('ReelMask');
+        const targets: Node[] = [];
+        if (mask?.isValid) {
+            targets.push(mask);
+        } else {
+            for (const reel of this.reels) {
+                if (reel?.node?.isValid) targets.push(reel.node);
+            }
+        }
+        const dur = this.uiFadeDuration;
+        for (const n of targets) {
+            if (visible) {
+                fadeInNode(n, dur);
+            } else {
+                // Giữ active trong lúc fade; tắt sau khi mờ xong (tránh hit-test)
+                fadeOutNode(n, dur, true);
+            }
+        }
+    }
+
     private _onPickGameOpen(): void {
         this._isPickGame = true;
         this._wasActiveBeforePickGame = this.node.active;
         this._pendingPickGameHide = true;
         this._updateSlotBackgroundSprite();
-        Log.d('[SlotMachineController] Pick Game open — hide when TransitionPopup READY (fade-in full)');
+        // Không còn TransitionPopup — fade SlotMachine ngay khi Pick mở
+        this._hideForPickGameIfPending();
+        Log.d('[SlotMachineController] Pick Game open — fade out SlotMachine');
     }
 
     /**
-     * TOPUP_TRANSITION_READY: overlay đã phủ kín → mới ẩn SlotMachine.
-     * Trước READY (FeatureSelect / đang fade-in): UI giữ nguyên.
+     * TOPUP_TRANSITION_READY: overlay đã phủ kín → mới ẩn SlotMachine (legacy).
      */
     private _onPickGameTransitionReady(): void {
         if (!this._isPickGame) return;
@@ -731,18 +783,25 @@ export class SlotMachineController extends Component {
     private _hideForPickGameIfPending(): void {
         if (!this._pendingPickGameHide) return;
         this._pendingPickGameHide = false;
-        if (this.node.active) {
-            this.node.active = false;
-            Log.d('[SlotMachineController] Hidden — Pick Game');
-        }
+        // Giữ node.active=true để fade nhìn thấy; opacity → 0
+        this.node.active = true;
+        fadeNodeOpacity(this.node, 0, this.uiFadeDuration, () => {
+            // Sau fade: tắt hit-test bằng active=false (đã mờ hết)
+            if (this._isPickGame && this.node.isValid) {
+                this.node.active = false;
+            }
+            Log.d('[SlotMachineController] Faded out — Pick Game');
+        });
     }
 
     private _onPickGameClose(): void {
         this._isPickGame = false;
         this._pendingPickGameHide = false;
-        if (this._wasActiveBeforePickGame && !this.node.active) {
+        if (this._wasActiveBeforePickGame) {
             this.node.active = true;
-            Log.d('[SlotMachineController] Shown — Pick Game close');
+            setNodeOpacity(this.node, 0);
+            fadeNodeOpacity(this.node, 255, this.uiFadeDuration);
+            Log.d('[SlotMachineController] Fade in — Pick Game close');
         }
         this._updateSlotBackgroundSprite();
     }

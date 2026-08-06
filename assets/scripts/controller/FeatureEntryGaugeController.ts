@@ -168,6 +168,7 @@ export class FeatureEntryGaugeController extends Component {
         EventBus.instance.on(GameEvents.LONG_SPIN_ZOOM_DONE, this._onLongSpinZoomDone, this);
         EventBus.instance.on(GameEvents.REELS_START_SPIN, this._onReelsStartSpin, this);
         // Pick Game — ẩn khi Transition fade-in xong (READY)
+        EventBus.instance.on(GameEvents.PICK_GAME_START_POPUP,  this._onJackpotStartPopup,  this);
         EventBus.instance.on(GameEvents.PICK_GAME_OPEN,         this._onPickGameOpen,       this);
         EventBus.instance.on(GameEvents.TOPUP_TRANSITION_READY, this._onPickGameTransitionReady, this);
         EventBus.instance.on(GameEvents.PICK_GAME_ENTRY_DONE,   this._onPickGameEntryDone,  this);
@@ -244,19 +245,27 @@ export class FeatureEntryGaugeController extends Component {
     }
 
     /** PICK_GAME_OPEN: chỉ đánh dấu — ẩn khi TransitionPopup READY. */
+    /** Press-to-Start Jackpot — ẩn gauge ngay (không còn TransitionPopup). */
+    private _onJackpotStartPopup(): void {
+        this._hideForFeature();
+    }
+
     private _onPickGameOpen(): void {
         this._wasActiveBeforeFeature = this.node.active;
         this._pendingPickGameHide = true;
+        // Không dùng Transition nữa → ẩn ngay / chờ ENTRY_DONE
+        this._hideForFeature();
+        this._pendingPickGameHide = false;
     }
 
-    /** TOPUP_TRANSITION_READY: overlay phủ kín → mới ẩn gauge. */
+    /** TOPUP_TRANSITION_READY: overlay phủ kín → mới ẩn gauge (legacy). */
     private _onPickGameTransitionReady(): void {
         if (!this._pendingPickGameHide) return;
         this._pendingPickGameHide = false;
         this._hideForFeature();
     }
 
-    /** Fallback nếu SHOW bị miss / bỏ qua transition. */
+    /** Fallback nếu bỏ TransitionPopup — ẩn gauge khi Pick Game hiện. */
     private _onPickGameEntryDone(): void {
         if (!this._pendingPickGameHide) return;
         this._pendingPickGameHide = false;

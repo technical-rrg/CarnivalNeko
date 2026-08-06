@@ -112,10 +112,11 @@ const DEFAULT_WAYS_PAYTABLE: Record<number, [number, number, number]> = {
     [SymbolId.MAJOR_CLEOPATRA]: [3.0, 8.0, 25.0],
 };
 
+/** Carnival Neko doc §7 Payout (có thể đổi khi server chốt). */
 const DEFAULT_JACKPOT_MULTIPLIERS = {
-    GRAND: 1000,   // × totalBet
-    MAJOR: 200,
-    MINOR: 50,
+    GRAND: 300,   // × totalBet
+    MAJOR: 50,
+    MINOR: 20,
     MINI:  10,
 };
 

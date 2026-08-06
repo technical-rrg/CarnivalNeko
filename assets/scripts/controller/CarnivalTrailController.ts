@@ -7,7 +7,7 @@
  *   3. Flip TRAIL_NORMAL → TRAIL_BLUE/RED/GREEN (tween trên proxy — KHÔNG tween symbolNode
  *      vì SymbolView.setSymbol() gọi Tween.stopAllByTarget và sẽ cắt chuỗi bay)
  *   4. instantiate(particleTemplate) → child của CarnivalTrailController → bay tới Pot
- *   5. CARNIVAL_TRAIL_ONE_HIT → CarnivalPotBoard bounce
+ *   5. CARNIVAL_TRAIL_ONE_HIT → CarnivalPotBoard Spine impact
  *   6. CARNIVAL_TRAIL_FLY_DONE
  *
  * ĐƯỜNG BAY (dạng dấu hỏi "?"):

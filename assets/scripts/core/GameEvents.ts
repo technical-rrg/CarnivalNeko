@@ -86,6 +86,13 @@ export const GameEvents = {
     CARNIVAL_POT_BURST: 'carnival:pot:burst',
     /** Burst anim xong — GameManager tiếp tục Jackpot / Matsuri. Payload: CarnivalFeatureTrigger */
     CARNIVAL_POT_BURST_DONE: 'carnival:pot:burst:done',
+    /**
+     * Popup thông báo trước khi vào Matsuri Hold&Spin.
+     * Payload: CarnivalFeatureTrigger — chờ MATSURI_START_POPUP_CLOSED rồi mới enter.
+     */
+    MATSURI_START_POPUP: 'matsuri:start:popup',
+    /** Người chơi Press to Start — payload: CarnivalFeatureTrigger */
+    MATSURI_START_POPUP_CLOSED: 'matsuri:start:popup:closed',
     /** Matsuri Hold&Spin bắt đầu (payload: CarnivalFeatureTrigger). */
     CARNIVAL_MATSURI_START: 'carnival:matsuri:start',
     /** Matsuri Hold&Spin kết thúc → về Base. No payload. */
@@ -114,6 +121,13 @@ export const GameEvents = {
     CARNIVAL_MATSURI_STUB: 'carnival:matsuri:stub',
     /** @deprecated dùng CARNIVAL_MATSURI_END */
     CARNIVAL_MATSURI_STUB_DONE: 'carnival:matsuri:stub:done',
+    /**
+     * Popup Press to Start trước khi vào Pick Game (thay TransitionPopup).
+     * Payload: PickGameState — chờ PICK_GAME_START_POPUP_CLOSED rồi mới PICK_GAME_OPEN.
+     */
+    PICK_GAME_START_POPUP: 'pick:game:start:popup',
+    /** Người chơi Press to Start — payload: PickGameState */
+    PICK_GAME_START_POPUP_CLOSED: 'pick:game:start:popup:closed',
     /** Mở Pick Game popup. Payload: PickGameState */
     PICK_GAME_OPEN: 'pick:game:open',
     /** Pick Game popup đóng (người chơi đã pick xong + jackpot hiển thị xong). No payload. */
@@ -133,6 +147,10 @@ export const GameEvents = {
     JACKPOT_LOOP_START: 'jackpot:loop:start',
     /** Pick Game vừa tìm ra 3 ô match — emit ngay, trước khi JACKPOT_TRIGGER (payload: JackpotType) */
     PICK_GAME_MATCH_FOUND: 'pickgame:match:found',
+    /** Đủ 3 Upgrade Coin — feature tiếp tục, lần win sẽ nâng tier (payload: upgradeCount). */
+    PICK_GAME_UPGRADE_COMPLETE: 'pickgame:upgrade:complete',
+    /** Đủ 3 Upgrade Coin — feature tiếp tục, lần win sẽ nâng tier (payload: upgradeCount). */
+    PICK_GAME_UPGRADE_COMPLETE: 'pickgame:upgrade:complete',
 
     // ─── WALLET & BET ───
     BALANCE_UPDATED: 'wallet:balance:updated',

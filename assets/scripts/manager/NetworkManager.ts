@@ -46,6 +46,7 @@ import {
     TopupReelType,
     PickGameState,
     PS_TO_CLIENT,
+    JackpotType,
     SECRET_TREASURE_FREE_SPIN_TIERS,
     FREE_SPIN_TIER_REEL_INDICES,
     isFreeSpinTierReelIndex,
@@ -59,6 +60,13 @@ import {
 import { MockDataProvider, TestScenario } from '../data/MockDataProvider';
 import { WaysPayCalculator } from '../data/WaysPayCalculator';
 import { GameData } from '../data/GameData';
+import {
+    clientPickToPs,
+    psPickToClient,
+    resolvePickState,
+    JP_TYPE_TO_TIER_NAME,
+    PICK_GAME_CELL_COUNT,
+} from '../data/PickGameUtil';
 import { USE_REAL_API, ENABLE_DEBUG_TOOLS, ServerConfig, TestLoginConfig, MOCK_SPIN_SCENARIO, DEBUG_RANDS, MOCK_RESUME_SCENARIO } from '../data/ServerConfig';
 import {
     SCENARIO_NO_WIN, SCENARIO_NORMAL_WIN, SCENARIO_MULTI_LINE, SCENARIO_BIG_WIN,
@@ -653,58 +661,57 @@ class MockNetworkAdapter implements INetworkAdapter {
             Log.d(`[MockAdapter] sendPickRequest → built fresh PickGameState (grid len=${pickState.grid.length})`);
         }
 
-        const psSymMap: Record<number, number> = {
-            [SymbolId.JP_GRAND]: 82, [SymbolId.JP_MAJOR]: 83,
-            [SymbolId.JP_MINOR]: 84, [SymbolId.JP_MINI]:  85,
-        };
-
-        // Build full PickGame array (12 server symbol IDs) — giống real API
+        // Build PickGame array (15 PS IDs) — cùng shape real API sẽ trả
         const pickGameIds: number[] = [];
         for (let i = 0; i < pickState.grid.length; i++) {
-            const clientSym = pickState.grid[i];
-            const serverSymId = psSymMap[clientSym] ?? 85;
-            pickGameIds.push(serverSymId);
+            pickGameIds.push(clientPickToPs(pickState.grid[i]));
         }
 
-        // Accumulate revealed coins (server-side state)
         const revealed = (pickState.revealed ?? []).concat(pickIndex);
         pickState.revealed = revealed;
 
-        const tierCounts: Record<number, number> = {};
-        for (const idx of revealed) {
-            const s = pickState.grid[idx];
-            if (s != null) tierCounts[s] = (tierCounts[s] ?? 0) + 1;
-        }
-        const isJackpot = Object.values(tierCounts).some(c => c >= 3);
-        const jpIndexMap: Record<number, number> = {
-            [SymbolId.JP_MINI]: 0, [SymbolId.JP_MINOR]: 1,
-            [SymbolId.JP_MAJOR]: 2, [SymbolId.JP_GRAND]: 3,
-        };
-        const wonSym = isJackpot ? Object.entries(tierCounts).find(([, c]) => c >= 3)?.[0] : undefined;
-        const jackpotIndex = wonSym ? (jpIndexMap[Number(wonSym)] ?? 0) : 0;
+        const resolved = resolvePickState(pickState.grid, revealed, !!pickState.upgradeArmed);
+        pickState.upgradeCount = resolved.upgradeCount;
+        pickState.upgradeArmed = resolved.upgradeArmed;
+        pickState.doubleGrand = resolved.doubleGrand;
 
-        // ★ Persist wonTier nếu jackpot — để progressive win / claim xử lý đúng
-        const symToTierName: Record<number, 'GRAND' | 'MAJOR' | 'MINOR' | 'MINI'> = {
-            [SymbolId.JP_GRAND]: 'GRAND',
-            [SymbolId.JP_MAJOR]: 'MAJOR',
-            [SymbolId.JP_MINOR]: 'MINOR',
-            [SymbolId.JP_MINI]: 'MINI',
-        };
-        if (isJackpot && wonSym != null) {
-            pickState.wonTier = symToTierName[Number(wonSym)];
+        if (resolved.isJackpot) {
+            pickState.wonTier = JP_TYPE_TO_TIER_NAME[resolved.paidTier];
         }
 
-        // PickWin mock = meter jackpot hiện tại từ API/poll (không hardcode multiplier)
-        const jpIdx = wonSym != null ? (jpIndexMap[Number(wonSym)] ?? -1) : -1;
-        const meter = jpIdx >= 0 ? (GameData.instance.jackpotValues[jpIdx] ?? 0) : 0;
-        const winCash = isJackpot && meter > 0 ? meter : 0;
+        // PickWin: meter tier trả thưởng; Grand×2 → nhân đôi
+        let winCash = 0;
+        if (resolved.isJackpot) {
+            const meter = data.getJackpotWinAmount(resolved.paidTier);
+            const betFallback = (() => {
+                const mult = data.config.jackpotMultipliers;
+                const map: Partial<Record<JackpotType, number>> = {
+                    [JackpotType.MINI]: mult?.MINI ?? 10,
+                    [JackpotType.MINOR]: mult?.MINOR ?? 20,
+                    [JackpotType.MAJOR]: mult?.MAJOR ?? 50,
+                    [JackpotType.GRAND]: mult?.GRAND ?? 300,
+                };
+                return (map[resolved.paidTier] ?? 10) * data.totalBet;
+            })();
+            winCash = meter > 0 ? meter : betFallback;
+            if (resolved.doubleGrand) winCash *= 2;
+        }
+
+        Log.e(
+            `[MockPick] pick=${pickIndex} upgrade=${resolved.upgradeCount}`
+            + ` armed=${resolved.upgradeArmed} jackpot=${resolved.isJackpot}`
+            + ` paid=${JackpotType[resolved.paidTier]} x2=${resolved.doubleGrand} win=${winCash}`,
+        );
 
         return {
             PickGame: pickGameIds,
-            IsJackpot: isJackpot,
-            JackpotIndex: jackpotIndex,
-            NextStage: isJackpot ? SlotStageType.PICK_END : SlotStageType.PICK,
+            IsJackpot: resolved.isJackpot,
+            JackpotIndex: resolved.jackpotIndex,
+            NextStage: resolved.isJackpot ? SlotStageType.PICK_END : SlotStageType.PICK,
             PickWin: winCash,
+            UpgradeCount: resolved.upgradeCount,
+            IsUpgradeComplete: resolved.upgradeJustCompleted,
+            DoubleGrand: resolved.doubleGrand,
         };
     }
 
@@ -1315,6 +1322,10 @@ class RealNetworkAdapter implements INetworkAdapter {
             IsJackpot: pickRes.IsJackpot ?? pickRes.isJackpot ?? false,
             JackpotIndex: pickRes.JackpotIndex ?? pickRes.jackpotIndex ?? -1,
             NextStage: pickRes.NextStage ?? pickRes.nextStage ?? 0,
+            // Carnival optional — bỏ qua nếu server chưa gửi
+            UpgradeCount: pickRes.UpgradeCount ?? pickRes.upgradeCount,
+            IsUpgradeComplete: pickRes.IsUpgradeComplete ?? pickRes.isUpgradeComplete,
+            DoubleGrand: pickRes.DoubleGrand ?? pickRes.doubleGrand,
         };
         Log.e(`[Pick] ACK IsJackpot=${raw.IsJackpot} JackpotIndex=${raw.JackpotIndex} NextStage=${raw.NextStage} PickWin=${raw.PickWin ?? 0}`);
         ResponseLogger.log('Pick', raw);
@@ -2379,21 +2390,39 @@ class RealNetworkAdapter implements INetworkAdapter {
      */
     private _parsePickGame(raw: any): PickGameState | undefined {
         if (!raw) return undefined;
-        // Array format: server trả [{Index, SymbolId}]
+        // Array format: server trả [{Index, SymbolId}] hoặc number[] PS IDs
         if (Array.isArray(raw)) {
-            const grid: number[] = new Array(12).fill(SymbolId.JP_MINI);
-            for (const item of raw) {
-                if (item != null && item.Index != null) {
-                    grid[item.Index] = PS_TO_CLIENT[item.SymbolId] ?? SymbolId.JP_MINI;
+            const grid: number[] = new Array(PICK_GAME_CELL_COUNT).fill(SymbolId.JP_IDLE);
+            const revealed: number[] = [];
+            if (raw.length > 0 && typeof raw[0] === 'number') {
+                for (let i = 0; i < Math.min(raw.length, PICK_GAME_CELL_COUNT); i++) {
+                    const ps = raw[i] as number;
+                    if (ps === -1) continue;
+                    grid[i] = psPickToClient(ps);
+                    if (ps !== 81) revealed.push(i);
+                }
+            } else {
+                for (const item of raw) {
+                    if (item == null || item.Index == null) continue;
+                    const ps = item.SymbolId ?? item.symbolId ?? -1;
+                    grid[item.Index] = psPickToClient(ps);
+                    if (ps !== -1 && ps !== 81) revealed.push(item.Index);
                 }
             }
-            return { grid, revealed: [] };
+            return { grid, revealed };
         }
         // Object format — normalize PascalCase keys
         const grid: number[] | undefined = raw.grid ?? raw.Grid;
         const revealed: number[] | undefined = raw.revealed ?? raw.Revealed ?? [];
         if (!grid) return undefined;
-        return { grid, revealed };
+        return {
+            grid,
+            revealed,
+            wonTier: raw.wonTier ?? raw.WonTier,
+            upgradeArmed: raw.upgradeArmed ?? raw.UpgradeArmed,
+            upgradeCount: raw.upgradeCount ?? raw.UpgradeCount,
+            doubleGrand: raw.doubleGrand ?? raw.DoubleGrand,
+        };
     }
 
     private _parseTopupReel(raw: any): TopupReelSlot[] | undefined {

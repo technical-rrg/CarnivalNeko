@@ -16,18 +16,24 @@
  */
 
 import {
-    _decorator, Component, Node, tween, Vec3, Tween,
-    UITransform, UIOpacity, isValid, instantiate,
+    _decorator, Component, Node, tween, Vec3, Tween, NodePool,
+    UITransform, UIOpacity, isValid, instantiate, ParticleSystem,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
 import { StickyCell, SymbolId } from '../data/SlotTypes';
-import { MATSURI_GOLD_SYMBOL } from '../data/MatsuriGridUtil';
+import {
+    MATSURI_GOLD_SYMBOL,
+    clampMatsuriRows,
+    matsuriGridFitScale,
+} from '../data/MatsuriGridUtil';
 import { Log } from '../core/Logger';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { StickyOverlayController } from './StickyOverlayController';
+import { StickyFillEffect } from './StickyFillEffect';
 import { TopUpAbsorbEffect } from './TopUpAbsorbEffect';
+import { TopUpManager } from './TopUpManager';
 import { TOPUP_STICKY_SYMBOL_SCALE } from './TopUpReelController';
 import { FreeSpinGoldUI } from './FreeSpinGoldUI';
 import { SymbolView } from './SymbolView';
@@ -36,20 +42,20 @@ import { SoundManager } from '../manager/SoundManager';
 const { ccclass, property } = _decorator;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TIMING (giây, trừ *_Y / *_SCALE). Chỉ đụng vài dòng “hay chỉnh” nếu cần.
+// TIMING — SEED khớp StickyFillEffect (đường bay / tốc độ / scale-in particle).
+// Ưu tiên đọc từ StickyFillEffect trên scene nếu có.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── A) SEED — bắn orb tạo sticky vàng trên reel ───────────────────────────────
-/** ★ Hay chỉnh: cách bao lâu thì BẮT ĐẦU bắn orb kế (L→R, trên→dưới). */
-const SEED_LAUNCH_INTERVAL = 0.5;
-/** Thời gian 1 orb bay từ nguồn → ô đích (càng lớn = bay càng chậm). */
-const SEED_ORB_FLY_DURATION = 0.5;
-/** Thời gian orb nhún hop lên trước khi lao xuống ô. */
-const SEED_ORB_HOP_DURATION = 0.2;
-/** Độ cao hop (pixel world) trước khi bay xuống. */
-const SEED_ORB_HOP_Y = 50;
-/** Scale lúc orb vừa spawn (0.2 = nhỏ 20% rồi phóng to khi hop). */
-const SEED_ORB_START_SCALE = 0.2;
+// ── A) SEED — khớp StickyFillEffect._launchNextOrb ───────────────────────────
+/** Hop lên trước khi rơi (world Y). StickyFillEffect: +60 — KHÔNG × fit. */
+const SEED_ORB_HOP_Y = 60;
+/** Thời gian hop. StickyFillEffect: 0.1. */
+const SEED_ORB_HOP_DURATION = 0.1;
+/** Fallback fall duration nếu không có StickyFillEffect.orbFallDuration. */
+const SEED_ORB_FALL_DURATION = 0.55;
+const SEED_ORB_SCALE_IN_DURATION = 0.18;
+/** ★ Delay giữa LẦN BẮT ĐẦU bắn 2 quả cầu (bay song song, không chờ land). */
+const SEED_ORB_LAUNCH_INTERVAL = 0.6;
 
 // ── B) HIGHLIGHT — nhún sticky vàng song song, lệch pha (sau seed / trước bay tiền)
 /** ★ Hay chỉnh: cách bao lâu thì BẮT ĐẦU nhún sticky kế (song song, không chờ xong). */
@@ -63,13 +69,13 @@ const DELAY_BEFORE_FLY = 0.04;
 
 // ── C) FLY — clone sticky vàng bay về UI tổng tiền ────────────────────────────
 /** Thời gian 1 clone bay từ ô → UI đích. */
-const FLY_DURATION = 0.45;
+const FLY_DURATION = 0.55;
 /** ★ Hay chỉnh: cách bao lâu thì BẮT ĐẦU bay clone kế (song song, lệch pha). */
-const FLY_STAGGER = 0.08;
-/** Scale lúc tới đích / biến mất (nhỏ lại). */
-const FLY_END_SCALE = 0.15;
-/** Thời gian co nhỏ + fade khi tới đích. */
-const FLY_SHRINK_DURATION = 0.12;
+const FLY_STAGGER = 0.1;
+/** Tỉ lệ đường bay trước khi bắt đầu co scale về 0 (0.5 = nửa đường). */
+const FLY_SHRINK_START_RATIO = 0.5;
+/** Cooldown SFX khi clone tới đích — tránh playOneShot chồng theo số lượng Gold. */
+const FLY_ARRIVE_SFX_COOLDOWN = 0.2;
 
 @ccclass('MatsuriEffect')
 export class MatsuriEffect extends Component {
@@ -120,6 +126,12 @@ export class MatsuriEffect extends Component {
     private _totalBaseScale = new Vec3(1, 1, 1);
     private _activeClones: Node[] = [];
     private _activeOrbs: Node[] = [];
+    /** Pool orb seed — tránh destroy ParticleSystem mỗi lần land (giật Editor). */
+    private _orbPool = new NodePool();
+    /** Cache TopUpManager — không scan scene mỗi orb. */
+    private _cachedTopUpMgr: TopUpManager | null = null;
+    /** Thời điểm (Date.now) lần cuối play SFX tới đích — throttle theo FLY_ARRIVE_SFX_COOLDOWN. */
+    private _lastFlyArriveSfxAt = 0;
 
     onLoad(): void {
         const bus = EventBus.instance;
@@ -132,6 +144,7 @@ export class MatsuriEffect extends Component {
 
     onDestroy(): void {
         this._cleanupAll();
+        this._drainOrbPool();
         EventBus.instance.offTarget(this);
     }
 
@@ -172,6 +185,10 @@ export class MatsuriEffect extends Component {
             this.topUpAbsorbEffect =
                 this.node.scene?.getComponentInChildren(TopUpAbsorbEffect) ?? null;
         }
+        this._cachedTopUpMgr =
+            this.stickyOverlay?.node?.getComponentInChildren(TopUpManager)
+            ?? this.node.scene?.getComponentInChildren(TopUpManager)
+            ?? null;
         if (!this.collectTargetNode?.isValid) {
             const fsUI = this.node.scene?.getComponentInChildren(FreeSpinGoldUI) ?? null;
             const target = fsUI?.getCollectTargetNode() ?? null;
@@ -182,9 +199,17 @@ export class MatsuriEffect extends Component {
                 }
             }
         }
+        // Điểm bắn seed = Pot (StickyFill) — KHÔNG dùng FreeSpinUI (sai đường bay)
         if (!this.seedSourceNode?.isValid) {
-            const fs = this._findSceneNode('FreeSpinUI');
-            if (fs) this.seedSourceNode = fs;
+            const pot = this._stickyFillRef()?.potNode;
+            if (pot?.isValid) {
+                this.seedSourceNode = pot;
+            } else {
+                const potByName = this._findSceneNode('Pot')
+                    ?? this._findSceneNode('PotNode')
+                    ?? this._findSceneNode('CarnivalPot');
+                if (potByName) this.seedSourceNode = potByName;
+            }
         }
     }
 
@@ -214,27 +239,34 @@ export class MatsuriEffect extends Component {
     }
 
     /**
-     * 1) Bắn orb tới khi TẤT CẢ vàng có trên reel
-     * 2) Highlight nhún song song lệch pha
-     * 3) SEED_DONE → spin
+     * Seed: bắn song song lệch pha theo SEED_ORB_LAUNCH_INTERVAL
+     * (không chờ orb trước land xong). Bay/land giống StickyFillEffect.
+     * Tất cả land xong → highlight → SEED_DONE.
      */
     private async _runSeedSequence(cells: StickyCell[]): Promise<void> {
         this.stickyOverlay?.setMatsuriDeferGoldLandBounce(true);
         try {
-            if (!this.seedSourceNode?.isValid && !this.seedOrbTemplate?.isValid) {
-                await this._seedPlaceStaggered(cells);
-            } else {
-                this.stickyOverlay?.alignPositionsFromTopUpManager();
-                const jobs: Promise<void>[] = [];
-                for (let i = 0; i < cells.length; i++) {
-                    const delay = i * SEED_LAUNCH_INTERVAL; // hardcode 0.1s
-                    const cell = cells[i];
-                    jobs.push(this._wait(delay).then(() => this._seedLaunchOne(cell)));
-                }
-                await Promise.all(jobs);
+            this.stickyOverlay?.alignPositionsFromTopUpManager();
+            const fill = this._stickyFillRef();
+            const popDur = this.stickyOverlay?.matsuriSeedPopDuration ?? 0.22;
+
+            // Orb i bắt đầu sau i * interval — bay song song
+            const jobs: Promise<void>[] = [];
+            for (let i = 0; i < cells.length; i++) {
+                const delay = i * SEED_ORB_LAUNCH_INTERVAL;
+                const cell = cells[i];
+                jobs.push(
+                    this._wait(delay).then(() => this._seedLaunchOneLikeFill(cell, fill)),
+                );
             }
-            // Tất cả vàng đã sẵn trên reel → nhún song song lệch pha (L→R, trên→dưới)
+            await Promise.all(jobs);
+            // Chờ pop của quả cuối (land gần nhất) settle
+            await this._wait(popDur + 0.08);
+
             await this._phaseHighlightStaggered(cells);
+
+            this.stickyOverlay?.snapActiveCoinsToReelRest();
+            await this._wait(0.2);
         } catch (err) {
             Log.e('[MatsuriEffect:SEED] error', err);
         }
@@ -244,89 +276,195 @@ export class MatsuriEffect extends Component {
         EventBus.instance.emit(GameEvents.MATSURI_SEED_DONE);
     }
 
-    private async _seedPlaceStaggered(cells: StickyCell[]): Promise<void> {
-        const jobs: Promise<void>[] = [];
-        for (let i = 0; i < cells.length; i++) {
-            const delay = i * SEED_LAUNCH_INTERVAL;
-            const cell = cells[i];
-            jobs.push(
-                this._wait(delay).then(() => {
-                    this._seedPlaceCell(cell);
-                    SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
-                }),
-            );
-        }
-        await Promise.all(jobs);
+    private _stickyFillRef(): StickyFillEffect | null {
+        return this.node.scene?.getComponentInChildren(StickyFillEffect) ?? null;
     }
 
-    private async _seedLaunchOne(cell: StickyCell): Promise<void> {
+    /** Orb template: seedOrbTemplate → StickyFillEffect.orbTemplate → seedSource. */
+    private _seedOrbTemplate(): Node | null {
+        if (this.seedOrbTemplate?.isValid) return this.seedOrbTemplate;
+        const fillTmpl = this._stickyFillRef()?.orbTemplate;
+        if (fillTmpl?.isValid) return fillTmpl;
+        return this.seedSourceNode?.isValid ? this.seedSourceNode : null;
+    }
+
+    /**
+     * Bay 1 orb — cùng công thức StickyFillEffect._launchNextOrb:
+     *   start (Pot) → hop(+60Y, 0.1s) → fall(orbFallDuration, quadIn) → đích
+     * + children particle scale-in (sineOut).
+     */
+    private async _seedLaunchOneLikeFill(
+        cell: StickyCell,
+        fill: StickyFillEffect | null,
+    ): Promise<void> {
         const dstNode = this.stickyOverlay?.getCoinSlot(cell.reel, cell.row) ?? null;
+        // Ưu tiên điểm Pot (StickyFill) để đường bay giống bắn từ Pot
         const srcWorld = this.seedSourceNode?.worldPosition.clone()
-            ?? this.seedOrbTemplate?.worldPosition.clone()
+            ?? fill?.potNode?.worldPosition.clone()
+            ?? this._seedOrbTemplate()?.worldPosition.clone()
             ?? new Vec3();
 
         if (!dstNode) {
-            this._seedPlaceCell(cell);
+            this._seedPlaceCell(cell, true);
             return;
         }
 
-        const dstWorld = dstNode.worldPosition.clone();
-        const orb = this._createSeedOrb();
-        if (!orb) {
-            this._seedPlaceCell(cell);
+        // Dest = mid ô TopUp (ổn định hơn coin slot inactive)
+        const dstWorld = this._seedTargetWorld(cell, dstNode);
+        const tmpl = this._seedOrbTemplate();
+        if (!tmpl) {
+            this._seedPlaceCell(cell, true);
             return;
         }
 
-        orb.setParent(this.node);
-        orb.setWorldPosition(srcWorld);
-        const endScale = orb.scale.clone();
-        const startS = Math.max(0.05, SEED_ORB_START_SCALE);
-        orb.setScale(endScale.x * startS, endScale.y * startS, endScale.z);
-        orb.active = true;
-        this._activeOrbs.push(orb);
-
-        let op = orb.getComponent(UIOpacity);
-        if (!op) op = orb.addComponent(UIOpacity);
-        op.opacity = 255;
+        // Timing lấy từ StickyFillEffect trên scene (giống Pot fill)
+        const fallDur = fill?.orbFallDuration ?? SEED_ORB_FALL_DURATION;
+        const hopDur = SEED_ORB_HOP_DURATION;
+        const hopY = SEED_ORB_HOP_Y; // world px — không × grid fit
+        const scaleIn = fill?.orbScaleInDuration ?? SEED_ORB_SCALE_IN_DURATION;
+        const fit = this._reelFitScale(); // chỉ scale size orb, không đụng đường bay
 
         SoundManager.instance?.playSfxByName('sxPotHit');
-        SoundManager.instance?.playBonusTrail();
 
-        const hop = new Vec3(srcWorld.x, srcWorld.y + SEED_ORB_HOP_Y, srcWorld.z);
-        const hopDur = Math.max(0.02, SEED_ORB_HOP_DURATION);
-        const flyDur = Math.max(0.05, SEED_ORB_FLY_DURATION);
+        const orb = this._acquireOrb(tmpl);
+        // Root × fit; child particle scale-in tới (template × fit)
+        this._resetOrbRootScale(orb, tmpl, fit);
+        const childScales = this._prepareOrbChildrenScaleIn(orb, tmpl, fit);
+        orb.setWorldPosition(srcWorld);
+        orb.active = true;
+        this._playOrbParticles(orb);
+        this._activeOrbs.push(orb);
+
+        // StickyFill: hop thẳng lên rồi quadIn lao xuống đích (= vòng cung cảm nhận)
+        const hop = new Vec3(srcWorld.x, srcWorld.y + hopY, srcWorld.z);
 
         await new Promise<void>(resolve => {
-            tween(orb)
-                .to(hopDur, { worldPosition: hop, scale: endScale }, { easing: 'sineOut' })
-                .to(flyDur, { worldPosition: dstWorld }, { easing: 'quadIn' })
+            const moveTw = tween(orb)
+                .to(hopDur, { worldPosition: hop })
+                .to(fallDur, { worldPosition: dstWorld }, { easing: 'quadIn' });
+
+            for (const { node, endScale } of childScales) {
+                tween(node)
+                    .to(Math.max(0.01, scaleIn), { scale: endScale }, { easing: 'sineOut' })
+                    .start();
+            }
+
+            moveTw
                 .call(() => {
-                    this._seedPlaceCell(cell);
-                    SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
-                    this._releaseOrb(orb);
+                    // Ẩn orb trước → hiện sticky → trả pool frame sau (tránh spike destroy+reveal cùng frame)
+                    this._hideOrbForReuse(orb);
+                    this._seedPlaceCell(cell, true);
+                    this.scheduleOnce(() => this._releaseOrbToPool(orb, tmpl), 0);
                     resolve();
                 })
                 .start();
         });
     }
 
-    private _seedPlaceCell(cell: StickyCell): void {
-        const data = GameData.instance;
-        data.stickyCells.set(`${cell.reel}-${cell.row}`, { ...cell });
-        EventBus.instance.emit(GameEvents.MATSURI_SEED_CELL, { ...cell });
-        EventBus.instance.emit(GameEvents.TOPUP_TOTAL_UPDATED, {
-            baseCredit: data.featureBaseCredit,
-            totalWin: data.respinTotalWin,
-        });
+    /** Tỉ lệ scale StickyOverlay / grid fit (đồng bộ reel thu nhỏ). */
+    private _reelFitScale(): number {
+        const overlayS = this.stickyOverlay?.node?.scale?.x;
+        if (overlayS != null && overlayS > 0.01) return overlayS;
+        return matsuriGridFitScale(clampMatsuriRows(GameData.instance.matsuriRows || 3));
     }
 
-    private _createSeedOrb(): Node | null {
-        const tmpl = this.seedOrbTemplate?.isValid ? this.seedOrbTemplate : this.seedSourceNode;
-        if (!tmpl?.isValid) return null;
-        const orb = instantiate(tmpl);
-        orb.name = 'MatsuriSeedOrb';
-        orb.active = false;
-        return orb;
+    private _seedTargetWorld(cell: StickyCell, fallbackSlot: Node): Vec3 {
+        const rows = clampMatsuriRows(GameData.instance.matsuriRows || 3);
+        const idx = cell.reel * rows + cell.row;
+        if (!this._cachedTopUpMgr?.isValid) {
+            this._cachedTopUpMgr =
+                this.stickyOverlay?.node?.getComponentInChildren(TopUpManager)
+                ?? this.node.scene?.getComponentInChildren(TopUpManager)
+                ?? null;
+        }
+        const reel = this._cachedTopUpMgr?.reels?.[idx];
+        if (reel) {
+            return reel.getMidRestWorldPosition();
+        }
+        fallbackSlot.updateWorldTransform();
+        return fallbackSlot.worldPosition.clone();
+    }
+
+    private _seedPlaceCell(cell: StickyCell, _emitTotal: boolean): void {
+        const data = GameData.instance;
+        data.stickyCells.set(`${cell.reel}-${cell.row}`, { ...cell });
+        // Reveal trước (visual) — lock reel frame sau để khỏi spike cùng frame với pop
+        SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
+        this.stickyOverlay?.revealMatsuriSeedCoin(cell);
+        const payload = { ...cell };
+        this.scheduleOnce(() => {
+            EventBus.instance.emit(GameEvents.MATSURI_SEED_CELL, payload);
+        }, 0);
+    }
+
+    private _resetOrbRootScale(orb: Node, tmpl: Node, _fit: number = 1): void {
+        // Root giữ tỉ lệ template; fit áp vào child particle (scaleSpace Local)
+        orb.setScale(tmpl.scale);
+    }
+
+    /**
+     * Child Particle: scale 0.01 → (template × reelFit).
+     * scaleSpace=Local — scale node ảnh hưởng particle size.
+     */
+    private _prepareOrbChildrenScaleIn(
+        orb: Node,
+        tmpl: Node,
+        fit: number = 1,
+    ): { node: Node; endScale: Vec3 }[] {
+        const result: { node: Node; endScale: Vec3 }[] = [];
+        const templateChildren = tmpl.children ?? [];
+        const f = Math.max(0.05, fit);
+        for (let i = 0; i < orb.children.length; i++) {
+            const child = orb.children[i];
+            if (!child?.isValid) continue;
+            Tween.stopAllByTarget(child);
+            const tChild = templateChildren[i];
+            const base = tChild?.isValid
+                ? tChild.scale.clone()
+                : (child.scale.x === 0 && child.scale.y === 0
+                    ? new Vec3(50, 50, 50)
+                    : child.scale.clone());
+            const endScale = new Vec3(base.x * f, base.y * f, base.z * f);
+            for (const ps of child.getComponents(ParticleSystem)) {
+                (ps as any).scaleSpace = 0;
+                ps.stop();
+                ps.clear();
+            }
+            child.setScale(0.01, 0.01, 0.01);
+            result.push({ node: child, endScale });
+        }
+        return result;
+    }
+
+    private _playOrbParticles(root: Node): void {
+        for (const child of root.children) {
+            if (!child?.isValid) continue;
+            child.active = true;
+            for (const ps of child.getComponents(ParticleSystem)) {
+                (ps as any).scaleSpace = 0;
+                ps.stop();
+                ps.clear();
+                ps.play();
+            }
+        }
+    }
+
+    private _restoreOrbChildrenScale(orb: Node, tmpl: Node): void {
+        const templateChildren = tmpl.children ?? [];
+        for (let i = 0; i < orb.children.length; i++) {
+            const child = orb.children[i];
+            if (!child?.isValid) continue;
+            Tween.stopAllByTarget(child);
+            const tChild = templateChildren[i];
+            if (tChild?.isValid) child.setScale(tChild.scale);
+        }
+    }
+
+    private _stopAllChildParticles(root: Node): void {
+        for (const ps of root.getComponentsInChildren(ParticleSystem)) {
+            ps.stop();
+            ps.clear();
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -430,7 +568,6 @@ export class MatsuriEffect extends Component {
             const peakPos = new Vec3(basePos.x, basePos.y + HIGHLIGHT_JUMP_Y, basePos.z);
 
             Tween.stopAllByTarget(node);
-            SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
 
             node.setScale(startS, startS, 1);
             node.setPosition(basePos);
@@ -456,6 +593,10 @@ export class MatsuriEffect extends Component {
     }
 
     private async _phaseFlyAll(): Promise<void> {
+        // Trail bay lên: 1 lần / wave (không play theo từng clone)
+        SoundManager.instance?.playBonusTrail();
+        this._lastFlyArriveSfxAt = 0;
+
         const jobs: Promise<void>[] = [];
         for (let i = 0; i < this._collectCells.length; i++) {
             const cell = this._collectCells[i];
@@ -479,6 +620,7 @@ export class MatsuriEffect extends Component {
             const finish = () => {
                 if (resolved) return;
                 resolved = true;
+                this._playFlyArriveSfx();
                 EventBus.instance.emit(GameEvents.MATSURI_COLLECT_CREDIT, { credit });
                 this._pulseTotal();
                 resolve();
@@ -506,7 +648,8 @@ export class MatsuriEffect extends Component {
 
             const start = layerUT.convertToNodeSpaceAR(srcNode.getWorldPosition());
             const end = layerUT.convertToNodeSpaceAR(dst.getWorldPosition());
-            const startScale = srcNode.scale.clone();
+            // Clone ra layer ngoài StickyOverlay → mất parent scale; dùng world/grid fit scale.
+            const startScale = this._flyCloneStartScale(srcNode);
             clone.setPosition(start.x, start.y, 0);
             clone.setScale(startScale);
             clone.setRotationFromEuler(0, 0, 0);
@@ -516,31 +659,22 @@ export class MatsuriEffect extends Component {
             op.opacity = 255;
 
             this._activeClones.push(clone);
-            SoundManager.instance?.playSfxByName('sxBonusStickyGoldIncreaseHit');
-            SoundManager.instance?.playBonusTrail();
 
             const flyDur = FLY_DURATION;
-            const shrinkDur = FLY_SHRINK_DURATION;
-            const endScale = FLY_END_SCALE;
+            const shrinkRatio = Math.min(0.9, Math.max(0.1, FLY_SHRINK_START_RATIO));
+            const holdDur = flyDur * shrinkRatio;
+            const shrinkDur = flyDur * (1 - shrinkRatio);
 
             const failSafe = () => {
                 this._destroyClone(clone);
                 finish();
             };
-            this.scheduleOnce(failSafe, flyDur + shrinkDur + 1.0);
+            this.scheduleOnce(failSafe, flyDur + 1.0);
 
+            // Bay cả chặng; từ nửa đường co scale → 0 (song song với đoạn bay còn lại)
             tween(clone)
                 .to(flyDur, {
                     position: new Vec3(end.x, end.y, 0),
-                    scale: new Vec3(startScale.x * 0.85, startScale.y * 0.85, startScale.z),
-                }, { easing: 'sineIn' })
-                .call(() => {
-                    if (op && isValid(op)) {
-                        tween(op).to(shrinkDur, { opacity: 0 }, { easing: 'sineIn' }).start();
-                    }
-                })
-                .to(shrinkDur, {
-                    scale: new Vec3(endScale, endScale, startScale.z),
                 }, { easing: 'sineIn' })
                 .call(() => {
                     this.unschedule(failSafe);
@@ -548,7 +682,43 @@ export class MatsuriEffect extends Component {
                     finish();
                 })
                 .start();
+
+            tween(clone)
+                .delay(holdDur)
+                .to(shrinkDur, {
+                    scale: new Vec3(0.01, 0.01, startScale.z),
+                }, { easing: 'sineIn' })
+                .call(() => {
+                    if (op && isValid(op)) op.opacity = 0;
+                })
+                .start();
         });
+    }
+
+    /** Hit khi clone tới UI tổng — throttle để không chồng theo số Gold. */
+    private _playFlyArriveSfx(): void {
+        const now = Date.now();
+        if (now - this._lastFlyArriveSfxAt < FLY_ARRIVE_SFX_COOLDOWN * 1000) return;
+        this._lastFlyArriveSfxAt = now;
+        SoundManager.instance?.playSfxByName('sxBonusStickyGoldIncreaseHit');
+    }
+
+    /**
+     * Scale clone lúc bay = world scale của sticky (đã gồm StickyOverlay fit 5×4/5×5).
+     * Fallback: matsuriGridFitScale(rows) × local scale.
+     */
+    private _flyCloneStartScale(srcNode: Node): Vec3 {
+        const ws = new Vec3();
+        srcNode.getWorldScale(ws);
+        if (ws.x > 0.01 && ws.y > 0.01) {
+            return new Vec3(ws.x, ws.y, 1);
+        }
+        const rows = clampMatsuriRows(GameData.instance.matsuriRows || 3);
+        const fit = matsuriGridFitScale(rows);
+        const overlayS = this.stickyOverlay?.node?.scale?.x ?? fit;
+        const local = srcNode.scale;
+        const s = Math.max(0.05, overlayS) * Math.max(local.x, 0.05);
+        return new Vec3(s, s, 1);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -587,19 +757,54 @@ export class MatsuriEffect extends Component {
         clone.destroy();
     }
 
-    private _releaseOrb(orb: Node): void {
+    private _acquireOrb(tmpl: Node): Node {
+        let orb = this._orbPool.get();
+        if (!orb?.isValid) {
+            orb = instantiate(tmpl);
+            orb.name = 'MatsuriSeedOrb';
+        }
+        orb.active = false;
+        orb.setParent(this.node);
+        return orb;
+    }
+
+    /** Ẩn orb ngay khi land — không destroy/pool trên cùng frame với reveal sticky. */
+    private _hideOrbForReuse(orb: Node): void {
+        if (!isValid(orb)) return;
+        Tween.stopAllByTarget(orb);
+        this._stopAllChildParticles(orb);
+        for (const child of orb.children) {
+            if (child?.isValid) Tween.stopAllByTarget(child);
+        }
+        orb.active = false;
+    }
+
+    private _releaseOrbToPool(orb: Node, tmpl?: Node | null): void {
         const idx = this._activeOrbs.indexOf(orb);
         if (idx >= 0) this._activeOrbs.splice(idx, 1);
         if (!isValid(orb)) return;
         Tween.stopAllByTarget(orb);
-        const op = orb.getComponent(UIOpacity);
-        if (op) Tween.stopAllByTarget(op);
-        orb.destroy();
+        this._stopAllChildParticles(orb);
+        if (tmpl?.isValid) this._restoreOrbChildrenScale(orb, tmpl);
+        for (const child of orb.children) {
+            if (child?.isValid) Tween.stopAllByTarget(child);
+        }
+        orb.removeFromParent();
+        orb.active = false;
+        this._orbPool.put(orb);
     }
 
     private _clearOrbs(): void {
-        for (const o of [...this._activeOrbs]) this._releaseOrb(o);
+        const tmpl = this._seedOrbTemplate();
+        for (const o of [...this._activeOrbs]) this._releaseOrbToPool(o, tmpl);
         this._activeOrbs.length = 0;
+    }
+
+    private _drainOrbPool(): void {
+        while (this._orbPool.size() > 0) {
+            const n = this._orbPool.get();
+            if (n?.isValid) n.destroy();
+        }
     }
 
     private _cleanupClones(): void {

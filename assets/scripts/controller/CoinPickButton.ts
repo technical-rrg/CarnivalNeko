@@ -5,7 +5,7 @@
  * Index ưu tiên lấy từ vị trí trong `coinNodes` (tránh lệch Inspector / Layout).
  *
  * ── SETUP ──
- *   1. Gắn CoinPickButton lên mỗi CoinNode (Coin0..Coin11).
+ *   1. Gắn CoinPickButton lên mỗi CoinNode (Coin0..Coin14, lưới 5×3).
  *   2. `coinIndex` có thể để 0 — PickGamePopup._wireCoinButtons() sẽ sync lại.
  *   3. Đảm bảo CoinNode có Button component (hoặc thêm vào).
  *   4. Kéo PickGamePopup component vào `pickGamePopup` (hoặc để null → wire lúc open).
@@ -19,7 +19,7 @@ const { ccclass, property } = _decorator;
 @ccclass('CoinPickButton')
 export class CoinPickButton extends Component {
 
-    @property({ tooltip: 'Index của coin này trong grid (0..11). Sync bởi PickGamePopup khi open.' })
+    @property({ tooltip: 'Index của coin này trong grid (0..14). Sync bởi PickGamePopup khi open.' })
     coinIndex: number = 0;
 
     @property({

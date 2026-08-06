@@ -318,6 +318,8 @@ export enum SymbolId {
     JP_MINOR = 18,
     JP_MAJOR = 19,
     JP_GRAND = 20,
+    /** Upgrade Coin — 3 Upgrade → nâng tier thắng / Grand ×2 (PS 86). */
+    JP_UPGRADE = 25,
 
     // ── Carnival Neko Trail Coins (Base Game) ──
     /** Coin úp / chưa biết màu — hiện trên reel trước khi flip. */
@@ -453,7 +455,7 @@ export function wildSubstitutes(s: number): boolean { return isMinor(s) || isMaj
  * Red Coins Trail: 41–46 (STICKY_RED + credit text)
  * Yellow Coin (Free Spin): 47 | Yellow Coin (Top Up): 48
  * Green Coin: 49 | +1 Spin: 50
- * Pick Game: 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini
+ * Pick Game: 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini, 86=Upgrade
  */
 export const PS_TO_CLIENT: Record<number, number> = {
     // ─── Normal symbols (Way Pay wins) ───
@@ -484,12 +486,13 @@ export const PS_TO_CLIENT: Record<number, number> = {
     48: SymbolId.STICKY_YELLOW,  // Yellow Coin — Top Up (hút tiền các đồng Đỏ)
     49: SymbolId.STICKY_GREEN,   // Green Coin — Top Up VIP (hút toàn bộ tiền)
     50: SymbolId.PLUS_ONE_SPIN,  // +1 Spin (Top Up Bonus)
-    // ─── Pick Game symbols (lưới 3×4 = 12 thẻ) ───
-    81: SymbolId.JP_IDLE,        // Pick Idle (thẻ úp)
-    82: SymbolId.JP_GRAND,       // GRAND Jackpot (Rồng Đỏ)
-    83: SymbolId.JP_MAJOR,       // MAJOR Jackpot (Thỏi Vàng/Bạc)
-    84: SymbolId.JP_MINOR,       // MINOR Bonus (Quả Đào)
-    85: SymbolId.JP_MINI,        // MINI Bonus (Quả Cam)
+    // ─── Pick Game symbols (lưới 5×3 = 15 thẻ — Carnival Neko) ───
+    81: SymbolId.JP_IDLE,        // Base Pick (thẻ úp)
+    82: SymbolId.JP_GRAND,       // GRAND Jackpot
+    83: SymbolId.JP_MAJOR,       // MAJOR Jackpot
+    84: SymbolId.JP_MINOR,       // MINOR Jackpot
+    85: SymbolId.JP_MINI,        // MINI Jackpot
+    86: SymbolId.JP_UPGRADE,     // Upgrade Coin
     // ─── Empty ───
     99: -1,
 };
@@ -520,6 +523,7 @@ export const CLIENT_TO_PS: Record<number, number> = {
     [SymbolId.JP_MAJOR]:     83,
     [SymbolId.JP_MINOR]:     84,
     [SymbolId.JP_MINI]:      85,
+    [SymbolId.JP_UPGRADE]:   86,
 };
 
 export function psToClientSymbol(psId: number): number {
@@ -625,12 +629,22 @@ export interface StickyCell {
 
 /** Pick Game state — Pick coin reveal sequence. */
 export interface PickGameState {
-    /** Grid 3×4 = 12 ô. Mỗi ô lưu symbolId thật (JP_GRAND/MAJOR/MINOR/MINI) — chưa lộ cho người chơi. */
+    /**
+     * Grid 5×3 = 15 ô (Carnival Neko).
+     * Mỗi ô: JP_GRAND/MAJOR/MINOR/MINI/UPGRADE (client SymbolId) — chưa lộ cho người chơi.
+     * Real API có thể trả -1/Idle cho ô chưa pick; mock prefill toàn bộ.
+     */
     grid: number[];
-    /** Ô đã lật (index 0..11). */
+    /** Ô đã lật (index 0..14). */
     revealed: number[];
-    /** Tier thắng (sau khi match 3 cùng tier). undefined = chưa thắng. */
+    /** Tier trả thưởng (sau upgrade nếu có). undefined = chưa thắng. */
     wonTier?: 'GRAND' | 'MAJOR' | 'MINOR' | 'MINI';
+    /** Đã đủ 3 Upgrade trước khi match JP → lần win sẽ nâng tier / Grand×2. */
+    upgradeArmed?: boolean;
+    /** Số Upgrade đã reveal. */
+    upgradeCount?: number;
+    /** Grand ×2 khi upgrade + match Grand. */
+    doubleGrand?: boolean;
 }
 
 export interface TopupReelSlot {
@@ -902,23 +916,25 @@ export interface ServerMatchedLinePay {
  * NextStage=102 (PICK_END) khi kết thúc → client phải gọi /Claim.
  *
  * Theo API spec: Server trả về {RemainCash, Res: {GFPickResponse}}
- * GFPickResponse structure:
- *   PickGame: array<int> - Current pick grid state (12 items)
- *   PickResults: int - Result value of this pick
- *   PickStage: int - Current pick stage (1-9)
- *   PickWin: number - Accumulated pick win amount
- *   IsJackpot: boolean - Whether 3 matches resulted in jackpot
- *   JackpotIndex: int - Jackpot type (0=Mini, 1=Minor, 2=Major, 3=Grand, -1=no win)
- *   NextStage: int - Next stage
+ * Carnival: grid 15 items; PS 81–86 (thêm Upgrade=86).
+ * Field optional (Upgrade*) — mock gửi; real API bỏ qua nếu server chưa có.
  */
 export interface ServerPickResponse {
-    PickGame: number[];          // Grid state (12 items, server symbol IDs: 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini)
-    PickResults?: number;        // Result value of this pick
-    PickStage?: number;          // Current pick stage (1-9)
-    PickWin?: number;           // Accumulated pick win amount
+    /** Grid state (15 items) — server PS IDs: 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini, 86=Upgrade; -1=unselected */
+    PickGame: number[];
+    PickResults?: number;
+    PickStage?: number;
+    PickWin?: number;
     IsJackpot: boolean;
-    JackpotIndex: number;       // 0=Mini 1=Minor 2=Major 3=Grand -1=no win
+    /** 0=Mini 1=Minor 2=Major 3=Grand -1=no win — tier TRẢ THƯỞNG (đã apply upgrade). */
+    JackpotIndex: number;
     NextStage: number;
+    /** Optional Carnival: số Upgrade đã pick. */
+    UpgradeCount?: number;
+    /** Optional Carnival: vừa đủ 3 Upgrade ở lần pick này. */
+    IsUpgradeComplete?: boolean;
+    /** Optional Carnival: Grand ×2. */
+    DoubleGrand?: boolean;
 }
 
 /** Claim response từ server (AckClaimFeature) — PascalCase theo tài liệu */

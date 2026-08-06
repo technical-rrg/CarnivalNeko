@@ -58,6 +58,13 @@ import {
     gaugeStageFromAccumulated,
 } from '../data/SlotTypes';
 import { MockDataProvider, TestScenario } from '../data/MockDataProvider';
+import {
+    buildBuyBonusMatsuriTrigger,
+    carnivalKindFromBuyBonusItemId,
+    carnivalKindFromBuyBonusTitle,
+    priceRatioForBuyBonusItemId,
+    toFeatureItems,
+} from '../data/BuyBonusCatalog';
 import { WaysPayCalculator } from '../data/WaysPayCalculator';
 import { GameData } from '../data/GameData';
 import {
@@ -759,18 +766,10 @@ class MockNetworkAdapter implements INetworkAdapter {
 
     async sendFeatureItemGet(): Promise<FeatureItem[]> {
         await this._delay(200);
-        const totalBet = GameData.instance.totalBet;
-        // Mock: PriceRatio = 100 × totalBet ÷ totalBet = 100
-        return [{
-            itemId:      101,
-            name:        'Free Spin Buy',
-            title:       'BUY FREE SPINS',
-            desc:        'Pay to trigger the FREE SPINS feature.',
-            priceRatio:  100,
-            effectType:  1,
-            imgUrl:      '',
-            addSpinValue: 10,
-        }];
+        // Carnival Neko: 3 gói Mighty / Mega / Super Feature
+        const items = toFeatureItems();
+        Log.d(`[MockAdapter] FeatureItemGet → ${items.length} items (Mighty/Mega/Super)`);
+        return items;
     }
 
     async sendFeatureItemBuy(_itemId: number, _onOff: boolean = false): Promise<{ isSuccess: boolean; remainCash: number; res: any | null }> {
@@ -784,18 +783,34 @@ class MockNetworkAdapter implements INetworkAdapter {
 
         const data = GameData.instance;
         const totalBet = data.totalBet;
-        const cost = totalBet * 100;
+        const ratio = priceRatioForBuyBonusItemId(_itemId, 100);
+        const cost = totalBet * ratio;
         const newBalance = data.player.balance - cost;
         if (newBalance < 0) {
             Log.d(`[MockAdapter] FeatureItemBuy FAILED: balance=${data.player.balance} < cost=${cost}`);
             return { isSuccess: false, remainCash: data.player.balance, res: null };
         }
 
-        // Inject buy free spin queue — 10 vòng mock
+        // Carnival Buy Bonus → Matsuri: không inject free-spin queue
+        const matsuri = buildBuyBonusMatsuriTrigger(_itemId);
+        if (matsuri) {
+            Log.d(`[MockAdapter] FeatureItemBuy SUCCESS (Matsuri): itemId=${_itemId} ${matsuri.featureName} 5x${matsuri.matsuriRows} cost=${cost}`);
+            return {
+                isSuccess: true,
+                remainCash: newBalance,
+                res: {
+                    CarnivalKind: matsuri.kind,
+                    MatsuriRows: matsuri.matsuriRows,
+                    FeatureName: matsuri.featureName,
+                },
+            };
+        }
+
+        // Legacy fallback: Free Spin buy
         this._savedQueueIdx = this._queueIdx;
         this._buyQueue = [...BUY_FREE_SPIN_SEQUENCE];
         this._buyQueueIdx = 0;
-        Log.d(`[MockAdapter] FeatureItemBuy SUCCESS: cost=${cost}, newBalance=${newBalance}, injected ${this._buyQueue.length} buy spins`);
+        Log.d(`[MockAdapter] FeatureItemBuy SUCCESS (FreeSpin): cost=${cost}, newBalance=${newBalance}, injected ${this._buyQueue.length} buy spins`);
 
         return {
             isSuccess: true,
@@ -1565,16 +1580,22 @@ class RealNetworkAdapter implements INetworkAdapter {
         }
 
         // Map PascalCase server fields → camelCase FeatureItem
-        return items.map((item: ServerFeatureItem) => ({
-            itemId:       item.Id,
-            name:         item.Name,
-            title:        item.Title || item.Name,
-            desc:         item.Desc || '',
-            priceRatio:   item.PriceRatio,
-            effectType:   item.EffectType,
-            imgUrl:       item.ImgUrl || '',
-            addSpinValue: item.AddSpinValue ?? undefined,
-        }));
+        return items.map((item: ServerFeatureItem) => {
+            const title = item.Title || item.Name;
+            return {
+                itemId:       item.Id,
+                name:         item.Name,
+                title,
+                desc:         item.Desc || '',
+                priceRatio:   item.PriceRatio,
+                effectType:   item.EffectType,
+                imgUrl:       item.ImgUrl || '',
+                addSpinValue: item.AddSpinValue ?? undefined,
+                carnivalKind: carnivalKindFromBuyBonusItemId(item.Id)
+                    ?? carnivalKindFromBuyBonusTitle(title)
+                    ?? undefined,
+            };
+        });
     }
 
     // ─── FEATURE ITEM BUY (Buy Bonus) ───

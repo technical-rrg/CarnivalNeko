@@ -69670,7 +69670,7 @@
         "__id__": 4558
       }
     ],
-    "_active": false,
+    "_active": true,
     "_components": [
       {
         "__id__": 4806
@@ -70302,7 +70302,7 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": -20,
+      "width": 0,
       "height": 500
     },
     "_anchorPoint": {
@@ -70336,8 +70336,8 @@
       "height": 40
     },
     "_startAxis": 0,
-    "_paddingLeft": 0,
-    "_paddingRight": 0,
+    "_paddingLeft": 10,
+    "_paddingRight": 10,
     "_paddingTop": 0,
     "_paddingBottom": 0,
     "_spacingX": 20,
@@ -72284,7 +72284,7 @@
         "__id__": 4670
       }
     ],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 4722
@@ -73008,7 +73008,7 @@
       "b": 70,
       "a": 255
     },
-    "_string": "Name",
+    "_string": "",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 21,
@@ -73254,7 +73254,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "ACTIVE",
+    "_string": "BUY",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 32,
@@ -73623,7 +73623,9 @@
     "actionButton": {
       "__id__": 4712
     },
-    "actionLabel": null,
+    "actionLabel": {
+      "__id__": 4705
+    },
     "_id": ""
   },
   {
@@ -74138,7 +74140,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "Item Name",
+    "_string": "BUY BONUS",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 65,

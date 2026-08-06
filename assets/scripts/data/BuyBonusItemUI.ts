@@ -36,8 +36,15 @@ export class BuyBonusItemUI extends Component {
 
         if (this.nameLabel)  this.nameLabel.string = item.itemName;
         if (this.infoLabel)  this.infoLabel.string = item.itemInfo;
-        if (this.actionLabel) {
-            this.actionLabel.string = item.applyType === 'onceuse' ? 'BUY' : 'ACTIVATE';
+
+        // Prefab cũ có thể chưa gán actionLabel — fallback label con của nút
+        const actionLbl = this.actionLabel
+            ?? this.actionButton?.getComponentInChildren(Label)
+            ?? null;
+        if (actionLbl) {
+            actionLbl.string = item.applyType === 'onceuse'
+                ? L('UI_POPUP_BUYBONUS_BUY')
+                : L('UI_POPUP_BUYBONUS_ACTIVATE');
         }
 
         if (this.thumbnailSprite && item.thumbnailImage) {

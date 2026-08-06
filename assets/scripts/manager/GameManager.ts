@@ -15,6 +15,11 @@ import {
 } from '../core/OpacityFadeUtil';
 import { GameData } from '../data/GameData';
 import { SlotStageType, SpinResponse, MatchedLinePay, JackpotType, SymbolId, GameState, FeatureItem, PickGameState, StickyCell, TopupReelSlot, TopupReelType, FeatureSelectChoiceId, isFreeSpinTierReelIndex, gaugeStageFromAccumulated, CarnivalTrailHit, CarnivalFeatureTrigger } from '../data/SlotTypes';
+import {
+    buildBuyBonusMatsuriTrigger,
+    buildBuyBonusMatsuriTriggerFromKind,
+    carnivalKindFromBuyBonusTitle,
+} from '../data/BuyBonusCatalog';
 import { FeatureSelectChoicePayload } from '../controller/FeatureSelectionPopup';
 import { NetworkManager } from './NetworkManager';
 import { WalletManager } from './WalletManager';
@@ -3982,25 +3987,30 @@ export class GameManager extends Component {
             EventBus.instance.emit(GameEvents.BALANCE_UPDATED, result.remainCash);
             Log.d(`[BuyBonus] Balance cập nhật → ${result.remainCash}`);
 
-            // Lấy số lượt free spin từ server Res, item.addSpinValue, hoặc mặc định 10
+            // Emit SUCCESS để BuyBonus popup đóng
+            EventBus.instance.emit(GameEvents.BUY_BONUS_SUCCESS, { remainCash: result.remainCash });
+
+            // Carnival: Mighty / Mega / Super → Matsuri Hold&Spin (5×3 / 5×4 / 5×5)
+            const matsuri = buildBuyBonusMatsuriTrigger(item.itemId)
+                ?? buildBuyBonusMatsuriTriggerFromKind(item.carnivalKind)
+                ?? buildBuyBonusMatsuriTriggerFromKind(
+                    carnivalKindFromBuyBonusTitle(item.title || item.name),
+                );
+            if (matsuri) {
+                Log.d(`[BuyBonus] Vào Matsuri: "${matsuri.featureName}" 5x${matsuri.matsuriRows}`);
+                this._showMatsuriStartPopupThenEnter(matsuri);
+                return;
+            }
+
+            // Legacy fallback: Free Spin buy
             const freeSpinCount = result.res?.RemainFreeSpinCount
                 ?? result.res?.remainFreeSpinCount
                 ?? item.addSpinValue
                 ?? 10;
-            Log.d(`[BuyBonus] Số Free Spin sẽ nhận: ${freeSpinCount} (từ res=${result.res?.RemainFreeSpinCount ?? result.res?.remainFreeSpinCount}, item.addSpinValue=${item.addSpinValue})`);
+            Log.d(`[BuyBonus] Số Free Spin sẽ nhận: ${freeSpinCount}`);
 
-            // 1. Chuyển stage sang BUY_FREE_SPIN_START để popup biết dùng path BUY
             this._currentStage = SlotStageType.BUY_FREE_SPIN_START;
-            // Không gọi _updateDisplayVisibility() ở đây — display sẽ chuyển sang FS mode
-            // đúng lúc FreeSpinPopup đóng trong _onFreeSpinPopupClosed()
-
-            // 2. Emit SUCCESS để BuyBonusPopup đóng cửa
-            EventBus.instance.emit(GameEvents.BUY_BONUS_SUCCESS, { remainCash: result.remainCash });
-
-            // 3. Gọi _enterFreeSpin → set data.freeSpinRemaining, emit FREE_SPIN_COUNT_UPDATED, FREE_SPIN_POPUP
-            //    FreeSpinPopup sẽ hiện lên → đóng → emit FREE_SPIN_START → _onFreeSpinPopupClosed → auto-spin
-            Log.d(`[BuyBonus] Bắt đầu _enterFreeSpin(${freeSpinCount}) — giống luồng trúng bonus tự nhiên`);
-            this._gameState = GameState.POPUP; // Giữ POPUP trong khi popup hiện
+            this._gameState = GameState.POPUP;
             this._enterFreeSpin(freeSpinCount);
 
         } catch (err: any) {

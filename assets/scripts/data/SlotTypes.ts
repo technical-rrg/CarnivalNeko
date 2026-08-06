@@ -997,6 +997,8 @@ export interface FeatureItem {
     effectType: number;      // 1=Ticket, 2=ExchangeReel, 3=ProvideSymbol, 4=AddSpins
     imgUrl: string;
     addSpinValue?: number | null;
+    /** Carnival Buy Bonus → Matsuri kind (Mighty/Mega/Super). */
+    carnivalKind?: CarnivalFeatureKind;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1019,6 +1021,8 @@ export interface IBonusItem {
     applyType: BonusApplyType;   // ← suy ra từ EffectType: "onceuse" hoặc "activate"
     valueRatio: number;          // ← SlotFeatureItemInfo.PriceRatio
     thumbnailImage: string;      // ← SlotFeatureItemInfo.ImgUrl
+    /** Carnival Buy Bonus → Matsuri kind (Mighty/Mega/Super). */
+    carnivalKind?: CarnivalFeatureKind;
 }
 
 /** Jackpot polling response (AckJackpotInfo) — PascalCase theo tài liệu */

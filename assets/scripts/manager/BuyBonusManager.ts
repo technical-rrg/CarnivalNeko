@@ -66,6 +66,11 @@ import { formatCurrency } from '../core/FormatUtils';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { BetManager } from './BetManager';
 import { BuyBonusItemUI, loadRemoteSprite } from '../data/BuyBonusItemUI';
+import {
+    carnivalKindFromBuyBonusItemId,
+    carnivalKindFromBuyBonusTitle,
+    toBonusItems,
+} from '../data/BuyBonusCatalog';
 import { FeatureItem } from '../data/SlotTypes';
 import { WalletManager } from './WalletManager';
 import { GameData } from '../data/GameData';
@@ -659,9 +664,10 @@ itemTemplate: Node | null = null;
             effectType:   item.applyType === 'activate' ? 2 : 1,
             imgUrl:       item.thumbnailImage || '',
             addSpinValue: undefined,
+            carnivalKind: item.carnivalKind,
         };
 
-        // GameManager lắng nghe BUY_BONUS_CONFIRM → sendFeatureItemBuy → _enterFreeSpin
+        // GameManager lắng nghe BUY_BONUS_CONFIRM → sendFeatureItemBuy → Matsuri / FreeSpin
         EventBus.instance.emit(GameEvents.BUY_BONUS_CONFIRM, featureItem);
         // Giữ lại ONCEUSE_SUCCESS để các module khác (Analytics,...) có thể lắng nghe nếu cần
         EventBus.instance.emit(BONUS_EVT.ONCEUSE_SUCCESS, item);
@@ -849,14 +855,22 @@ itemTemplate: Node | null = null;
 
         // Convert FeatureItem[] → IBonusItem[]
         // priceRatio đã là bội số × totalBet → dùng trực tiếp làm valueRatio
-        const bonusItems: IBonusItem[] = serverItems.map(it => ({
-            uniqueID:       String(it.itemId),
-            itemName:       it.title || it.name,
-            itemInfo:       it.desc,
-            applyType:      getApplyType(it.effectType),
-            valueRatio:     it.priceRatio,
-            thumbnailImage: it.imgUrl,
-        }));
+        const bonusItems: IBonusItem[] = serverItems.map(it => {
+            const title = it.title || it.name;
+            const kind = it.carnivalKind
+                ?? carnivalKindFromBuyBonusItemId(it.itemId)
+                ?? carnivalKindFromBuyBonusTitle(title)
+                ?? undefined;
+            return {
+                uniqueID:       String(it.itemId),
+                itemName:       title,
+                itemInfo:       it.desc,
+                applyType:      getApplyType(it.effectType),
+                valueRatio:     it.priceRatio,
+                thumbnailImage: it.imgUrl,
+                carnivalKind:   kind,
+            };
+        });
 
         Log.d(`[BuyBonusManager] Đã convert → ${bonusItems.length} IBonusItem, currentBet=${currentBet}, balance=${balance}`);
 
@@ -869,45 +883,16 @@ itemTemplate: Node | null = null;
     // ══════════════════════════════════════════════════════════════
 
     /**
-     * Tạo 3 item giả để test toàn bộ flow Buy Bonus:
-     *   - Item 0: activate — "Symbol Booster"  (tăng xác suất symbol đặc biệt)
-     *   - Item 1: activate — "Double Reel"     (đổi reel strip tăng multiplier)
-     *   - Item 2: onceuse  — "10 Free Spins"   (mua vé vào Free Spin)
+     * Mock 3 gói theo System Design: MIGHTY (5×3) / MEGA (5×4) / SUPER (5×5).
      */
     private _loadMockData(): void {
-        const mockItems: IBonusItem[] = [
-            {
-                uniqueID:       'mock_activate_01',
-                itemName:       'Symbol Booster',
-                itemInfo:       'Tăng xác suất xuất hiện của Wild symbol trong Base Game.',
-                applyType:      'activate',
-                valueRatio:     5,      // Price = TotalBet × 5
-                thumbnailImage: '',
-            },
-            {
-                uniqueID:       'mock_activate_02',
-                itemName:       'Double Reel',
-                itemInfo:       'Thay thế reel strip để tăng tần suất symbol cao điểm.',
-                applyType:      'activate',
-                valueRatio:     10,     // Price = TotalBet × 10
-                thumbnailImage: '',
-            },
-            {
-                uniqueID:       'mock_onceuse_01',
-                itemName:       '10 Free Spins',
-                itemInfo:       'Mua ngay 10 lượt quay miễn phí, vào Free Bonus Game ngay lập tức.',
-                applyType:      'onceuse',
-                valueRatio:     100,    // Price = TotalBet × 100
-                thumbnailImage: '',
-            },
-        ];
-
+        const mockItems = toBonusItems();
         const mockBalance  = 50_000_000;
         const mockTotalBet = BetManager.instance.totalBet > 0
             ? BetManager.instance.totalBet
             : 1000;
 
-        Log.d('[BuyBonusManager] [DEV] Load mock data — 3 items, balance=', mockBalance, ', totalBet=', mockTotalBet);
+        Log.d('[BuyBonusManager] [DEV] Load mock data — Mighty/Mega/Super, balance=', mockBalance, ', totalBet=', mockTotalBet);
         this.initSystem(mockItems, mockBalance, mockTotalBet);
     }
 

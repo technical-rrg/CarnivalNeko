@@ -37,6 +37,7 @@ import { INetworkAdapter } from '../manager/NetworkManager';
 import { GameData } from './GameData';
 import { WaysPayCalculator } from './WaysPayCalculator';
 import { Log } from '../core/Logger';
+import { toFeatureItems } from './BuyBonusCatalog';
 import {
     MOCK_FORCE_CARNIVAL_TRAILS,
     MOCK_CARNIVAL_TRAIL_COUNT_MIN,
@@ -1150,7 +1151,9 @@ export class ForcedMockAdapter implements INetworkAdapter {
     async sendHeartBeat(): Promise<void> {}
     async sendGameOptChange(): Promise<void> {}
     async sendBroadcastOptionChange(): Promise<void> {}
-    async sendFeatureItemGet(): Promise<any[]> { return []; }
+    async sendFeatureItemGet(): Promise<any[]> {
+        return toFeatureItems();
+    }
     async sendFeatureItemBuy(): Promise<{ isSuccess: boolean; remainCash: number; res: any | null }> {
         return { isSuccess: true, remainCash: GameData.instance.player.balance, res: null };
     }

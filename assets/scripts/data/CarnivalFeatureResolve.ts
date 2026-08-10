@@ -8,7 +8,9 @@ import {
     CarnivalFeatureTrigger,
     CarnivalTrailHit,
     TrailColor,
+    SlotStageType,
     buildCarnivalFeatureTrigger,
+    carnivalKindFromApiFeatureType,
 } from './SlotTypes';
 import { GameData } from './GameData';
 import {
@@ -101,6 +103,47 @@ export function resolveMockCarnivalFeature(
 
     data.carnivalTrailSpinCount = 0;
     return buildCarnivalFeatureTrigger(kind, burst);
+}
+
+/**
+ * Real API: dựng CarnivalFeatureTrigger từ CNSpinResponse.
+ * CurrentFeatureType 0–5 = Mighty→Ultimate.
+ * PICK_START + type −1 (hoặc thiếu type) + có PickGame → Jackpot-only.
+ */
+export function buildCarnivalFeatureFromSpin(anyRes: any, nextStage: number): CarnivalFeatureTrigger | null {
+    const apiType = anyRes?.CurrentFeatureType ?? anyRes?.currentFeatureType;
+    const stage = nextStage as SlotStageType;
+    const isPick = stage === SlotStageType.PICK_START || stage === SlotStageType.PICK
+        || stage === SlotStageType.POT_WIN;
+    const isFsStart = stage === SlotStageType.FREE_SPIN_START
+        || stage === SlotStageType.CARNIVAL_MATSURI_START;
+
+    let kind = CarnivalFeatureKind.NONE;
+    if (apiType != null && Number(apiType) >= 0) {
+        kind = carnivalKindFromApiFeatureType(Number(apiType));
+    } else if (isPick && (anyRes?.PickGame || anyRes?.pickGame)) {
+        kind = CarnivalFeatureKind.JACKPOT;
+    } else if (isFsStart) {
+        // FREE_SPIN_START nhưng thiếu type — fallback Mighty 5×3
+        kind = CarnivalFeatureKind.MIGHTY;
+    }
+
+    if (kind === CarnivalFeatureKind.NONE) return null;
+
+    const featureRows = anyRes?.FeatureRows ?? anyRes?.featureRows;
+    const trigger = buildCarnivalFeatureTrigger(kind, burstPotsForKind(kind));
+    if (!trigger) return null;
+
+    if (featureRows != null && Number(featureRows) > 0) {
+        trigger.matsuriRows = Math.max(3, Math.min(5, Number(featureRows)));
+    }
+
+    const starter = anyRes?.StarterCoins ?? anyRes?.starterCoins;
+    if (Array.isArray(starter) && starter.length > 0) {
+        trigger.startCoins = starter.length;
+    }
+
+    return trigger;
 }
 
 /** Reset accumulated + level của các pot vừa nổ. */

@@ -56,7 +56,12 @@ import {
     pickForcedStickyValue,
     isSticky,
     gaugeStageFromAccumulated,
+    TrailColor,
+    ClaimResult,
+    cnFreeSpinStripGroupStart,
 } from '../data/SlotTypes';
+import { buildCarnivalFeatureFromSpin } from '../data/CarnivalFeatureResolve';
+import { parseCnStickyCells, MATSURI_GOLD_SYMBOL, clampMatsuriRows } from '../data/MatsuriGridUtil';
 import { MockDataProvider, TestScenario } from '../data/MockDataProvider';
 import {
     buildBuyBonusMatsuriTrigger,
@@ -74,7 +79,17 @@ import {
     JP_TYPE_TO_TIER_NAME,
     PICK_GAME_CELL_COUNT,
 } from '../data/PickGameUtil';
-import { USE_REAL_API, ENABLE_DEBUG_TOOLS, ServerConfig, TestLoginConfig, MOCK_SPIN_SCENARIO, DEBUG_RANDS, MOCK_RESUME_SCENARIO } from '../data/ServerConfig';
+import { buildCarnivalTrailsFromGrid } from '../data/CarnivalTrailParse';
+import {
+    USE_REAL_API,
+    FORCE_NORMAL_SPIN_ONLY,
+    ENABLE_DEBUG_TOOLS,
+    ServerConfig,
+    TestLoginConfig,
+    MOCK_SPIN_SCENARIO,
+    DEBUG_RANDS,
+    MOCK_RESUME_SCENARIO,
+} from '../data/ServerConfig';
 import {
     SCENARIO_NO_WIN, SCENARIO_NORMAL_WIN, SCENARIO_MULTI_LINE, SCENARIO_BIG_WIN,
     SCENARIO_LONG_SPIN, SCENARIO_JACKPOT, FULL_FREE_SEQUENCE, FULL_FREE_JACKPOT_SEQUENCE, FULL_FREE_RETRIGGER_SEQUENCE, DEFAULT_SEQUENCE,
@@ -306,7 +321,7 @@ export interface INetworkAdapter {
     /** Pick Game — gửi PickIndex khi người chơi bấm ô */
     sendPickRequest(pickIndex: number): Promise<ServerPickResponse>;
     /** Claim winnings (free spin kết thúc, pick game, etc.) */
-    sendClaimRequest(): Promise<{ balance: number; winCash?: number; winGrade?: string; claimTotalWin?: number; topLevelWinCash?: number }>;
+    sendClaimRequest(): Promise<ClaimResult>;
     /** Poll jackpot values (mỗi 2 giây) */
     pollJackpot(): Promise<ServerJackpotResponse>;
     /** HeartBeat (mỗi 10 giây) */
@@ -358,18 +373,6 @@ function _pickGaugeNumber(src: any, keys: readonly string[]): number | undefined
     return _pickGaugeNumberWithKey(src, keys)?.value;
 }
 
-/** Dump mọi key liên quan gauge trong object (để đối chiếu raw server). */
-function _dumpGaugeRelatedKeys(src: any, label: string): string {
-    if (!src || typeof src !== 'object') return `${label}=<null>`;
-    const hits: string[] = [];
-    for (const k of Object.keys(src)) {
-        if (/pot|wild|sticky|gauge|lighting|earned|accumul/i.test(k)) {
-            hits.push(`${k}=${JSON.stringify(src[k])}`);
-        }
-    }
-    return hits.length ? `${label}{${hits.join(', ')}}` : `${label}{<no pot/wild/sticky keys>}`;
-}
-
 /** Ưu tiên nguồn đầu tiên có giá trị: Res → LastSpinResponse → Ack root. */
 function resolveGaugeApiFields(...sources: any[]): {
     /** StickyAccumulated (cumulative Red Sticky) — drive 10 ô gauge. */
@@ -411,10 +414,11 @@ function resolveGaugeApiFields(...sources: any[]): {
     };
 }
 
+/** GoF FeatureGauge debug — tắt (Carnival Neko dùng 3 Pot, không có StickyAccumulated). */
 function logFeatureGauge(
-    stickyAccumulated?: number,
-    stickyEarned?: number,
-    detail?: {
+    _stickyAccumulated?: number,
+    _stickyEarned?: number,
+    _detail?: {
         accumulatedPick?: GaugePick;
         earnedPick?: GaugePick;
         potPick?: GaugePick;
@@ -423,25 +427,7 @@ function logFeatureGauge(
         sourceLabels?: string[];
     },
 ): void {
-    const accPick = detail?.accumulatedPick ?? detail?.potPick;
-    const earnPick = detail?.earnedPick ?? detail?.wildPick;
-    const accSrc = accPick
-        ? ` from ${detail?.sourceLabels?.[accPick.sourceIndex] ?? `src[${accPick.sourceIndex}]`}.${accPick.key}`
-        : ' (missing)';
-    const earnSrc = earnPick
-        ? ` from ${detail?.sourceLabels?.[earnPick.sourceIndex] ?? `src[${earnPick.sourceIndex}]`}.${earnPick.key}`
-        : ' (missing)';
-    const stage = stickyAccumulated != null ? gaugeStageFromAccumulated(stickyAccumulated) : 'n/a';
-    Log.e(
-        `[FeatureGauge] StickyAccumulated=${stickyAccumulated ?? 'n/a'}${accSrc}` +
-        ` | StickyEarned=${stickyEarned ?? 'n/a'}${earnSrc}` +
-        ` | stage=${stage}/10`
-    );
-    if (detail?.sources?.length) {
-        const labels = detail.sourceLabels ?? detail.sources.map((_, i) => `src[${i}]`);
-        const dumps = detail.sources.map((s, i) => _dumpGaugeRelatedKeys(s, labels[i] ?? `src[${i}]`));
-        Log.e(`[FeatureGauge] RAW keys: ${dumps.join(' || ')}`);
-    }
+    // no-op
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -722,10 +708,12 @@ class MockNetworkAdapter implements INetworkAdapter {
         };
     }
 
-    async sendClaimRequest(): Promise<{ balance: number; winCash?: number; winGrade?: string; claimTotalWin?: number; topLevelWinCash?: number }> {
+    async sendClaimRequest(): Promise<ClaimResult> {
         await this._delay(100);
         const data = GameData.instance;
-        const winCash = data.currentMode === 'respin' ? data.respinTotalWin : data.freeSpinTotalWin;
+        const winCash = (data.currentMode === 'respin' || data.currentMode === 'matsuri')
+            ? data.respinTotalWin
+            : data.freeSpinTotalWin;
 
         // Nếu freeSpinTotalWin được restore từ server (resume scenario), số đó đã bao gồm
         // toàn bộ tiền thắng trước khi tắt game. Chỉ cộng vào balance 1 lần ở đây.
@@ -737,7 +725,13 @@ class MockNetworkAdapter implements INetworkAdapter {
         this._buyQueueIdx = 0;
         this._queueIdx = this._savedQueueIdx;
         Log.d(`[MockAdapter] Claim: winCash=${winCash}, newBalance=${newBalance}, wasRestoredFromServer=${data.freeSpinTotalWinRestoredFromServer}`);
-        return { balance: newBalance, winCash, claimTotalWin: winCash, topLevelWinCash: winCash };
+        return {
+            balance: newBalance,
+            winCash,
+            claimTotalWin: winCash,
+            topLevelWinCash: winCash,
+            nextStage: SlotStageType.SPIN,
+        };
     }
 
     async pollJackpot(): Promise<ServerJackpotResponse> {
@@ -1042,13 +1036,18 @@ class RealNetworkAdapter implements INetworkAdapter {
             );
         }
 
+        const sanitizedLast = this._sanitizeLastSpinForNormalOnly(raw.LastSpinResponse ?? null);
+        if (raw.LastSpinResponse) {
+            raw.LastSpinResponse = sanitizedLast;
+        }
+
         const enterResp: ServerEnterResponse = {
             cash: raw.Cash,
             slotName: raw.SlotName,
             ps: raw.PS,
             betIndex: raw.BetIndex,
             coinValueIndex: raw.CoinValueIndex,
-            lastSpinResponse: raw.LastSpinResponse,
+            lastSpinResponse: sanitizedLast,
             isPractice: raw.IsPractice,
             memberIdx: raw.MemberIdx,
             smm: raw.SMM ? this._parseSMM(raw.SMM) : null,
@@ -1059,19 +1058,33 @@ class RealNetworkAdapter implements INetworkAdapter {
         data.player.betIndex = enterResp.betIndex;
         // Lưu raw lastSpinResponse để GameManager detect Free Spin resume.
         // Field names có thể là camelCase (stageType) theo API doc 5.1.
-        data.rawEnterLastSpinResponse = raw.LastSpinResponse ?? null;
+        data.rawEnterLastSpinResponse = sanitizedLast;
 
         // ─── SYNC POT + GAUGE từ Enter response ───
         const ls = raw.LastSpinResponse;
-        const enterPotVisualLevel = (raw as any).PotVisualLevel ?? ls?.PotVisualLevel;
-        const enterStickyAccumulated = ls?.StickyAccumulated ?? (ls as any)?.stickyAccumulated;
-        const enterGauge = resolveGaugeApiFields(ls, raw);
+        const lsBody = ls?.Res && typeof ls.Res === 'object' ? ls.Res : ls;
+        const enterPotVisualLevel = (raw as any).PotVisualLevel ?? lsBody?.PotVisualLevel;
+        const enterStickyAccumulated = lsBody?.StickyAccumulated ?? (lsBody as any)?.stickyAccumulated;
+        const enterGauge = resolveGaugeApiFields(lsBody, raw);
         logFeatureGauge(enterGauge.stickyAccumulated, enterGauge.stickyEarned, {
             accumulatedPick: enterGauge.accumulatedPick,
             earnedPick: enterGauge.earnedPick,
-            sources: [ls, raw],
+            sources: [lsBody, raw],
             sourceLabels: ['LastSpinResponse', 'EnterRoot'],
         });
+
+        // Carnival Neko: 3 pot levels từ LastSpin / Enter root
+        const enterBlue = lsBody?.BluePotLevel ?? (raw as any).BluePotLevel;
+        const enterRed = lsBody?.RedPotLevel ?? (raw as any).RedPotLevel;
+        const enterGreen = lsBody?.GreenPotLevel ?? (raw as any).GreenPotLevel;
+        if (enterBlue != null || enterRed != null || enterGreen != null) {
+            data.potLevels = {
+                blue: Math.max(0, Math.min(10, Number(enterBlue ?? data.potLevels.blue ?? 0))),
+                red: Math.max(0, Math.min(10, Number(enterRed ?? data.potLevels.red ?? 0))),
+                green: Math.max(0, Math.min(10, Number(enterGreen ?? data.potLevels.green ?? 0))),
+            };
+            EventBus.instance.emit(GameEvents.CARNIVAL_POT_LEVELS_CHANGED, { ...data.potLevels });
+        }
 
         if (enterPotVisualLevel != null) {
             data.potLevel = Math.max(0, Math.min(6, enterPotVisualLevel as number));
@@ -1327,7 +1340,9 @@ class RealNetworkAdapter implements INetworkAdapter {
         // Server can return either {RemainCash, Res: GFPickResponse}
         // or {RemainCash, Res: {GFPickResponse}} depending on backend version.
         const res = outer.Res ?? outer;
-        const pickRes = res.GFPickResponse ?? res.gFPickResponse ?? res.PickResponse ?? res;
+        const pickRes = res.CNPickResponse ?? res.cNPickResponse
+            ?? res.GFPickResponse ?? res.gFPickResponse
+            ?? res.PickResponse ?? res;
         const raw: ServerPickResponse = {
             ...pickRes,
             PickGame: pickRes.PickGame ?? pickRes.pickGame ?? [],
@@ -1336,18 +1351,21 @@ class RealNetworkAdapter implements INetworkAdapter {
             PickWin: pickRes.PickWin ?? pickRes.pickWin ?? pickRes.WinCash ?? pickRes.winCash ?? 0,
             IsJackpot: pickRes.IsJackpot ?? pickRes.isJackpot ?? false,
             JackpotIndex: pickRes.JackpotIndex ?? pickRes.jackpotIndex ?? -1,
+            JackpotName: pickRes.JackpotName ?? pickRes.jackpotName,
             NextStage: pickRes.NextStage ?? pickRes.nextStage ?? 0,
-            // Carnival optional — bỏ qua nếu server chưa gửi
             UpgradeCount: pickRes.UpgradeCount ?? pickRes.upgradeCount,
             IsUpgradeComplete: pickRes.IsUpgradeComplete ?? pickRes.isUpgradeComplete,
             DoubleGrand: pickRes.DoubleGrand ?? pickRes.doubleGrand,
         };
-        Log.e(`[Pick] ACK IsJackpot=${raw.IsJackpot} JackpotIndex=${raw.JackpotIndex} NextStage=${raw.NextStage} PickWin=${raw.PickWin ?? 0}`);
+        Log.e(
+            `[Pick] ACK IsJackpot=${raw.IsJackpot} JackpotIndex=${raw.JackpotIndex}` +
+            ` JackpotName=${raw.JackpotName ?? 'n/a'} NextStage=${raw.NextStage} PickWin=${raw.PickWin ?? 0}`,
+        );
         ResponseLogger.log('Pick', raw);
         return raw;
     }
 
-    async sendClaimRequest(): Promise<{ balance: number; winCash?: number; winGrade?: string; claimTotalWin?: number; topLevelWinCash?: number }> {
+    async sendClaimRequest(): Promise<ClaimResult> {
         const data = GameData.instance;
         const session = data.serverSession!;
 
@@ -1373,18 +1391,39 @@ class RealNetworkAdapter implements INetworkAdapter {
         const decrypted = this._decryptAES256(responsePacket[8], session.aky);
         const raw: ServerClaimResponse = JSON.parse(decrypted);
 
-        // ═══ LOG RESPONSE ═══
         ResponseLogger.log('Claim', raw);
 
-        const claimResponse = (raw as any).ClaimResponse ?? (raw as any).claimResponse ?? {};
+        const claimResponse = (raw as any).CNClaimResponse
+            ?? (raw as any).ClaimResponse
+            ?? (raw as any).claimResponse
+            ?? (raw as any).Res
+            ?? {};
         const claimWinGrade: string | undefined = claimResponse.WinGrade ?? claimResponse.winGrade ?? undefined;
         const claimTotalWin = claimResponse.TotalWin ?? claimResponse.totalWin;
         const topLevelWinCash = (raw as any).WinCash ?? (raw as any).winCash;
         const cash = (raw as any).Cash ?? (raw as any).cash ?? (raw as any).Balance ?? (raw as any).balance;
         const winCash = claimTotalWin ?? topLevelWinCash;
+        const featureName = claimResponse.FeatureName ?? claimResponse.featureName;
+        const jackpotName = claimResponse.JackpotName ?? claimResponse.jackpotName;
+        const startRands = claimResponse.StartRands ?? claimResponse.startRands;
+        const nextStage = claimResponse.NextStage ?? claimResponse.nextStage ?? SlotStageType.SPIN;
 
-        Log.e(`[Claim] parsed balance=${cash} totalWin=${winCash} (ClaimResponse.TotalWin=${claimTotalWin ?? 'n/a'}, WinCash=${topLevelWinCash ?? 'n/a'}) WinGrade=${claimWinGrade ?? 'n/a'}`);
-        return { balance: cash, winCash, winGrade: claimWinGrade, claimTotalWin, topLevelWinCash };
+        Log.e(
+            `[Claim] parsed balance=${cash} totalWin=${winCash}` +
+            ` FeatureName=${featureName ?? 'n/a'} JackpotName=${jackpotName ?? 'n/a'}` +
+            ` NextStage=${nextStage} WinGrade=${claimWinGrade ?? 'n/a'}`,
+        );
+        return {
+            balance: cash,
+            winCash,
+            winGrade: claimWinGrade,
+            claimTotalWin,
+            topLevelWinCash,
+            featureName,
+            jackpotName,
+            startRands: Array.isArray(startRands) ? startRands : undefined,
+            nextStage: Number(nextStage),
+        };
     }
 
     // ─── JACKPOT POLLING ───
@@ -2300,10 +2339,231 @@ class RealNetworkAdapter implements INetworkAdapter {
             topupReel: this._parseTopupReel((res as any).TopupReel ?? (res as any).NormalSpinLinkReel ?? (res as any).NoramlSpinLinkReel),
         };
 
+        // ★ Carnival Neko: Trail (PS 41/42/43) trên grid → bay Pot; pot levels từ CNSpinResponse
+        this._applyCarnivalTrailFields(spinResp, res as any, grid);
+
+        // ★ Carnival Neko CNSpinResponse → feature / sticky / envelope
+        this._applyCarnivalCnSpinFields(spinResp, res as any);
+
         // ★ FEATURE ENTRY LOGIC ADDED — phát hiện Force Feature Entry + cập nhật gauge
         this._applyFeatureEntryLogic(spinResp, res, grid, raw);
 
+        this._applyForceNormalSpinOnly(spinResp);
         return spinResp;
+    }
+
+    /**
+     * Map CNSpinResponse fields → SpinResponse + carnivalFeature.
+     * Remap FREE_SPIN_START (Matsuri-only) → CARNIVAL_MATSURI_START cho client burst flow.
+     */
+    private _applyCarnivalCnSpinFields(resp: SpinResponse, anyRes: any): void {
+        const apiType = anyRes.CurrentFeatureType ?? anyRes.currentFeatureType;
+        if (apiType != null) resp.currentFeatureType = Number(apiType);
+
+        const featureRowsRaw = anyRes.FeatureRows ?? anyRes.featureRows;
+        if (featureRowsRaw != null && !Number.isNaN(Number(featureRowsRaw))) {
+            resp.featureRows = clampMatsuriRows(Number(featureRowsRaw));
+        }
+
+        const rows = resp.featureRows
+            ?? (GameData.instance.currentMode === 'matsuri' ? GameData.instance.matsuriRows : 3);
+
+        const starter = parseCnStickyCells(
+            anyRes.StarterCoins ?? anyRes.starterCoins,
+            rows,
+            MATSURI_GOLD_SYMBOL,
+        );
+        const news = parseCnStickyCells(
+            anyRes.NewStickies ?? anyRes.newStickies,
+            rows,
+            SymbolId.STICKY_GREEN,
+        );
+        const all = parseCnStickyCells(
+            anyRes.AllStickies ?? anyRes.allStickies,
+            rows,
+            MATSURI_GOLD_SYMBOL,
+        );
+        if (starter.length) resp.starterCoins = starter;
+        if (news.length) resp.newStickies = news;
+        if (all.length) resp.allStickies = all;
+
+        // stickyCells cho UI: enter = StarterCoins; mid = NewStickies (Green land)
+        const inMatsuri = GameData.instance.currentMode === 'matsuri';
+        const stage = resp.nextStage as SlotStageType;
+        if (starter.length && (stage === SlotStageType.FREE_SPIN_START || stage === SlotStageType.CARNIVAL_MATSURI_START)) {
+            resp.stickyCells = starter;
+        } else if (news.length && (inMatsuri
+            || stage === SlotStageType.FREE_SPIN
+            || stage === SlotStageType.FREE_SPIN_RE_TRIGGER)) {
+            resp.stickyCells = news;
+        } else if (all.length && inMatsuri) {
+            // Không ghi đè NewStickies nếu đã có — AllStickies dùng sync GameManager
+        }
+
+        if (anyRes.RemainFeatureSpinCount != null || anyRes.remainFeatureSpinCount != null) {
+            resp.remainRespinCount = Number(
+                anyRes.RemainFeatureSpinCount ?? anyRes.remainFeatureSpinCount,
+            );
+        }
+
+        const entryJp = anyRes.FeatureEntryJackpotWin ?? anyRes.featureEntryJackpotWin;
+        if (entryJp != null) resp.featureEntryJackpotWin = Number(entryJp);
+        const entryName = anyRes.FeatureEntryJackpotName ?? anyRes.featureEntryJackpotName;
+        if (entryName != null) resp.featureEntryJackpotName = String(entryName);
+
+        const envelope = anyRes.RedEnvelopePay ?? anyRes.redEnvelopePay;
+        if (envelope != null && Number(envelope) > 0) resp.redEnvelopePay = Number(envelope);
+
+        if (anyRes.IsGridFull != null || anyRes.isGridFull != null) {
+            resp.isGridFull = !!(anyRes.IsGridFull ?? anyRes.isGridFull);
+        }
+        const gridFullWin = anyRes.GridFullGrandWin ?? anyRes.gridFullGrandWin;
+        if (gridFullWin != null) resp.gridFullGrandWin = Number(gridFullWin);
+
+        // PickGame trên PICK_START
+        if (!resp.pickGame) {
+            resp.pickGame = this._parsePickGame(anyRes.PickGame ?? anyRes.PickGameState);
+        }
+
+        const feature = buildCarnivalFeatureFromSpin(anyRes, resp.nextStage);
+        if (feature) {
+            resp.carnivalFeature = feature;
+            if (feature.jackpotFirst && feature.matsuriRows > 0) {
+                GameData.instance.pendingCarnivalMatsuri = feature;
+            }
+            // Mighty/Mega/Super: FREE_SPIN_START → client Matsuri burst flow
+            if (!feature.jackpotFirst
+                && (resp.nextStage === SlotStageType.FREE_SPIN_START
+                    || resp.nextStage === SlotStageType.FREE_SPIN)) {
+                resp.nextStage = SlotStageType.CARNIVAL_MATSURI_START;
+            }
+            // Ultra/Supreme/Ultimate enter: PICK_* — keep stage (transition → POT_WIN)
+            if (feature.jackpotFirst
+                && (resp.nextStage === SlotStageType.PICK_START || resp.nextStage === SlotStageType.PICK)) {
+                resp.triggerPotWin = true;
+            }
+            Log.e(
+                `[CN-FEATURE] kind=${feature.featureName} apiType=${resp.currentFeatureType ?? 'n/a'}` +
+                ` rows=${feature.matsuriRows} startCoins=${feature.startCoins}` +
+                ` jackpotFirst=${feature.jackpotFirst} nextStage=${resp.nextStage}` +
+                ` starter=${starter.length} new=${news.length} all=${all.length}`,
+            );
+        }
+
+        if (resp.redEnvelopePay != null && resp.redEnvelopePay > 0) {
+            Log.e(`[CN-ENVELOPE] RedEnvelopePay=${resp.redEnvelopePay}`);
+        }
+        if (resp.isGridFull) {
+            Log.e(`[CN-GRIDFULL] IsGridFull grandWin=${resp.gridFullGrandWin ?? 0}`);
+        }
+    }
+
+    /**
+     * CNSpinResponse → SpinResponse.trails / potLevels.
+     * Trails: ô TRAIL_BLUE/GREEN/RED trên client grid (sau PS map).
+     * Pot: BluePotLevel / RedPotLevel / GreenPotLevel (0–10); fallback +1 local nếu thiếu.
+     */
+    private _applyCarnivalTrailFields(
+        resp: SpinResponse,
+        anyRes: any,
+        grid: number[][],
+    ): void {
+        const trails = buildCarnivalTrailsFromGrid(grid);
+        if (trails.length > 0) {
+            resp.trails = trails;
+        }
+
+        const blue = anyRes.BluePotLevel ?? anyRes.bluePotLevel;
+        const red = anyRes.RedPotLevel ?? anyRes.redPotLevel;
+        const green = anyRes.GreenPotLevel ?? anyRes.greenPotLevel;
+        const hasServerPots = blue != null || red != null || green != null;
+
+        if (hasServerPots) {
+            const prev = GameData.instance.potLevels;
+            resp.potLevels = {
+                blue: Math.max(0, Math.min(10, Number(blue ?? prev.blue ?? 0))),
+                red: Math.max(0, Math.min(10, Number(red ?? prev.red ?? 0))),
+                green: Math.max(0, Math.min(10, Number(green ?? prev.green ?? 0))),
+            };
+        } else if (trails.length > 0) {
+            // Server chưa gửi level → tăng local theo trail land (visual only)
+            const levels = {
+                blue: GameData.instance.potLevels.blue ?? 0,
+                red: GameData.instance.potLevels.red ?? 0,
+                green: GameData.instance.potLevels.green ?? 0,
+            };
+            for (const t of trails) {
+                if (t.color === TrailColor.BLUE) levels.blue = Math.min(10, levels.blue + 1);
+                else if (t.color === TrailColor.RED) levels.red = Math.min(10, levels.red + 1);
+                else if (t.color === TrailColor.GREEN) levels.green = Math.min(10, levels.green + 1);
+            }
+            resp.potLevels = levels;
+        }
+
+        if (trails.length > 0) {
+            const blueC = anyRes.BlueTrailCount ?? anyRes.blueTrailCount;
+            const redC = anyRes.RedTrailCount ?? anyRes.redTrailCount;
+            const greenC = anyRes.GreenTrailCount ?? anyRes.greenTrailCount;
+            Log.e(
+                `[CN-TRAIL] hits=${trails.length} ` +
+                `[${trails.map(t => `r${t.reel}row${t.row}:${TrailColor[t.color]}`).join('|')}] ` +
+                `counts B/R/G=${blueC ?? '-'}/${redC ?? '-'}/${greenC ?? '-'} ` +
+                `pots=${resp.potLevels ? `B${resp.potLevels.blue}/R${resp.potLevels.red}/G${resp.potLevels.green}` : 'n/a'}`,
+            );
+        }
+    }
+
+    /**
+     * Tạm (FORCE_NORMAL_SPIN_ONLY): ép NextStage=SPIN, chặn vào feature.
+     * Vẫn giữ trails + potLevels để Trail bay vào Pot.
+     */
+    private _applyForceNormalSpinOnly(resp: SpinResponse): void {
+        if (!FORCE_NORMAL_SPIN_ONLY) return;
+        const prevStage = resp.nextStage;
+        resp.nextStage = SlotStageType.SPIN;
+        // Giữ resp.trails / resp.potLevels — CarnivalTrailController cần để fly
+        resp.carnivalFeature = undefined;
+        resp.pickGame = undefined;
+        resp.triggerPotWin = false;
+        resp.remainFreeSpinCount = 0;
+        resp.remainRespinCount = undefined;
+        resp.topupReel = undefined;
+        resp.stickyCells = undefined;
+        resp.starterCoins = undefined;
+        resp.newStickies = undefined;
+        resp.allStickies = undefined;
+        resp.currentFeatureType = undefined;
+        resp.featureRows = undefined;
+        resp.redEnvelopePay = undefined;
+        resp.isGridFull = undefined;
+        resp.gridFullGrandWin = undefined;
+        resp.isForcedFeatureEntry = false;
+        resp.forceFeatureEntry = undefined;
+        resp.redCount = undefined;
+        resp.redReels = undefined;
+        resp.wildTrailCount = undefined;
+        GameData.instance.pendingCarnivalMatsuri = null;
+        if (prevStage !== SlotStageType.SPIN) {
+            Log.e(`[FORCE_NORMAL] strip feature nextStage ${prevStage} → SPIN (keep trails=${resp.trails?.length ?? 0})`);
+        }
+    }
+
+    /** Enter LastSpinResponse: tránh resume vào Pick/FS/TopUp khi FORCE_NORMAL_SPIN_ONLY. */
+    private _sanitizeLastSpinForNormalOnly(last: any): any {
+        if (!FORCE_NORMAL_SPIN_ONLY || !last || typeof last !== 'object') return last;
+        const body = last.Res && typeof last.Res === 'object' ? last.Res : last;
+        const prev = body.NextStage ?? body.nextStage ?? body.stageType;
+        body.NextStage = SlotStageType.SPIN;
+        body.nextStage = SlotStageType.SPIN;
+        body.stageType = SlotStageType.SPIN;
+        if (last.Res && last.Res !== body) {
+            last.NextStage = SlotStageType.SPIN;
+            last.nextStage = SlotStageType.SPIN;
+        }
+        if (prev != null && prev !== SlotStageType.SPIN) {
+            Log.e(`[FORCE_NORMAL] Enter LastSpin NextStage ${prev} → SPIN (no resume feature)`);
+        }
+        return last;
     }
 
     /**
@@ -2878,20 +3138,23 @@ class RealNetworkAdapter implements INetworkAdapter {
             [['MajorSobekSymbolID', 'MajorSobek', 'SobekSymbolID', 'Sobek', 'MajorShipSymbolID', 'MajorShip', 'ShipSymbolID', 'Ship'], SymbolId.MAJOR_SOBEK],
             [['MajorRamsesSymbolID', 'MajorRamses', 'RamsesSymbolID', 'Ramses', 'MajorTurtleSymbolID', 'MajorTurtle', 'TurtleSymbolID', 'Turtle'], SymbolId.MAJOR_RAMSES],
             [['MajorCleopatraSymbolID', 'MajorCleopatra', 'CleopatraSymbolID', 'Cleopatra', 'MajorPhoenixSymbolID', 'MajorPhoenix', 'PhoenixSymbolID', 'Phoenix'], SymbolId.MAJOR_CLEOPATRA],
-            // Specials (Gold of Fortune — API doc V1.0.3)
-            [['WildTrailSymbolID', 'WildSymbolID'],               SymbolId.WILD],
-            [['StickyRedSymbolID', 'StickyRed'],                  SymbolId.STICKY_RED],
-            [['StickyYellowSymbolID', 'StickyYellow', 'TopupYellowSymbolID', 'FreeSpinTrailsymbolID'], SymbolId.STICKY_YELLOW],
-            [['StickyGreenSymbolID', 'StickyGreen', 'TopupGreenSymbolID'],    SymbolId.STICKY_GREEN],
+            // Specials — Carnival Neko V1.0.1 (+ alias legacy)
+            [['WildTrailSymbolID', 'WildSymbolID', 'WildsymbolID'], SymbolId.WILD],
+            [['Sticky_01symbolID', 'Sticky01symbolID', 'StickyGreenSymbolID', 'StickyGreen'], SymbolId.STICKY_GREEN],
+            [['Sticky_02symbolID', 'Sticky02symbolID', 'StickyYellowSymbolID', 'StickyYellow'], SymbolId.STICKY_YELLOW],
+            [['StickyRedSymbolID', 'StickyRed'], SymbolId.STICKY_RED],
             [['PlusOneSpinSymbolID', 'PlusOneSpin', 'TopupSpinAddsymbolID'], SymbolId.PLUS_ONE_SPIN],
-            // Jackpots
-            [['MiniJackpotID'],  SymbolId.JP_MINI],
-            [['MinorJackpotID'], SymbolId.JP_MINOR],
-            [['MajorJackpotID'], SymbolId.JP_MAJOR],
-            [['GrandJackpotID'], SymbolId.JP_GRAND],
-            // NOTE: Trail01-06symbolID KHÔNG map tĩnh ở đây.
-            // Sẽ được map động bằng cách sort theo SymbolRates (payout thấp → cao = MINOR_9 → MAJOR_SOBEK)
-            // theo API doc V1.0.3 section 5.1.
+            // Jackpots — CN: Mini/Minor/Major/Grand/Upgrade/Idle
+            [['MinijackpotSymbolID', 'MiniJackpotID', 'MiniJackpotSymbolID'], SymbolId.JP_MINI],
+            [['MinorjackpotSymbolID', 'MinorJackpotID', 'MinorJackpotSymbolID'], SymbolId.JP_MINOR],
+            [['MajorjackpotSymbolID', 'MajorJackpotID', 'MajorJackpotSymbolID'], SymbolId.JP_MAJOR],
+            [['GrandjackpotSymbolID', 'GrandJackpotID', 'GrandJackpotSymbolID'], SymbolId.JP_GRAND],
+            [['UpgradejackpotSymbolID', 'UpgradeJackpotID', 'UpgradeJackpotSymbolID'], SymbolId.JP_UPGRADE],
+            [['IdlejackpotSymbolID', 'IdleJackpotID', 'IdleJackpotSymbolID'], SymbolId.JP_IDLE],
+            // Trail — CN: Blue/Green/Red (không map thành STICKY_RED)
+            [['Trail_01symbolID', 'Trail01symbolID'], SymbolId.TRAIL_BLUE],
+            [['Trail_02symbolID', 'Trail02symbolID'], SymbolId.TRAIL_GREEN],
+            [['Trail_03symbolID', 'Trail03symbolID'], SymbolId.TRAIL_RED],
         ];
 
         for (const [fields, clientId] of psSymbolFields) {
@@ -2929,43 +3192,51 @@ class RealNetworkAdapter implements INetworkAdapter {
             }
         }
 
-        // ═══ Trail01-06 (41-46) — tất cả là Đồng xu Đỏ (STICKY_RED) ═══
-        // QUAN TRỌNG: Trail01-46 đều hiển thị cùng 1 hình đồng đỏ.
-        // Giá trị tiền của mỗi loại = SymbolRates[id] × totalBet, render dưới dạng text.
-        const _trailFields = ['Trail01symbolID','Trail02symbolID','Trail03symbolID',
-                              'Trail04symbolID','Trail05symbolID','Trail06symbolID'];
-        const _trailIds: number[] = _trailFields
-            .map(f => ps[f])
-            .filter((v): v is number => typeof v === 'number');
-        if (_trailIds.length > 0) {
-            for (const psId of _trailIds) {
-                if (!(psId in dynMap)) dynMap[psId] = SymbolId.STICKY_RED;
+        // ═══ Carnival Neko Trail/Sticky defaults (PS_TO_CLIENT) nếu PS field thiếu ═══
+        {
+            const _cnDefaults: Record<number, number> = {
+                41: SymbolId.TRAIL_BLUE,
+                42: SymbolId.TRAIL_GREEN,
+                43: SymbolId.TRAIL_RED,
+                44: SymbolId.STICKY_GREEN,
+                45: SymbolId.STICKY_YELLOW,
+            };
+            for (const [psId, clientId] of Object.entries(_cnDefaults)) {
+                const id = parseInt(psId, 10);
+                if (!(id in dynMap)) dynMap[id] = clientId;
             }
-            Log.e(`[PS:TrailMap] All Trail IDs → STICKY_RED: ${_trailIds.map(id=>`${id}(credit_rate=${_symbolRatesMap[id]??'?'})`).join(' | ')}`);
+            Log.e(
+                `[PS:TrailMap] CN trails/sticky: ` +
+                `41→BLUE 42→GREEN 43→RED 44→STICKY_GREEN 45→STICKY_YELLOW(Gold)` +
+                (_symbolRatesMap[41] != null ? ` rates=${JSON.stringify(_symbolRatesMap)}` : ''),
+            );
         }
 
-        // ═══ Normal symbols (Way Pay) — Secret Treasure PS IDs ═══
-        // 1=9, 2=10, 3=J, 4=Q, 5=K, 6=A, 11=Horus, 12=Anubis, 13=Sobek, 14=Ramses, 15=Cleopatra
+        // ═══ Normal symbols (Way Pay) — CN Low/High PS IDs ═══
         {
             const _normalSymbols: Record<number, number> = {
                 1:  SymbolId.MINOR_9,      2:  SymbolId.MINOR_10,     3:  SymbolId.MINOR_J,
                 4:  SymbolId.MINOR_Q,      5:  SymbolId.MINOR_K,      6:  SymbolId.MINOR_A,
                 11: SymbolId.MAJOR_HORUS,     12: SymbolId.MAJOR_ANUBIS,  13: SymbolId.MAJOR_SOBEK,
                 14: SymbolId.MAJOR_RAMSES,   15: SymbolId.MAJOR_CLEOPATRA,
+                21: SymbolId.WILD,
             };
             for (const [psId, clientId] of Object.entries(_normalSymbols)) {
                 const id = parseInt(psId, 10);
                 if (!(id in dynMap)) dynMap[id] = clientId as number;
             }
-            Log.e('[PS:NormalMap] 1→9 2→10 3→J 4→Q 5→K 6→A 11→COIN 12→INGOT 13→SHIP 14→TURTLE 15→PHOENIX');
+            Log.e('[PS:NormalMap] CN 1–6 Low, 11–15 High, 21 Wild');
         }
 
-        // ═══ Pick Game symbols — hardcoded từ game design document ═══
-        // 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini
+        // ═══ Pick Game — 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade ═══
         {
             const _pickSymbols: Record<number, number> = {
-                81: SymbolId.JP_IDLE,  82: SymbolId.JP_GRAND,
-                83: SymbolId.JP_MAJOR, 84: SymbolId.JP_MINOR, 85: SymbolId.JP_MINI,
+                81: SymbolId.JP_IDLE,
+                82: SymbolId.JP_GRAND,
+                83: SymbolId.JP_MAJOR,
+                84: SymbolId.JP_MINOR,
+                85: SymbolId.JP_MINI,
+                86: SymbolId.JP_UPGRADE,
             };
             for (const [psId, clientId] of Object.entries(_pickSymbols)) {
                 const id = parseInt(psId, 10);
@@ -3170,44 +3441,64 @@ class RealNetworkAdapter implements INetworkAdapter {
             Log.w('[PS] Không có Reel.Strips — giữ nguyên DEFAULT_REEL_STRIPS');
         }
 
-        // ═══ FreeSpinReel.Strips — legacy fallback (Gold of Fortunes single reel) ═══
+        // ═══ FreeSpinReel.Strips ═══
+        // Carnival Neko: 30 strips = 6 feature groups × 5 reels
+        //   Mighty 0–4, Mega 5–9, Super 10–14, Ultra 15–19, Supreme 20–24, Ultimate 25–29
+        // Legacy: <30 strips → 1 bộ FreeSpin + Secret Treasure tier keys
+        const tierStrips: Record<number, number[][]> = {};
+        const tierRawStrips: Record<number, number[][]> = {};
+
         if (ps.FreeSpinReel?.Strips && Array.isArray(ps.FreeSpinReel.Strips)) {
-            const freeSpin = convertStripSet(ps.FreeSpinReel.Strips, 'FreeSpinReel');
-            data.config.freeSpinReelStrips = freeSpin.converted;
-            data.rawPsFreeSpinStrips = freeSpin.raw;
+            const fsStripsArr = ps.FreeSpinReel.Strips as any[];
+            if (fsStripsArr.length >= 30) {
+                for (let apiType = 0; apiType <= 5; apiType++) {
+                    const start = cnFreeSpinStripGroupStart(apiType);
+                    const group = fsStripsArr.slice(start, start + 5);
+                    const converted = convertStripSet(group, `FreeSpinReel[${start}..${start + 4}]`);
+                    tierStrips[apiType] = converted.converted;
+                    tierRawStrips[apiType] = converted.raw;
+                }
+                data.config.freeSpinReelStrips = tierStrips[0];
+                data.rawPsFreeSpinStrips = tierRawStrips[0];
+                Log.e('[PS] FreeSpinReel 30 strips → 6 CN feature groups (0–5)');
+            } else {
+                const freeSpin = convertStripSet(fsStripsArr, 'FreeSpinReel');
+                data.config.freeSpinReelStrips = freeSpin.converted;
+                data.rawPsFreeSpinStrips = freeSpin.raw;
+                Log.d(`[PS] FreeSpinReel.Strips loaded (len=${fsStripsArr.length}) — legacy single set`);
+            }
         } else {
             data.config.freeSpinReelStrips = data.config.reelStrips;
             data.rawPsFreeSpinStrips = data.rawPsStrips;
             Log.e('[PS] FreeSpinReel.Strips không có — dùng fallback normal strips cho FreeSpin (visual có thể sai)');
         }
 
-        // ═══ Secret Treasure — 5 tier Free Spin reels (HighestFreeSpinReel … LowestFreeSpinReel) ═══
-        const tierStrips: Record<number, number[][]> = {};
-        const tierRawStrips: Record<number, number[][]> = {};
-        for (const tier of SECRET_TREASURE_FREE_SPIN_TIERS) {
-            for (const key of tier.psKeys) {
-                const reelData = ps[key];
-                if (reelData?.Strips && Array.isArray(reelData.Strips)) {
-                    const converted = convertStripSet(reelData.Strips, key);
-                    tierStrips[tier.reelIndex] = converted.converted;
-                    tierRawStrips[tier.reelIndex] = converted.raw;
-                    Log.d(`[PS] ${key}.Strips loaded → tier ReelIndex=${tier.reelIndex}`);
-                    break;
+        // ═══ Secret Treasure — 5 tier Free Spin reels (Highest…Lowest) nếu chưa có CN groups ═══
+        if (Object.keys(tierStrips).length === 0) {
+            for (const tier of SECRET_TREASURE_FREE_SPIN_TIERS) {
+                for (const key of tier.psKeys) {
+                    const reelData = ps[key];
+                    if (reelData?.Strips && Array.isArray(reelData.Strips)) {
+                        const converted = convertStripSet(reelData.Strips, key);
+                        tierStrips[tier.reelIndex] = converted.converted;
+                        tierRawStrips[tier.reelIndex] = converted.raw;
+                        Log.d(`[PS] ${key}.Strips loaded → tier ReelIndex=${tier.reelIndex}`);
+                        break;
+                    }
                 }
             }
-        }
-        for (const reelIndex of FREE_SPIN_TIER_REEL_INDICES) {
-            if (!tierStrips[reelIndex]) {
-                tierStrips[reelIndex] = data.config.freeSpinReelStrips;
-                tierRawStrips[reelIndex] = data.rawPsFreeSpinStrips;
-                Log.w(`[PS] Tier ReelIndex=${reelIndex} không có — fallback freeSpinReelStrips`);
+            for (const reelIndex of FREE_SPIN_TIER_REEL_INDICES) {
+                if (!tierStrips[reelIndex]) {
+                    tierStrips[reelIndex] = data.config.freeSpinReelStrips;
+                    tierRawStrips[reelIndex] = data.rawPsFreeSpinStrips;
+                    Log.w(`[PS] Tier ReelIndex=${reelIndex} không có — fallback freeSpinReelStrips`);
+                }
             }
         }
         data.config.freeSpinTierStrips = tierStrips;
         data.rawPsFreeSpinTierStrips = tierRawStrips;
 
-        // ═══ TopUpGameReels.Strips — dùng khi Topup mode (ReelIndex=2 theo API V1.0.3) ═══
-        // Sticky cells override vị trí đã locked; ô trống vẫn quay bằng strip TopUpGameReels.
+        // ═══ TopUpGameReels / Respin — CN Matsuri ưu tiên FreeSpinReel group 0 nếu không có TopUp sheet ═══
         if (ps.TopUpGameReels?.Strips && Array.isArray(ps.TopUpGameReels.Strips)) {
             const respin = convertStripSet(ps.TopUpGameReels.Strips, 'TopUpGameReels');
             data.config.respinReelStrips = respin.converted;
@@ -3220,8 +3511,10 @@ class RealNetworkAdapter implements INetworkAdapter {
             const respin = convertStripSet(ps.ReSpinReel.Strips, 'ReSpinReel');
             data.config.respinReelStrips = respin.converted;
             Log.d('[PS] ReSpinReel.Strips loaded from PS');
+        } else if (tierStrips[0]?.length) {
+            data.config.respinReelStrips = tierStrips[0];
+            Log.d('[PS] respinReelStrips ← CN FreeSpinReel group 0 (Matsuri default)');
         } else {
-            // Fallback: Re-Spin dùng cùng strips với Normal (sticky cells sẽ override đúng vị trí)
             data.config.respinReelStrips = data.config.reelStrips;
             Log.w('[PS] RespinReel.Strips không có — dùng reelStrips làm fallback cho Re-Spin (normal)');
         }
@@ -3454,8 +3747,6 @@ export class NetworkManager {
     private _jackpotTimer: any = null;
 
     private constructor() {
-        // ★ Bật log tag cho StickyAccumulated / StickyEarned debug — phải enable trước khi login/enter.
-        Log.enable('featuregauge');
         // ★ Log WinPopup tiers khi Enter (chỉ debug) — tag riêng 'winpopup' để không lẫn log PS khác.
         if (ENABLE_DEBUG_TOOLS) {
             Log.enable('winpopup');
@@ -3510,7 +3801,7 @@ export class NetworkManager {
         return this._adapter.sendSelectFeature(nextStage, reelIndex ?? 0);
     }
 
-    sendClaimRequest(): Promise<{ balance: number; winCash?: number; winGrade?: string; claimTotalWin?: number; topLevelWinCash?: number }> {
+    sendClaimRequest(): Promise<ClaimResult> {
         return this._adapter.sendClaimRequest();
     }
 

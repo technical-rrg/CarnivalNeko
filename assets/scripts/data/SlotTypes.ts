@@ -285,50 +285,50 @@ export interface ForceFeatureEntryData {
 }
 
 /**
- * ★ Secret Treasure symbol set (0–20).
+ * Client SymbolId — index nội bộ (prefab / art / logic). KHÔNG bằng số PS server.
+ * Map PS → client: PS_TO_CLIENT + NetworkManager._applyPS dynMap.
  *
- * Minors  (0–5):   9, 10, J, Q, K, A — payout thấp
- * Majors  (6–10):  Horus (Ra), Anubis, Sobek, Ramses, Cleopatra — payout cao
- * Special (11–15): Wild Trail, Sticky Red/Yellow/Green, +1 Re-Spin
- * Jackpot (16–20): chỉ dùng trong Pick Game, không xuất hiện trên reel strip
+ * Carnival Neko API V1.0.1 PS IDs:
+ *   Low 1–6 → MINOR_* | High 11–15 → MAJOR_* | Wild 21 → WILD
+ *   Trail 41/42/43 → TRAIL_BLUE/GREEN/RED | Sticky 44/45 → STICKY_GREEN / STICKY_YELLOW(Gold)
+ *   Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
  */
 export enum SymbolId {
-    // ── Minor symbols (Secret Treasure: 6 minors) ──
+    // ── Pay symbols (PS Low01–06 = 1–6; art tạm giữ tên cũ) ──
     MINOR_9 = 0,
     MINOR_10 = 1,
     MINOR_J = 2,
     MINOR_Q = 3,
     MINOR_K = 4,
     MINOR_A = 5,
-    // ── Major symbols (PS 11→15, payout thấp → cao) ──
-    MAJOR_HORUS = 6,      // Horus (Ra)
+    // ── High pay (PS High01–05 = 11–15; art tạm giữ tên cũ) ──
+    MAJOR_HORUS = 6,
     MAJOR_ANUBIS = 7,
     MAJOR_SOBEK = 8,
     MAJOR_RAMSES = 9,
     MAJOR_CLEOPATRA = 10,
-    // ── Special symbols ──
-    WILD = 11,           // Wild Trail — chỉ xuất hiện trên reel 1/2/3 (index 1,2,3)
-    STICKY_RED = 12,     // Red sticky — xuất hiện Normal/Re-Spin/Free Spin, mang credit
-    STICKY_YELLOW = 13,  // Yellow sticky — Re-Spin / Free Spin Wild
-    STICKY_GREEN = 14,   // Green sticky — Re-Spin VIP
-    PLUS_ONE_SPIN = 15,  // +1 Re-Spin
-    // ── Jackpot (chỉ trong Pick Game) ──
-    JP_IDLE = 16,
-    JP_MINI = 17,
-    JP_MINOR = 18,
-    JP_MAJOR = 19,
-    JP_GRAND = 20,
-    /** Upgrade Coin — 3 Upgrade → nâng tier thắng / Grand ×2 (PS 86). */
+    // ── Special ──
+    WILD = 11,             // PS 21
+    STICKY_RED = 12,       // legacy (không dùng CN primary)
+    STICKY_YELLOW = 13,    // CN Sticky_02 Gold — PS 45 (reuse art vàng tạm)
+    STICKY_GREEN = 14,     // CN Sticky_01 Green — PS 44
+    PLUS_ONE_SPIN = 15,    // legacy TopUp +1
+    // ── Jackpot Pick (PS remapped) ──
+    JP_IDLE = 16,          // PS 81
+    JP_MINI = 17,          // PS 85
+    JP_MINOR = 18,         // PS 84
+    JP_MAJOR = 19,         // PS 83
+    JP_GRAND = 20,         // PS 82
+    /** Upgrade — PS 86; 3 Upgrade → nâng tier / Grand ×2. */
     JP_UPGRADE = 25,
 
-    // ── Carnival Neko Trail Coins (Base Game) ──
-    /** Coin úp / chưa biết màu — hiện trên reel trước khi flip. */
+    // ── Carnival Trail — UI hiện TRAIL_NORMAL rồi flip màu ──
     TRAIL_NORMAL = 21,
-    /** Blue Trail → bay vào Blue Pot (PS 41). */
+    /** PS 41 Trail_01 Blue → Blue Pot */
     TRAIL_BLUE = 22,
-    /** Red Trail → bay vào Red Pot (PS 43). */
+    /** PS 43 Trail_03 Red → Red Pot */
     TRAIL_RED = 23,
-    /** Green Trail → bay vào Green Pot (PS 42). */
+    /** PS 42 Trail_02 Green → Green Pot */
     TRAIL_GREEN = 24,
 }
 
@@ -432,6 +432,28 @@ export function buildCarnivalFeatureTrigger(
     return { kind, burstPots, ...describeCarnivalFeature(kind) };
 }
 
+/**
+ * API CurrentFeatureType (−1 none, 0–5 Mighty→Ultimate) → CarnivalFeatureKind.
+ * Khác offset với enum nội bộ (JACKPOT=1, MIGHTY=2…).
+ */
+export function carnivalKindFromApiFeatureType(apiType: number): CarnivalFeatureKind {
+    switch (apiType) {
+        case 0: return CarnivalFeatureKind.MIGHTY;
+        case 1: return CarnivalFeatureKind.MEGA;
+        case 2: return CarnivalFeatureKind.SUPER;
+        case 3: return CarnivalFeatureKind.ULTRA;
+        case 4: return CarnivalFeatureKind.SUPREME;
+        case 5: return CarnivalFeatureKind.ULTIMATE;
+        default: return CarnivalFeatureKind.NONE;
+    }
+}
+
+/** API feature type index 0–5 → FreeSpinReel strip group start (×5 strips). */
+export function cnFreeSpinStripGroupStart(apiFeatureType: number): number {
+    const t = Math.max(0, Math.min(5, Math.floor(apiFeatureType)));
+    return t * 5;
+}
+
 /** Helper: kiểm tra symbol là Major (6–10) */
 export function isMajor(s: number): boolean { return s >= SymbolId.MAJOR_HORUS && s <= SymbolId.MAJOR_CLEOPATRA; }
 /** Helper: kiểm tra symbol là Minor (0–5) */
@@ -444,86 +466,84 @@ export function isSticky(s: number): boolean { return s === SymbolId.STICKY_RED 
 export function wildSubstitutes(s: number): boolean { return isMinor(s) || isMajor(s); }
 
 // ═══════════════════════════════════════════════════════════
-//  PS ↔ CLIENT SYMBOL ID MAPPING — Secret Treasure (SlotId 18)
+//  PS ↔ CLIENT SYMBOL ID MAPPING — Carnival Neko (SlotId 20)
 // ═══════════════════════════════════════════════════════════
 
 /**
- * PS ID → Client SymbolId — Secret Treasure (SlotId 18).
+ * PS ID → Client SymbolId — Carnival Neko API V1.0.1.
  *
- * Normal symbols (Way Pay): 1=9, 2=10, 3=J, 4=Q, 5=K, 6=A, 11=Horus, 12=Anubis, 13=Sobek, 14=Ramses, 15=Cleopatra
- * Wild: 21 (Base Game only)
- * Red Coins Trail: 41–46 (STICKY_RED + credit text)
- * Yellow Coin (Free Spin): 47 | Yellow Coin (Top Up): 48
- * Green Coin: 49 | +1 Spin: 50
- * Pick Game: 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini, 86=Upgrade
+ * Low: 1–6 | High: 11–15 | Wild: 21
+ * Trail: 41 Blue, 42 Green, 43 Red
+ * Sticky: 44 Green (detect), 45 Gold (overlay)
+ * Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
+ *
+ * Legacy 46–50: không dùng CN primary (giữ map nhẹ cho mock cũ nếu còn).
  */
 export const PS_TO_CLIENT: Record<number, number> = {
-    // ─── Normal symbols (Way Pay wins) ───
+    // ─── Pay symbols ───
     1:  SymbolId.MINOR_9,
     2:  SymbolId.MINOR_10,
     3:  SymbolId.MINOR_J,
     4:  SymbolId.MINOR_Q,
     5:  SymbolId.MINOR_K,
     6:  SymbolId.MINOR_A,
-    11: SymbolId.MAJOR_HORUS,      // Horus (Ra)
+    11: SymbolId.MAJOR_HORUS,
     12: SymbolId.MAJOR_ANUBIS,
     13: SymbolId.MAJOR_SOBEK,
     14: SymbolId.MAJOR_RAMSES,
-    15: SymbolId.MAJOR_CLEOPATRA, // highest payout
+    15: SymbolId.MAJOR_CLEOPATRA,
     // ─── Wild ───
-    21: SymbolId.WILD,           // Wild Trail (Bat + Peach, Base Game only)
-    // ─── Carnival Neko Trail Coins (doc: Blue=41, Green=42, Red=43) ───
-    // Client luôn hiện TRAIL_NORMAL trước khi flip; PS ID chỉ quyết định màu sau flip.
+    21: SymbolId.WILD,
+    // ─── Trail (UI: TRAIL_NORMAL → flip màu theo PS) ───
     41: SymbolId.TRAIL_BLUE,
     42: SymbolId.TRAIL_GREEN,
     43: SymbolId.TRAIL_RED,
-    // Legacy Secret Treasure Red credit coins (giữ để mock cũ / resume không vỡ)
-    44: SymbolId.STICKY_RED,
-    45: SymbolId.STICKY_RED,
+    // ─── Sticky feature ───
+    44: SymbolId.STICKY_GREEN,   // Sticky_01 Green
+    45: SymbolId.STICKY_YELLOW,  // Sticky_02 Gold
+    // ─── Legacy unused on CN primary ───
     46: SymbolId.STICKY_RED,
-    // ─── Feature special symbols ───
-    47: SymbolId.STICKY_YELLOW,  // Yellow Coin — Free Spin (Wild + instant pay)
-    48: SymbolId.STICKY_YELLOW,  // Yellow Coin — Top Up (hút tiền các đồng Đỏ)
-    49: SymbolId.STICKY_GREEN,   // Green Coin — Top Up VIP (hút toàn bộ tiền)
-    50: SymbolId.PLUS_ONE_SPIN,  // +1 Spin (Top Up Bonus)
-    // ─── Pick Game symbols (lưới 5×3 = 15 thẻ — Carnival Neko) ───
-    81: SymbolId.JP_IDLE,        // Base Pick (thẻ úp)
-    82: SymbolId.JP_GRAND,       // GRAND Jackpot
-    83: SymbolId.JP_MAJOR,       // MAJOR Jackpot
-    84: SymbolId.JP_MINOR,       // MINOR Jackpot
-    85: SymbolId.JP_MINI,        // MINI Jackpot
-    86: SymbolId.JP_UPGRADE,     // Upgrade Coin
-    // ─── Empty ───
+    47: SymbolId.STICKY_YELLOW,
+    48: SymbolId.STICKY_YELLOW,
+    49: SymbolId.STICKY_GREEN,
+    50: SymbolId.PLUS_ONE_SPIN,
+    // ─── Pick Game (remapped): 82 Grand, 83 Major, 84 Minor, 85 Mini ───
+    81: SymbolId.JP_IDLE,
+    82: SymbolId.JP_GRAND,
+    83: SymbolId.JP_MAJOR,
+    84: SymbolId.JP_MINOR,
+    85: SymbolId.JP_MINI,
+    86: SymbolId.JP_UPGRADE,
     99: -1,
 };
 
-/** Client SymbolId → PS ID (normal symbols only — Trail/special là 1-to-many). */
+/** Client SymbolId → representative PS ID (CN V1.0.1). */
 export const CLIENT_TO_PS: Record<number, number> = {
-    [SymbolId.MINOR_9]:      1,
-    [SymbolId.MINOR_10]:     2,
-    [SymbolId.MINOR_J]:      3,
-    [SymbolId.MINOR_Q]:      4,
-    [SymbolId.MINOR_K]:      5,
-    [SymbolId.MINOR_A]:      6,
+    [SymbolId.MINOR_9]:         1,
+    [SymbolId.MINOR_10]:        2,
+    [SymbolId.MINOR_J]:         3,
+    [SymbolId.MINOR_Q]:         4,
+    [SymbolId.MINOR_K]:         5,
+    [SymbolId.MINOR_A]:         6,
     [SymbolId.MAJOR_HORUS]:     11,
     [SymbolId.MAJOR_ANUBIS]:    12,
     [SymbolId.MAJOR_SOBEK]:     13,
     [SymbolId.MAJOR_RAMSES]:    14,
     [SymbolId.MAJOR_CLEOPATRA]: 15,
-    [SymbolId.WILD]:         21,
-    [SymbolId.STICKY_RED]:   44,  // legacy red sticky
-    [SymbolId.STICKY_YELLOW]:47,  // representative Yellow
-    [SymbolId.STICKY_GREEN]: 49,
-    [SymbolId.TRAIL_BLUE]:   41,
-    [SymbolId.TRAIL_GREEN]:  42,
-    [SymbolId.TRAIL_RED]:    43,
-    [SymbolId.PLUS_ONE_SPIN]:50,
-    [SymbolId.JP_IDLE]:      81,
-    [SymbolId.JP_GRAND]:     82,
-    [SymbolId.JP_MAJOR]:     83,
-    [SymbolId.JP_MINOR]:     84,
-    [SymbolId.JP_MINI]:      85,
-    [SymbolId.JP_UPGRADE]:   86,
+    [SymbolId.WILD]:            21,
+    [SymbolId.TRAIL_BLUE]:      41,
+    [SymbolId.TRAIL_GREEN]:     42,
+    [SymbolId.TRAIL_RED]:       43,
+    [SymbolId.STICKY_GREEN]:    44,
+    [SymbolId.STICKY_YELLOW]:   45,
+    [SymbolId.STICKY_RED]:      46, // legacy
+    [SymbolId.PLUS_ONE_SPIN]:   50, // legacy
+    [SymbolId.JP_IDLE]:         81,
+    [SymbolId.JP_GRAND]:        82,
+    [SymbolId.JP_MAJOR]:        83,
+    [SymbolId.JP_MINOR]:        84,
+    [SymbolId.JP_MINI]:         85,
+    [SymbolId.JP_UPGRADE]:      86,
 };
 
 export function psToClientSymbol(psId: number): number {
@@ -734,6 +754,24 @@ export interface SpinResponse {
      * Client: sau CARNIVAL_TRAIL_FLY_DONE → pot burst → Jackpot và/hoặc Matsuri.
      */
     carnivalFeature?: CarnivalFeatureTrigger;
+
+    // ★ Carnival Neko CNSpinResponse ──────────────────────────────────────────
+    /** API CurrentFeatureType: −1 none, 0–5 Mighty→Ultimate. */
+    currentFeatureType?: number;
+    /** Grid height 3 / 4 / 5 trong Matsuri. */
+    featureRows?: number;
+    /** FREE_SPIN_START — Start Gold sticky từ server. */
+    starterCoins?: StickyCell[];
+    /** Sticky Green mới land spin này. */
+    newStickies?: StickyCell[];
+    /** Toàn bộ sticky đang giữ trên grid. */
+    allStickies?: StickyCell[];
+    featureEntryJackpotWin?: number;
+    featureEntryJackpotName?: string;
+    /** Mystery envelope instant payout (normal spin). */
+    redEnvelopePay?: number;
+    isGridFull?: boolean;
+    gridFullGrandWin?: number;
 }
 
 export interface PlayerData {
@@ -920,20 +958,20 @@ export interface ServerMatchedLinePay {
  * Field optional (Upgrade*) — mock gửi; real API bỏ qua nếu server chưa có.
  */
 export interface ServerPickResponse {
-    /** Grid state (15 items) — server PS IDs: 81=Idle, 82=Grand, 83=Major, 84=Minor, 85=Mini, 86=Upgrade; -1=unselected */
+    /** Grid state (15 items) — PS: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade; -1=unselected */
     PickGame: number[];
     PickResults?: number;
     PickStage?: number;
     PickWin?: number;
+    /** CN: luôn false — dùng PickWin / JackpotName / NextStage=PICK_END. */
     IsJackpot: boolean;
-    /** 0=Mini 1=Minor 2=Major 3=Grand -1=no win — tier TRẢ THƯỞNG (đã apply upgrade). */
+    /** 0=Mini 1=Minor 2=Major 3=Grand -1=no win (CN thường −1). */
     JackpotIndex: number;
+    /** CN: tên tier thắng (Mini/Minor/Major/Grand). */
+    JackpotName?: string;
     NextStage: number;
-    /** Optional Carnival: số Upgrade đã pick. */
     UpgradeCount?: number;
-    /** Optional Carnival: vừa đủ 3 Upgrade ở lần pick này. */
     IsUpgradeComplete?: boolean;
-    /** Optional Carnival: Grand ×2. */
     DoubleGrand?: boolean;
 }
 
@@ -945,9 +983,23 @@ export interface ServerClaimResponse {
         NextStage: number;
         WinGrade: string;
         StartRands: number[];
+        JackpotName?: string;
     };
-    WinCash: number;           // Tiền thắng trong feature spin
+    WinCash: number;
     Cash: number;
+}
+
+/** Kết quả parse Claim phía client. */
+export interface ClaimResult {
+    balance: number;
+    winCash?: number;
+    winGrade?: string;
+    claimTotalWin?: number;
+    topLevelWinCash?: number;
+    featureName?: string;
+    jackpotName?: string;
+    startRands?: number[];
+    nextStage?: number;
 }
 
 /** BalanceGet response từ server (AckBalanceGet) — 4.11 /Slot/{SlotId}/BalanceGet */

@@ -247,6 +247,8 @@ export class GameData {
     matsuriRows: number = 3;
     /** Tên feature Matsuri đang chạy (log / UI). */
     matsuriFeatureName: string = '';
+    /** API CurrentFeatureType 0–5 đang active (−1 = none). */
+    cnApiFeatureType: number = -1;
 
     // ─── FreeSpin Gold state ───────────────────────────────────────────────────
     /** Số lượt quay FreeSpin Gold còn lại. */

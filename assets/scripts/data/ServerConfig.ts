@@ -12,7 +12,14 @@
 //  ★★★  SWITCH CHÍNH: Mock Data ↔ Real API  ★★★
 // ═══════════════════════════════════════════════════════════
 
-export const USE_REAL_API: boolean = false; // true = gọi API thật, false = dùng MockDataProvider (dev/test)
+export const USE_REAL_API: boolean = true; // true = gọi API thật, false = dùng MockDataProvider (dev/test)
+
+/**
+ * ★ Tạm: Real API — ép NextStage=SPIN, chặn vào Pick/Matsuri/FS.
+ * Vẫn cho phép Trail bay vào Pot (trails + potLevels giữ nguyên).
+ * false = full feature flow (Pick / Matsuri / Claim) theo CN API.
+ */
+export const FORCE_NORMAL_SPIN_ONLY: boolean = false;
 
 /** Bật OpenDebug panel + DebugManager shortcuts (mọi build). Tắt trước release production. */
 export const ENABLE_DEBUG_TOOLS: boolean = true;
@@ -22,7 +29,7 @@ export const ENABLE_DEBUG_TOOLS: boolean = true;
  * Tắt khi muốn mock feature cũ (Sticky Red / Wild Trail GoF).
  * Real API: bỏ qua flag này — trails đến từ server grid (PS 41/42/43).
  */
-export const MOCK_FORCE_CARNIVAL_TRAILS: boolean = true;
+export const MOCK_FORCE_CARNIVAL_TRAILS: boolean = false;
 
 /** Số Trail tối thiểu / tối đa mỗi spin khi MOCK_FORCE_CARNIVAL_TRAILS = true. */
 export const MOCK_CARNIVAL_TRAIL_COUNT_MIN: number = 2;
@@ -48,7 +55,7 @@ export type MockCarnivalFeatureMode =
     | 'cycle';
 
 /** Đổi mode để test: 'cycle' = xoay đủ loại feature mỗi lần trigger. 'red' = vào Pick Game. */
-export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'blue_red';
+export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'none';
 
 /**
  * ★ Mock Pick Game grid khi vào Jackpot Feature.
@@ -81,8 +88,8 @@ export const ServerConfig = {
     /** Base URL của Slot Game Server */
     SERVER_URL: 'https://dev-slot.realreelsgaming.com',
 
-    /** Slot Game ID cho Secret Treasure (truy vấn Game Code Table) */
-    SLOT_ID: 18,
+    /** Slot Game ID — Carnival Neko (API V1.0.1) */
+    SLOT_ID: 20,
 
     /** Game client version */
     GAME_VERSION: '1.0.0',

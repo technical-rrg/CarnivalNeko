@@ -12,7 +12,10 @@ export const PICK_GAME_COLS = 5;
 export const PICK_GAME_ROWS = 3;
 export const PICK_GAME_CELL_COUNT = PICK_GAME_COLS * PICK_GAME_ROWS; // 15
 
-/** Server / PS symbol IDs (Carnival Neko System Design §6). */
+/**
+ * Server / PS Pick symbol IDs (backend remapped).
+ * 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade.
+ */
 export const PS_PICK = {
     IDLE: 81,
     GRAND: 82,

@@ -10,7 +10,7 @@
  *   apiRow = rowCount - 1 - row
  */
 
-import { StickyCell, SymbolId, TopupReelSlot, TopupReelType } from './SlotTypes';
+import { StickyCell, SymbolId, TopupReelSlot, TopupReelType, PS_TO_CLIENT } from './SlotTypes';
 
 export const MATSURI_COL_COUNT = 5;
 /**
@@ -100,6 +100,36 @@ export function pickMatsuriCredit(totalBet: number, rng: () => number = Math.ran
     // 3 decimals: giữ được 0.01, 0.02… với coinValue nhỏ
     const credit = Math.round(raw * 1000) / 1000;
     return credit > 0 ? credit : bet;
+}
+
+/**
+ * Parse StarterCoins / NewStickies / AllStickies từ CNSpinResponse.
+ * Server Row 0 = top → visual row 0 = bottom.
+ */
+export function parseCnStickyCells(
+    raw: any,
+    featureRows: number,
+    defaultSymbolId: number = MATSURI_GOLD_SYMBOL,
+): StickyCell[] {
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    const rows = clampMatsuriRows(featureRows || 3);
+    const out: StickyCell[] = [];
+    for (const item of raw) {
+        if (item == null) continue;
+        const reel = Number(item.Reel ?? item.reel ?? 0);
+        const apiRow = Number(item.Row ?? item.row ?? 0);
+        const row = rows - 1 - apiRow;
+        if (reel < 0 || reel >= MATSURI_COL_COUNT || row < 0 || row >= rows) continue;
+        const credit = Number(item.Credit ?? item.credit ?? 0);
+        const psSym = item.SymbolId ?? item.symbolId ?? item.Symbol ?? item.PsId;
+        let symbolId = defaultSymbolId;
+        if (psSym != null) {
+            const mapped = PS_TO_CLIENT[Number(psSym)];
+            if (mapped != null && mapped >= 0) symbolId = mapped;
+        }
+        out.push({ reel, row, symbolId, credit: credit > 0 ? credit : 0 });
+    }
+    return out;
 }
 
 /**

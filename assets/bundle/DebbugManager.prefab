@@ -39,7 +39,7 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 1.1368683772161603e-13,
+      "x": 0,
       "y": 0,
       "z": 0
     },
@@ -839,7 +839,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Free Spin",
+    "_string": "Sticky",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -1211,7 +1211,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Wild 3x",
+    "_string": "Wild",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -1583,7 +1583,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Force Pick \nGame",
+    "_string": "Trail Red",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 16,
@@ -2327,7 +2327,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Test",
+    "_string": "No Win",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -2699,7 +2699,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "77",
+    "_string": "Trail Blue",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -3071,7 +3071,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "7",
+    "_string": "Minor x5",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -3443,7 +3443,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Bar",
+    "_string": "Zeros",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -3815,7 +3815,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "BarBar",
+    "_string": "Trail Green",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -4187,7 +4187,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "RedCoin",
+    "_string": "Win+Trail",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -4931,7 +4931,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Win",
+    "_string": "High Win",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -5303,7 +5303,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Phonix5",
+    "_string": "High x5",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -7123,7 +7123,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Force Feature",
+    "_string": "Trail Mix",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 16,
@@ -7487,7 +7487,9 @@
     "btnRandomSpin": {
       "__id__": 216
     },
-    "btnAllZeros": null,
+    "btnAllZeros": {
+      "__id__": 132
+    },
     "btnForcePickGame": {
       "__id__": 62
     },
@@ -7503,20 +7505,30 @@
     "btnWild3Reels": {
       "__id__": 48
     },
-    "btnRedCoins5": null,
-    "btnRedCoinsUnder6": null,
+    "btnRedCoins5": {
+      "__id__": 104
+    },
+    "btnRedCoinsUnder6": {
+      "__id__": 146
+    },
     "btnRedWithWin": {
       "__id__": 160
     },
-    "btnMinorWin5": null,
+    "btnMinorWin5": {
+      "__id__": 118
+    },
     "btnSingleWayWin": {
       "__id__": 174
     },
-    "btnNoWin": null,
+    "btnNoWin": {
+      "__id__": 90
+    },
     "btnMultiLineWin": {
       "__id__": 257
     },
-    "btnYellowFreeSpin": null,
+    "btnYellowFreeSpin": {
+      "__id__": 34
+    },
     "btnTopupZeros": null,
     "btnTopupAllYellow": null,
     "btnTopupAllGreen": null,

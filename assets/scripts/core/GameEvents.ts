@@ -97,6 +97,10 @@ export const GameEvents = {
     CARNIVAL_MATSURI_START: 'carnival:matsuri:start',
     /** Matsuri Hold&Spin kết thúc → về Base. No payload. */
     CARNIVAL_MATSURI_END: 'carnival:matsuri:end',
+    /** Red Mystery Envelope payout (normal spin). Payload: { amount: number } */
+    CARNIVAL_RED_ENVELOPE: 'carnival:red:envelope',
+    /** Matsuri full grid Grand. Payload: { amount: number } */
+    CARNIVAL_GRID_FULL: 'carnival:grid:full',
     /**
      * Matsuri enter: bắn Start Gold vào grid (giống StickyFill orb).
      * Payload: { cells: StickyCell[] }

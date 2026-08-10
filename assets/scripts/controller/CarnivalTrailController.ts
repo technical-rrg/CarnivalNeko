@@ -12,6 +12,7 @@
  *
  * ĐƯỜNG BAY (dạng dấu hỏi "?"):
  *   Một cubic Bezier liên tục: từ Trail (dưới) vòng cung lên hơi cao hơn Pot rồi đổ xuống.
+ *   Luôn vòng về phía gần Pot (mép Pot hướng về Symbol) — không vòng ra mặt xa.
  *   Tốc độ linear đều — không slow-start / tăng tốc giật.
  *   Timing Normal/Quick/Turbo khớp Wild Trail (0.8 / 0.65 / 0.5)
  *
@@ -278,9 +279,11 @@ export class CarnivalTrailController extends Component {
         pot.getWorldPosition(end);
 
         const apexH = Math.max(20, this.apexHeight);
-        const side = this._resolveFlySide(hit.reel);
         const dx = end.x - start.x;
         const dy = end.y - start.y;
+        // Luôn vòng cung về phía gần Pot (mặt Pot hướng về Symbol), không vòng ra mặt xa.
+        // VD: Symbol trái + Pot phải → tiếp cận mép trái Pot (side=-1), không vòng sang mép phải.
+        const side = this._resolveFlySide(start, end, hit.reel);
         const dist = Math.max(Math.sqrt(dx * dx + dy * dy), this.minFlyPathDistance * 0.5, 1);
         const bulge = dist * Math.abs(this.flyCurvature);
 
@@ -289,7 +292,7 @@ export class CarnivalTrailController extends Component {
         const cp1X = start.x + dx * 0.18 + side * bulge * 0.55;
         const cp1Y = start.y + (riseY - start.y) * 0.45;
 
-        // CP2: neo phía trên Pot — phần thân "?" trước khi rơi xuống
+        // CP2: neo phía trên Pot — phần thân "?" trước khi rơi xuống (cùng phía gần với Symbol)
         const cp2X = end.x + side * bulge * 0.2;
         const cp2Y = end.y + apexH;
 
@@ -424,8 +427,18 @@ export class CarnivalTrailController extends Component {
         if (root?.isValid) root.destroy();
     }
 
-    /** -1 trái / +1 phải màn hình. */
-    private _resolveFlySide(reelIndex: number): number {
+    /**
+     * Chọn phía vòng cung gần Pot nhất theo vị trí Symbol → Pot.
+     * -1 = lệch/tiếp cận mép trái Pot, +1 = mép phải Pot.
+     * Symbol bên trái Pot → luôn -1; bên phải → luôn +1 (không vòng sang mặt xa).
+     */
+    private _resolveFlySide(start: Vec3, end: Vec3, reelIndex: number): number {
+        const dx = end.x - start.x;
+        if (Math.abs(dx) > 8) {
+            // Symbol trái Pot → tiếp cận mép trái; Symbol phải Pot → mép phải.
+            return dx > 0 ? -1 : 1;
+        }
+        // Gần như thẳng hàng theo X: fallback nhẹ theo reel để tránh cung phẳng.
         const reelCount = this.reels.length > 0 ? this.reels.length : 5;
         const center = Math.floor(reelCount / 2);
         if (reelIndex < center) return -1;

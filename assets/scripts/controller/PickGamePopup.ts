@@ -153,9 +153,18 @@ export class PickGamePopup extends Component {
         try {
             const resp = await NetworkManager.instance.sendPickRequest(index);
 
+            const pickWinAmt = this._extractPickWin(resp);
+            const needClaim = resp.NextStage === 102 || resp.NextStage >= 100;
+            // CN: IsJackpot luôn false — thắng khi PickWin > 0 / JackpotName / PICK_END
+            const won = !!resp.IsJackpot
+                || pickWinAmt > 0
+                || !!(resp.JackpotName && String(resp.JackpotName).trim())
+                || needClaim;
+
             Log.d(`[PickGamePopup] PICK #${index} IsJackpot=${resp.IsJackpot} JP=${resp.JackpotIndex}`
-                + ` Upgrade=${resp.UpgradeCount ?? '?'} UpgradeDone=${!!resp.IsUpgradeComplete}`
-                + ` DoubleGrand=${!!resp.DoubleGrand} PickWin=${resp.PickWin ?? 0}`);
+                + ` Name=${resp.JackpotName ?? 'n/a'} Upgrade=${resp.UpgradeCount ?? '?'}`
+                + ` UpgradeDone=${!!resp.IsUpgradeComplete} DoubleGrand=${!!resp.DoubleGrand}`
+                + ` PickWin=${pickWinAmt} won=${won} NextStage=${resp.NextStage}`);
 
             if (this._pickState && resp.PickGame) {
                 // Đồng bộ grid từ server; -1 / Idle = chưa lộ → giữ local (mock prefill)
@@ -182,11 +191,12 @@ export class PickGamePopup extends Component {
                     });
                 }
 
-                if (resp.IsJackpot) {
+                if (won && !this._matched) {
                     this._matched = true;
-                    this._wonTier = JACKPOT_INDEX_TO_TYPE[resp.JackpotIndex] ?? JackpotType.MINI;
-                    this._doubleGrand = !!resp.DoubleGrand;
-                    this._serverPickWinAmount = this._extractPickWin(resp);
+                    this._wonTier = this._resolveWonTier(resp);
+                    this._doubleGrand = !!resp.DoubleGrand
+                        || /grand\s*x\s*2|grandupgrade|×\s*2/i.test(String(resp.JackpotName ?? ''));
+                    this._serverPickWinAmount = pickWinAmt;
                     if (this._serverPickWinAmount > 0) {
                         GameData.instance.pickGameWinAmount = this._serverPickWinAmount;
                     }
@@ -194,16 +204,16 @@ export class PickGamePopup extends Component {
                         this._pickState.wonTier = JackpotType[this._wonTier] as any;
                         this._pickState.doubleGrand = this._doubleGrand;
                     }
-                    Log.d(`[PickGamePopup] JACKPOT paid=${JackpotType[this._wonTier]} x2=${this._doubleGrand}`);
+                    Log.d(`[PickGamePopup] JACKPOT paid=${JackpotType[this._wonTier]} x2=${this._doubleGrand} win=${pickWinAmt}`);
                     this._playWinAnimation(this._wonTier);
                     EventBus.instance.emit(GameEvents.PICK_GAME_MATCH_FOUND, this._wonTier);
                     this._setButtonsInteractable(false);
                     this.scheduleOnce(this._emitJackpot, this.jackpotTriggerDelay);
-                } else if (!resp.IsUpgradeComplete) {
+                } else if (!resp.IsUpgradeComplete && !this._matched) {
                     this._setButtonsInteractable(true);
                 }
 
-                if (resp.NextStage === 102 || resp.NextStage >= 100) {
+                if (needClaim) {
                     EventBus.instance.emit(GameEvents.PICK_GAME_NEED_CLAIM);
                 }
             });
@@ -627,6 +637,31 @@ export class PickGamePopup extends Component {
         const raw = resp?.PickWin ?? resp?.pickWin ?? resp?.WinCash ?? resp?.winCash ?? resp?.TotalWin ?? resp?.totalWin;
         const value = Number(raw);
         return Number.isFinite(value) && value > 0 ? value : 0;
+    }
+
+    /** CN: ưu tiên JackpotName → JackpotIndex → đếm 3-match trên grid. */
+    private _resolveWonTier(resp: any): JackpotType {
+        const name = String(resp?.JackpotName ?? resp?.jackpotName ?? '').toLowerCase();
+        if (name.includes('grand')) return JackpotType.GRAND;
+        if (name.includes('major')) return JackpotType.MAJOR;
+        if (name.includes('minor')) return JackpotType.MINOR;
+        if (name.includes('mini')) return JackpotType.MINI;
+
+        if (resp?.JackpotIndex != null && resp.JackpotIndex >= 0) {
+            return JACKPOT_INDEX_TO_TYPE[resp.JackpotIndex] ?? JackpotType.MINI;
+        }
+
+        if (this._pickState?.grid) {
+            const counts: Partial<Record<JackpotType, number>> = {};
+            for (const idx of this._revealedSet) {
+                const tier = clientSymToJackpotType(this._pickState.grid[idx]);
+                if (tier !== JackpotType.NONE) {
+                    counts[tier] = (counts[tier] ?? 0) + 1;
+                    if ((counts[tier] ?? 0) >= 3) return tier;
+                }
+            }
+        }
+        return JackpotType.MINI;
     }
 
     private _resolveJackpotAmount(): { amount: number; source: string } {

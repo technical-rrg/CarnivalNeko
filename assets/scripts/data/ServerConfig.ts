@@ -88,7 +88,7 @@ export const ServerConfig = {
     /** Base URL của Slot Game Server */
     SERVER_URL: 'https://dev-slot.realreelsgaming.com',
 
-    /** Slot Game ID — Carnival Neko (API V1.0.1) */
+    /** Slot Game ID — Carnival Neko (API V1.0.2) */
     SLOT_ID: 20,
 
     /** Game client version */

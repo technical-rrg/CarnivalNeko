@@ -192,6 +192,17 @@ export class CarnivalTrailController extends Component {
     private _onTrailOne(hit: CarnivalTrailHit): void {
         if (!hit) return;
         this._pending = this._pending.filter(t => !(t.reel === hit.reel && t.row === hit.row));
+
+        const symbolNode = this._getSymbolNode(hit.reel, hit.row);
+        const reelCtrl = this.reels[hit.reel];
+        // Chờ stop-bounce xong (SETTLING → IDLE + reel-settled) rồi mới flip/bay —
+        // tránh lấy world pos lúc symbol còn overshoot dưới rest.
+        if (symbolNode?.isValid && reelCtrl && !reelCtrl.isIdle) {
+            symbolNode.once('reel-settled', () => {
+                if (symbolNode.isValid) this._animateHit(hit);
+            });
+            return;
+        }
         this._animateHit(hit);
     }
 

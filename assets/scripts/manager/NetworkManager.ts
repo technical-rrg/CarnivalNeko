@@ -720,17 +720,28 @@ class MockNetworkAdapter implements INetworkAdapter {
         // _onFreeSpinEndPopupClosed sẽ KHÔNG add lại (vì flag = true).
         const newBalance = data.player.balance + winCash;
 
+        // Ultra/Supreme/Ultimate (API type 3–5): Claim sau FS → PICK_START + PickGame
+        const apiType = data.cnApiFeatureType;
+        const pickAfterFs = data.currentMode === 'matsuri' && apiType >= 3 && apiType <= 5;
+        const pickGame = pickAfterFs ? MockDataProvider.buildPickGame() : undefined;
+        const nextStage = pickAfterFs ? SlotStageType.PICK_START : SlotStageType.SPIN;
+
         // Reset buy queue + normal queue khi claim xong
         this._buyQueue = [];
         this._buyQueueIdx = 0;
         this._queueIdx = this._savedQueueIdx;
-        Log.d(`[MockAdapter] Claim: winCash=${winCash}, newBalance=${newBalance}, wasRestoredFromServer=${data.freeSpinTotalWinRestoredFromServer}`);
+        Log.d(
+            `[MockAdapter] Claim: winCash=${winCash}, newBalance=${newBalance}` +
+            ` nextStage=${nextStage} pickAfterFs=${pickAfterFs}` +
+            ` wasRestoredFromServer=${data.freeSpinTotalWinRestoredFromServer}`,
+        );
         return {
             balance: newBalance,
             winCash,
             claimTotalWin: winCash,
             topLevelWinCash: winCash,
-            nextStage: SlotStageType.SPIN,
+            nextStage,
+            pickGame,
         };
     }
 
@@ -1123,24 +1134,35 @@ class RealNetworkAdapter implements INetworkAdapter {
         // 🎯 Lấy DEBUG_RANDS từ DebugManager (keyboard shortcut) hoặc dùng config default
         const debugRands = DebugManager.instance.getPendingDebugRands() ?? DEBUG_RANDS;
 
+        // ReqSpin (API V1.0.2): BetIndex, BetLines, CoinValueIndex, DebugArray, SlotId
         const requestData = {
             BetIndex: data.player.betIndex,
             BetLines: 0,
             CoinValueIndex: data.config.coinValues.indexOf(data.player.coinValue),
             DebugArray: debugRands ?? [],
             SlotId: ServerConfig.SLOT_ID,
-            Dbg: '',
         };
 
-        // ═══ LOG REQUEST (FreeSpin quan trọng: xác nhận endpoint và DebugArray) ═══
+        // ═══ LOG REQUEST (FreeSpin / Matsuri: endpoint + DebugArray + mode) ═══
+        const clientMode = data.currentMode;
         Log.e(
-            `[SPIN-REQ] isFreeSpin=${_isFreeSpin}` +
+            `[SPIN-REQ] isFreeSpin=${_isFreeSpin} mode=${clientMode}` +
             ` | Endpoint=${ServerConfig.getEndpoint(ServerConfig.API.SPIN)}` +
             ` | BetIndex=${requestData.BetIndex}` +
             ` | CoinValueIndex=${requestData.CoinValueIndex}` +
             ` | DebugArray=${JSON.stringify(requestData.DebugArray)}` +
-            ` | CurrentStage(client)=${data.freeSpinRemaining > 0 ? 'FreeSpin(remain=' + data.freeSpinRemaining + ')' : 'NormalSpin'}`
+            ` | Seq=${data.currentSeq}` +
+            ` | cnApiFeatureType=${data.cnApiFeatureType}` +
+            ` | remainRespin=${data.respinRemaining}`,
         );
+        // Alias tag carnival → luôn thấy trong Preview whitelist
+        if (clientMode === 'matsuri' || clientMode === 'respin') {
+            Log.e(
+                `[CarnivalMatsuri] SPIN-REQ Seq=${data.currentSeq}` +
+                ` DebugArray=${JSON.stringify(requestData.DebugArray)}` +
+                ` featureType=${data.cnApiFeatureType} remain=${data.respinRemaining}`,
+            );
+        }
 
         if (debugRands) {
             Log.e(`[SPIN-REQ] Force DebugRands=${JSON.stringify(debugRands)}`);
@@ -1160,8 +1182,9 @@ class RealNetworkAdapter implements INetworkAdapter {
             packet
         );
 
-        this._checkResponseCode(responsePacket);
+        // SEQ trước check CODE (giống Pick/SelectFeature) — lỗi vẫn đồng bộ SEQ
         data.updateSeq(responsePacket[4]);
+        this._checkResponseCode(responsePacket);
 
         let decrypted: string;
         let raw: ServerSpinResponse;
@@ -1385,8 +1408,8 @@ class RealNetworkAdapter implements INetworkAdapter {
             packet
         );
 
-        this._checkResponseCode(responsePacket);
         data.updateSeq(responsePacket[4]);
+        this._checkResponseCode(responsePacket);
 
         const decrypted = this._decryptAES256(responsePacket[8], session.aky);
         const raw: ServerClaimResponse = JSON.parse(decrypted);
@@ -1404,14 +1427,19 @@ class RealNetworkAdapter implements INetworkAdapter {
         const cash = (raw as any).Cash ?? (raw as any).cash ?? (raw as any).Balance ?? (raw as any).balance;
         const winCash = claimTotalWin ?? topLevelWinCash;
         const featureName = claimResponse.FeatureName ?? claimResponse.featureName;
+        // JackpotName chỉ meaningful khi claim PICK_END (API V1.0.2)
         const jackpotName = claimResponse.JackpotName ?? claimResponse.jackpotName;
         const startRands = claimResponse.StartRands ?? claimResponse.startRands;
         const nextStage = claimResponse.NextStage ?? claimResponse.nextStage ?? SlotStageType.SPIN;
+        const pickGame = this._parsePickGame(
+            claimResponse.PickGame ?? claimResponse.pickGame ?? claimResponse.PickGameState,
+        );
 
         Log.e(
             `[Claim] parsed balance=${cash} totalWin=${winCash}` +
             ` FeatureName=${featureName ?? 'n/a'} JackpotName=${jackpotName ?? 'n/a'}` +
-            ` NextStage=${nextStage} WinGrade=${claimWinGrade ?? 'n/a'}`,
+            ` NextStage=${nextStage} WinGrade=${claimWinGrade ?? 'n/a'}` +
+            ` PickGame=${pickGame ? `grid=${pickGame.grid.length}` : 'n/a'}`,
         );
         return {
             balance: cash,
@@ -1423,6 +1451,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             jackpotName,
             startRands: Array.isArray(startRands) ? startRands : undefined,
             nextStage: Number(nextStage),
+            pickGame,
         };
     }
 
@@ -2094,6 +2123,8 @@ class RealNetworkAdapter implements INetworkAdapter {
             }).join(' ');
             Log.e(`[Network] ❌ SERVER ERROR → code=${code} | msg="${msg}" | popup=${popupCase}`);
             Log.e(`[Network] ❌ RAW PACKET: ${packetSummary}`);
+            // Alias để thấy khi Preview chỉ whitelist carnival
+            Log.e(`[CarnivalMatsuri] SERVER ERROR code=${code} msg="${msg}" popup=${popupCase}`);
             EventBus.instance.emit(GameEvents.SHOW_SYSTEM_POPUP, { popupCase });
             throw new ServerApiError(`Server error [${code}]: ${msg}`, code, true);
         }
@@ -2406,6 +2437,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             );
         }
 
+        // Reserved (API V1.0.2): luôn 0 / empty — JP Ultra+ qua Pick sau FS, không dùng field này
         const entryJp = anyRes.FeatureEntryJackpotWin ?? anyRes.featureEntryJackpotWin;
         if (entryJp != null) resp.featureEntryJackpotWin = Number(entryJp);
         const entryName = anyRes.FeatureEntryJackpotName ?? anyRes.featureEntryJackpotName;
@@ -2425,19 +2457,16 @@ class RealNetworkAdapter implements INetworkAdapter {
             resp.pickGame = this._parsePickGame(anyRes.PickGame ?? anyRes.PickGameState);
         }
 
+        // Chỉ map feature ENTRY. Mid-matsuri (FREE_SPIN=4) giữ NextStage server —
+        // không remap → CARNIVAL_MATSURI_START (240) kẻo burst/start lại + reel kẹt.
         const feature = buildCarnivalFeatureFromSpin(anyRes, resp.nextStage);
-        if (feature) {
+        if (feature && !inMatsuri) {
             resp.carnivalFeature = feature;
-            if (feature.jackpotFirst && feature.matsuriRows > 0) {
-                GameData.instance.pendingCarnivalMatsuri = feature;
-            }
-            // Mighty/Mega/Super: FREE_SPIN_START → client Matsuri burst flow
             if (!feature.jackpotFirst
-                && (resp.nextStage === SlotStageType.FREE_SPIN_START
-                    || resp.nextStage === SlotStageType.FREE_SPIN)) {
+                && resp.nextStage === SlotStageType.FREE_SPIN_START) {
                 resp.nextStage = SlotStageType.CARNIVAL_MATSURI_START;
             }
-            // Ultra/Supreme/Ultimate enter: PICK_* — keep stage (transition → POT_WIN)
+            // Red-only: PICK_START → pot burst / Pick ngay
             if (feature.jackpotFirst
                 && (resp.nextStage === SlotStageType.PICK_START || resp.nextStage === SlotStageType.PICK)) {
                 resp.triggerPotWin = true;
@@ -2445,8 +2474,14 @@ class RealNetworkAdapter implements INetworkAdapter {
             Log.e(
                 `[CN-FEATURE] kind=${feature.featureName} apiType=${resp.currentFeatureType ?? 'n/a'}` +
                 ` rows=${feature.matsuriRows} startCoins=${feature.startCoins}` +
-                ` jackpotFirst=${feature.jackpotFirst} nextStage=${resp.nextStage}` +
+                ` jackpotFirst=${feature.jackpotFirst} jackpotAfterFS=${feature.jackpotAfterFreeSpin}` +
+                ` nextStage=${resp.nextStage}` +
                 ` starter=${starter.length} new=${news.length} all=${all.length}`,
+            );
+        } else if (inMatsuri) {
+            Log.e(
+                `[CarnivalMatsuri] mid-spin keep NextStage=${resp.nextStage}` +
+                ` new=${news.length} all=${all.length} remain=${resp.remainRespinCount ?? 'n/a'}`,
             );
         }
 

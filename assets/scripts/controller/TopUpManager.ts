@@ -576,8 +576,15 @@ export class TopUpManager extends Component {
      * Nhận kết quả từ API /Spin.
      * Lưu result data, dừng reel HIỆN TẠI đang quay với result tương ứng.
      * Reel đang quay sẽ dừng → callback → spin reel tiếp theo.
+     *
+     * Carnival Matsuri (CN): không có TopupReel — dừng bằng Rands[5] theo cột.
      */
     stopReels(GFSpinResponse: any): void {
+        if (GameData.instance.currentMode === 'matsuri') {
+            this._stopMatsuriReels(GFSpinResponse);
+            return;
+        }
+
         // SpinResponse interface dùng 'topupReel' (lowercase)
         const topupReel = GFSpinResponse?.topupReel
             ?? GFSpinResponse?.TopupReel
@@ -629,6 +636,55 @@ export class TopUpManager extends Component {
             if (reel && data != null && (st === 1 || st === 2)) { // LAUNCHING or SPINNING
                 reel.stop(data);
             }
+        }
+    }
+
+    /**
+     * CN Matsuri: SpinResponse chỉ có Rands[5] + NewStickies (không TopupReel 15/20/25).
+     * Mỗi cột dùng chung rands[col] làm strip index; Green sticky do GameManager/overlay xử lý.
+     */
+    private _stopMatsuriReels(resp: any): void {
+        const rands: number[] = Array.isArray(resp?.rands)
+            ? resp.rands
+            : (Array.isArray(resp?.Rands) ? resp.Rands : []);
+        const rows = this._rowCount;
+        this._pendingResults = new Array(this.cellCount);
+
+        let stopCalls = 0;
+        for (let i = 0; i < this.cellCount; i++) {
+            const col = Math.floor(i / rows);
+            const index = Number(rands[col] ?? 0) || 0;
+            const slot = {
+                type: TopupReelType.NONE,
+                Type: TopupReelType.NONE,
+                index,
+                Index: index,
+                win: 0,
+                Win: 0,
+            };
+            this._pendingResults[i] = slot;
+
+            const reel = this.reels[i];
+            if (!reel || reel.isLocked) continue;
+            const st = (reel as any)['_state'];
+            if (st === 1 || st === 2) { // LAUNCHING or SPINNING
+                reel.stop(slot);
+                stopCalls++;
+            }
+        }
+
+        Log.e(
+            `[CarnivalMatsuri] stopReels via Rands=[${rands.join(',')}]` +
+            ` rows=${rows} cells=${this.cellCount} stopCalls=${stopCalls}` +
+            ` spun=${this._spunCount} stopped=${this._stoppedCount}`,
+        );
+
+        // Không còn reel đang quay (full sticky / miss schedule) → emit luôn
+        if (stopCalls === 0 && this._isSpinning) {
+            this._isSpinning = false;
+            this._setMaskEnabled(false);
+            EventBus.instance.emit(GameEvents.REELS_STOPPED);
+            Log.e('[CarnivalMatsuri] stopReels — no spinning cells → REELS_STOPPED');
         }
     }
 

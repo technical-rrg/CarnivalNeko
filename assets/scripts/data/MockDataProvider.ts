@@ -147,20 +147,16 @@ export class MockDataProvider {
             nextStage = SlotStageType.POT_WIN;
         }
 
-        // ★ Carnival Feature Trigger → nextStage
+        // ★ Carnival Feature Trigger → nextStage (API V1.0.2)
+        // Red-only: Pick ngay. Matsuri (+ Ultra/Supreme/Ultimate): FREE_SPIN trước,
+        // Pick (nếu có) sau Claim FREE_SPIN_END (NextStage=PICK_START).
         if (carnivalFeature) {
+            data.pendingCarnivalMatsuri = null;
             if (carnivalFeature.jackpotFirst) {
                 triggerPotWin = true;
                 pickGame = MockDataProvider.buildPickGame();
                 nextStage = SlotStageType.POT_WIN;
-                // Combo: Matsuri chạy sau Pick
-                if (carnivalFeature.matsuriRows > 0) {
-                    data.pendingCarnivalMatsuri = carnivalFeature;
-                } else {
-                    data.pendingCarnivalMatsuri = null;
-                }
             } else {
-                data.pendingCarnivalMatsuri = null;
                 nextStage = SlotStageType.CARNIVAL_MATSURI_START;
             }
         }

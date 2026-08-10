@@ -1239,8 +1239,9 @@ export class SlotMachineController extends Component {
     }
 
     /**
-     * Reel đã IDLE nhưng chưa vào stoppedSet (onStopComplete bị mất vì tween bị kill).
+     * Reel đã IDLE (stop-bounce xong) nhưng chưa vào stoppedSet (onStopComplete bị mất vì tween bị kill).
      * Gọi sau mỗi stop / khi recover để không kẹt stopped=4/5.
+     * Không recover lúc SETTLING — tránh bắn trail khi symbol còn overshoot.
      */
     private _recoverMissedIdleStops(): void {
         for (let i = 0; i < this.reels.length; i++) {
@@ -1248,6 +1249,7 @@ export class SlotMachineController extends Component {
             if (this._pendingOutOfOrderStops.has(i)) continue;
             if (this._waitingReels.some((w) => w.reelIndex === i)) continue;
             const reel = this.reels[i];
+            // isIdle chỉ true sau stop-bounce (SETTLING không recover)
             if (!reel?.isIdle) continue;
             this._logSpinState(`[SPIN-HANG][SlotMC] recover missed IDLE stop reel=${i}`);
             this._processReelStopped(i);

@@ -72,4 +72,10 @@ Log.setWhitelist([
     'gamemanager',    // [GameManager] POT_WIN / BURST routing
     'mockdataprovider',
     'debug-pick',
+    'spin-req',       // [SPIN-REQ] Real API spin body
+    'network',        // [Network] SERVER ERROR / retry / dead
+    'sv-err',         // [SV-ERR] raw spin fields
+    'cn-feature',     // [CN-FEATURE] feature parse
+    'claim',          // [Claim] / [TopUp-CLAIM]
+    'matsuri',        // [Matsuri] mid-feature
 ]);

@@ -24,7 +24,7 @@
  *   startSpin()    → LAUNCHING: bounce up → SPINNING
  *   SPINNING       → update() cuộn tất cả nodes xuống, wrap từng node riêng
  *   stopAt(idx)    → delay → DECELERATING: gán symbols, cubicOut về rest
- *   _finishDecel() → snap rest + bounce nhỏ → IDLE → onStopComplete()
+ *   _finishDecel() → SETTLING (stop bounce) → IDLE → onStopComplete()
  */
 
 import { _decorator, Component, Node, tween, Vec3, Tween } from 'cc';
@@ -35,7 +35,7 @@ import { SymbolView } from './SymbolView';
 
 const { ccclass, property } = _decorator;
 
-enum ReelState { IDLE, LAUNCHING, SPINNING, DECELERATING }
+enum ReelState { IDLE, LAUNCHING, SPINNING, DECELERATING, SETTLING }
 
 @ccclass('ReelController')
 export class ReelController extends Component {
@@ -444,6 +444,9 @@ export class ReelController extends Component {
 
     get isIdle(): boolean { return this._state === ReelState.IDLE; }
 
+    /** True khi stop-bounce xong (IDLE sau SETTLING). Dùng để gate trail / recover. */
+    get isFullyStopped(): boolean { return this._state === ReelState.IDLE && this._stopCompleteFired; }
+
     /** onLoad đã snapshot đủ vị trí; setSymbols() từ đây mới an toàn và đồng bộ. */
     get isInitialized(): boolean {
         return this.symbolNodes.length > 0
@@ -757,7 +760,8 @@ export class ReelController extends Component {
     }
 
     private _finishDecel(): void {
-        if (this._state === ReelState.IDLE) return;
+        // IDLE = bounce xong; SETTLING = đang stop-bounce — không re-enter.
+        if (this._state === ReelState.IDLE || this._state === ReelState.SETTLING) return;
 
         // Snap chính xác và gán symbol kết quả đúng (khắc phục floating-point drift)
         const data = GameData.instance;
@@ -774,7 +778,8 @@ export class ReelController extends Component {
             n.emit('symbol-changed', syms[i]);
         }
 
-        this._state = ReelState.IDLE;
+        // Giữ SETTLING suốt stop-bounce — isIdle=false → không recover/bắn trail sớm.
+        this._state = ReelState.SETTLING;
         this._quickStopRequested = false;
 
         // onSymbolsSettled: luôn gọi TRONG _finishDecel sau khi symbols đã được gán đúng,
@@ -808,6 +813,7 @@ export class ReelController extends Component {
             const buf = this.symbolNodes[idx];
             if (buf?.isValid && this._restPositions[idx]) {
                 buf.setPosition(this._restPositions[idx]);
+                this._nodeY[idx] = this._restPositions[idx].y;
                 buf.emit('reel-settled');
             }
         }
@@ -817,6 +823,22 @@ export class ReelController extends Component {
             if (this._stopCompleteFired) return;
             this._stopCompleteFired = true;
             this.unschedule(fireStopComplete);
+            // Sync Y + IDLE chỉ sau bounce — REEL_STOPPED / trail lấy đúng vị trí rest.
+            // Kill stop-bounce tween trước khi snap (safety timeout có thể fire khi tween còn chạy).
+            for (let i = 0; i < this.symbolNodes.length; i++) {
+                const rest = this._restPositions[i];
+                const node = this.symbolNodes[i];
+                if (!rest || !node?.isValid) continue;
+                Tween.stopAllByTarget(node);
+                node.setPosition(rest);
+                this._nodeY[i] = rest.y;
+            }
+            // reel-settled SAU stop tween — sticky land-bounce / trail mới được phép chạy.
+            for (const i of visibleIndices) {
+                const node = this.symbolNodes[i];
+                if (node?.isValid) node.emit('reel-settled');
+            }
+            this._state = ReelState.IDLE;
             this.onStopComplete?.();
         };
 
@@ -835,7 +857,6 @@ export class ReelController extends Component {
             tween(node)
                 .to(setDur, { position: rest.clone() }, { easing: 'backOut' })
                 .call(() => {
-                    if (node?.isValid) node.emit('reel-settled');
                     if (!this._stopCompleteFired && ++done >= validVisible.length) {
                         fireStopComplete();
                     }

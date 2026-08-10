@@ -103,7 +103,8 @@ export function pickMatsuriCredit(totalBet: number, rng: () => number = Math.ran
 }
 
 /**
- * Parse StarterCoins / NewStickies / AllStickies từ CNSpinResponse.
+ * Parse StarterCoins / NewStickies / AllStickies từ CNSpinResponse (V1.0.2).
+ * Shape: [{ Reel, Row, Credit }] — Credit bắt buộc từ server trên Real path.
  * Server Row 0 = top → visual row 0 = bottom.
  */
 export function parseCnStickyCells(

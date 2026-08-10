@@ -662,11 +662,10 @@ export class WildTrailController extends Component {
             this._animateOne(symbolNode, reel, () => { /* no-op: kept for cleanup sync */ });
         };
 
-        // Nếu reel chưa settled (đang decel/bounce), đợi 'reel-settled' rồi mới bắn trail.
-        // Giảm hiện tượng thấy effect bay ra khi reel còn đang quay nhanh (đặc biệt Turbo).
+        // Nếu reel chưa settled (đang decel/stop-bounce), đợi 'reel-settled' rồi mới bắn trail.
+        // isIdle chỉ true SAU stop-bounce — tránh bay từ vị trí overshoot.
         const reelCtrl = this.reels[reel];
-        const isIdle = !!reelCtrl && (reelCtrl as any).isIdle === true;
-        if (!isIdle) {
+        if (reelCtrl && !reelCtrl.isIdle) {
             symbolNode.once('reel-settled', () => {
                 if (symbolNode && symbolNode.isValid) tryStart();
             });

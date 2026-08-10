@@ -457,11 +457,11 @@ export class GameData {
 
         if (stripIndex != null) {
             // Free Spin (kể cả tier 2–6) trước mọi shortcut TopUp/Re-Spin.
-            if (isFsMode && this.currentMode !== 'respin') {
+            if (isFsMode && this.currentMode !== 'respin' && this.currentMode !== 'matsuri') {
                 const tierKey = isFreeSpinTierReelIndex(stripIndex) ? stripIndex : undefined;
                 return this.resolveFreeSpinStrips(tierKey);
             }
-            if (this.currentMode === 'respin' || stripIndex === 3) {
+            if (this.currentMode === 'respin' || this.currentMode === 'matsuri' || stripIndex === 3) {
                 return this.config.respinReelStrips;
             }
             if (stripIndex === 2) {
@@ -476,7 +476,8 @@ export class GameData {
             return this.config.reelStrips;
         }
 
-        if (this.currentMode === 'respin') {
+        if (this.currentMode === 'respin' || this.currentMode === 'matsuri') {
+            // Matsuri Hold&Spin dùng FreeSpinReel group (đã gán vào respinReelStrips)
             return this.config.respinReelStrips;
         }
         if (!isFreeSpin && this.isPurchaseReelActive) {
@@ -496,9 +497,12 @@ export class GameData {
             : this.rawPsStrips;
 
         if (stripIndex != null) {
-            if (isFsMode && this.currentMode !== 'respin') {
+            if (isFsMode && this.currentMode !== 'respin' && this.currentMode !== 'matsuri') {
                 const tierKey = isFreeSpinTierReelIndex(stripIndex) ? stripIndex : undefined;
                 return this.resolveRawPsFreeSpinStrips(tierKey);
+            }
+            if (this.currentMode === 'matsuri') {
+                return this.rawPsFreeSpinStrips.length > 0 ? this.rawPsFreeSpinStrips : this.rawPsStrips;
             }
             if (this.currentMode === 'respin' || stripIndex === 3) {
                 // TopUp/Re-Spin raw: ưu tiên purchase/respin PS sheet nếu server gửi riêng
@@ -514,6 +518,9 @@ export class GameData {
                 return purchaseOrNormal;
             }
             return this.rawPsStrips;
+        }
+        if (this.currentMode === 'matsuri') {
+            return this.rawPsFreeSpinStrips.length > 0 ? this.rawPsFreeSpinStrips : this.rawPsStrips;
         }
         if (!isFreeSpin && this.isPurchaseReelActive) {
             return purchaseOrNormal;

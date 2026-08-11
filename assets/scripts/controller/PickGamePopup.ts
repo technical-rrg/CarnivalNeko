@@ -20,6 +20,7 @@ import { GameEvents }    from '../core/GameEvents';
 import { PickGameState, JackpotType, SymbolId } from '../data/SlotTypes';
 import {
     psPickToClient,
+    psPickIdleId,
     clientSymToJackpotType,
     isPickUpgradeSymbol,
     JACKPOT_INDEX_TO_TYPE,
@@ -100,8 +101,11 @@ export class PickGamePopup extends Component {
     @property({ tooltip: 'Thời gian flip mỗi coin (giây).' })
     flipDuration: number = 0.3;
 
-    @property({ tooltip: 'Delay sau match trước JACKPOT_TRIGGER (giây).' })
-    jackpotTriggerDelay: number = 0.5;
+    @property({ tooltip: 'Delay sau match pulse trước JACKPOT_TRIGGER (giây).' })
+    jackpotTriggerDelay: number = 0.35;
+
+    @property({ tooltip: 'Thời gian 3 ô match nhún zoom (giây).' })
+    matchCelebrateDuration: number = 0.7;
 
     @property({ tooltip: 'Delay sau Upgrade×3 trước khi cho pick tiếp (giây).' })
     upgradeCelebrateDelay: number = 0.8;
@@ -170,7 +174,7 @@ export class PickGamePopup extends Component {
                 // Đồng bộ grid từ server; -1 / Idle = chưa lộ → giữ local (mock prefill)
                 for (let i = 0; i < resp.PickGame.length; i++) {
                     const serverSym = resp.PickGame[i];
-                    if (serverSym === -1 || serverSym === 81) continue;
+                    if (serverSym === -1 || serverSym === psPickIdleId()) continue;
                     this._pickState.grid[i] = psPickToClient(serverSym);
                 }
             }
@@ -205,10 +209,13 @@ export class PickGamePopup extends Component {
                         this._pickState.doubleGrand = this._doubleGrand;
                     }
                     Log.d(`[PickGamePopup] JACKPOT paid=${JackpotType[this._wonTier]} x2=${this._doubleGrand} win=${pickWinAmt}`);
-                    this._playWinAnimation(this._wonTier);
                     EventBus.instance.emit(GameEvents.PICK_GAME_MATCH_FOUND, this._wonTier);
                     this._setButtonsInteractable(false);
-                    this.scheduleOnce(this._emitJackpot, this.jackpotTriggerDelay);
+                    // Chờ ô cuối In xong → pulse 3 ô (spine chỉ có In/Loop, không có win)
+                    // rồi mới JACKPOT_TRIGGER — tránh cắt anim ô cuối.
+                    this._playWinAnimation(this._wonTier, () => {
+                        this.scheduleOnce(this._emitJackpot, this.jackpotTriggerDelay);
+                    });
                 } else if (!resp.IsUpgradeComplete && !this._matched) {
                     this._setButtonsInteractable(true);
                 }
@@ -579,29 +586,33 @@ export class PickGamePopup extends Component {
         this.scheduleOnce(onDone, this.upgradeCelebrateDelay);
     }
 
-    private _playWinAnimation(wonTier: JackpotType): void {
-        const lastNode = this.coinNodes[this._lastRevealedIndex];
-        if (lastNode) {
-            const front = lastNode.getChildByName('CoinFront');
-            const sk = front?.getComponent(sp.Skeleton);
-            if (sk) {
-                const current = sk.getCurrent(0);
-                if (current?.animation?.name === 'In') {
-                    sk.setCompleteListener(() => {
-                        this._doPlayWinAnimation(wonTier);
-                    });
-                    return;
-                }
-            }
+    /**
+     * Celebrate 3 ô match — chỉ nhún zoom nhẹ (giữ spine đang Loop).
+     * Chờ ô cuối xong In trước để không bị cắt anim reveal.
+     */
+    private _playWinAnimation(wonTier: JackpotType, onDone?: () => void): void {
+        const matched = this._collectMatchedIndices(wonTier);
+        const startCelebrate = () => this._doPlayWinAnimation(matched, onDone);
+
+        const lastIdx = this._lastRevealedIndex;
+        const lastNode = lastIdx >= 0 ? this.coinNodes[lastIdx] : null;
+        const front = lastNode?.getChildByName('CoinFront');
+        const sk = front?.getComponent(sp.Skeleton);
+        const current = sk?.getCurrent(0);
+        if (sk && current?.animation?.name === 'In') {
+            sk.setCompleteListener(() => {
+                sk.setCompleteListener(null);
+                sk.setAnimation(0, 'Loop', true);
+                startCelebrate();
+            });
+            return;
         }
-        this._doPlayWinAnimation(wonTier);
+        startCelebrate();
     }
 
-    private _doPlayWinAnimation(wonTier: JackpotType): void {
-        if (!this._pickState) return;
-        // Highlight 3 ô match theo symbol gốc (trước upgrade visual)
+    private _collectMatchedIndices(wonTier: JackpotType): number[] {
+        if (!this._pickState) return [];
         const matched: number[] = [];
-        // paidTier có thể khác matched symbols — tìm theo count của mỗi JP tier trên revealed
         const counts: Partial<Record<JackpotType, number[]>> = {};
         for (const idx of this._revealedSet) {
             const tier = clientSymToJackpotType(this._pickState.grid[idx]);
@@ -616,7 +627,6 @@ export class PickGamePopup extends Component {
                 break;
             }
         }
-        // Fallback: highlight theo paid tier nếu grid đã bị remap
         if (matched.length === 0) {
             for (const idx of this._revealedSet) {
                 if (matched.length >= 3) break;
@@ -625,12 +635,35 @@ export class PickGamePopup extends Component {
                 }
             }
         }
+        // Đảm bảo ô vừa pick luôn nằm trong nhóm celebrate
+        if (this._lastRevealedIndex >= 0 && !matched.includes(this._lastRevealedIndex)) {
+            matched.push(this._lastRevealedIndex);
+        }
+        return matched;
+    }
+
+    private _doPlayWinAnimation(matched: number[], onDone?: () => void): void {
+        Log.d(`[PickGamePopup] Match celebrate coins=[${matched.join(',')}]`);
+
         for (const idx of matched) {
             const node = this.coinNodes[idx];
-            const front = node?.getChildByName('CoinFront');
-            const sk = front?.getComponent(sp.Skeleton);
-            if (sk) sk.setAnimation(0, 'win', true);
+            if (!node?.isValid) continue;
+
+            // Chỉ nhún zoom nhẹ — giữ spine Loop hiện tại, không replay In
+            Tween.stopAllByTarget(node);
+            node.setScale(1, 1, 1);
+            if (node.parent) {
+                node.setSiblingIndex(node.parent.children.length - 1);
+            }
+            tween(node)
+                .to(0.12, { scale: new Vec3(1.2, 1.2, 1) }, { easing: 'sineOut' })
+                .to(0.12, { scale: new Vec3(1.0, 1.0, 1) }, { easing: 'sineIn' })
+                .to(0.12, { scale: new Vec3(1.14, 1.14, 1) }, { easing: 'sineOut' })
+                .to(0.14, { scale: new Vec3(1.0, 1.0, 1) }, { easing: 'backOut' })
+                .start();
         }
+
+        this.scheduleOnce(() => onDone?.(), this.matchCelebrateDuration);
     }
 
     private _extractPickWin(resp: any): number {

@@ -136,7 +136,7 @@
         "__id__": 260
       }
     ],
-    "_active": false,
+    "_active": true,
     "_components": [
       {
         "__id__": 274
@@ -1056,7 +1056,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "Wild3x",
+    "_name": "Supreme",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -1084,8 +1084,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": -78.752,
-      "y": -20.7,
+      "x": 50,
+      "y": -70,
       "z": 0
     },
     "_lrot": {
@@ -1211,7 +1211,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Wild",
+    "_string": "Supreme",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -1428,7 +1428,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "PickGame",
+    "_name": "Mighty",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -1456,8 +1456,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": -78.236,
-      "y": 40.246,
+      "x": 50,
+      "y": 40,
       "z": 0
     },
     "_lrot": {
@@ -1583,7 +1583,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Trail Red",
+    "_string": "Mighty",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 16,
@@ -2544,7 +2544,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "77",
+    "_name": "Ultimate",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -2555,7 +2555,7 @@
         "__id__": 94
       }
     ],
-    "_active": false,
+    "_active": true,
     "_components": [
       {
         "__id__": 100
@@ -2572,8 +2572,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": -78.752,
-      "y": -79.075,
+      "x": -78,
+      "y": -125,
       "z": 0
     },
     "_lrot": {
@@ -2699,7 +2699,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Trail Blue",
+    "_string": "Ultimate",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -3288,7 +3288,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "B-B-B",
+    "_name": "PotRand",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -3299,7 +3299,7 @@
         "__id__": 122
       }
     ],
-    "_active": false,
+    "_active": true,
     "_components": [
       {
         "__id__": 128
@@ -3316,8 +3316,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": -72.714,
-      "y": -195.824,
+      "x": -78,
+      "y": 40,
       "z": 0
     },
     "_lrot": {
@@ -3443,7 +3443,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Zeros",
+    "_string": "Pot Rand",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -3660,7 +3660,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "BB-BB-BB",
+    "_name": "PickOnly",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -3671,7 +3671,7 @@
         "__id__": 136
       }
     ],
-    "_active": false,
+    "_active": true,
     "_components": [
       {
         "__id__": 142
@@ -3688,8 +3688,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": -72.714,
-      "y": -250.173,
+      "x": 50,
+      "y": -125,
       "z": 0
     },
     "_lrot": {
@@ -3815,7 +3815,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Trail Green",
+    "_string": "Pick Only",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -4032,7 +4032,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "RedCoin",
+    "_name": "MysteryEnv",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -4060,8 +4060,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 56.113,
-      "y": -20.7,
+      "x": -14,
+      "y": -180,
       "z": 0
     },
     "_lrot": {
@@ -4151,7 +4151,7 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 100,
+      "width": 300,
       "height": 40
     },
     "_anchorPoint": {
@@ -4187,7 +4187,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Win+Trail",
+    "_string": "Mystery Env",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -4260,7 +4260,7 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 100,
+      "width": 146.1,
       "height": 40
     },
     "_anchorPoint": {
@@ -4415,7 +4415,7 @@
         "__id__": 164
       }
     ],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 170
@@ -4776,7 +4776,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "Frog",
+    "_name": "Ultra",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -4804,8 +4804,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 48.578,
-      "y": 92.582,
+      "x": -78,
+      "y": -70,
       "z": 0
     },
     "_lrot": {
@@ -4931,7 +4931,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "High Win",
+    "_string": "Ultra",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -5148,7 +5148,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "Phonix5",
+    "_name": "Super",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -5176,8 +5176,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 48.578,
-      "y": 38.233,
+      "x": 50,
+      "y": -15,
       "z": 0
     },
     "_lrot": {
@@ -5303,7 +5303,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "High x5",
+    "_string": "Super",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -6607,7 +6607,7 @@
         "__id__": 247
       }
     ],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 253
@@ -6968,7 +6968,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "AllNegOnes6",
+    "_name": "Mega",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -6996,8 +6996,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": -75.852,
-      "y": -82.516,
+      "x": -78,
+      "y": -15,
       "z": 0
     },
     "_lrot": {
@@ -7123,7 +7123,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Trail Mix",
+    "_string": "Mega",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 16,

@@ -641,7 +641,8 @@ export class TopUpManager extends Component {
 
     /**
      * CN Matsuri: SpinResponse chỉ có Rands[5] + NewStickies (không TopupReel 15/20/25).
-     * Mỗi cột dùng chung rands[col] làm strip index; Green sticky do GameManager/overlay xử lý.
+     * Mỗi cột dùng chung rands[col] làm strip index.
+     * NewStickies → type=GREEN để per-reel land hiện đồng xanh trên StickyOverlay ngay khi dừng.
      */
     private _stopMatsuriReels(resp: any): void {
         const rands: number[] = Array.isArray(resp?.rands)
@@ -650,17 +651,44 @@ export class TopUpManager extends Component {
         const rows = this._rowCount;
         this._pendingResults = new Array(this.cellCount);
 
+        // Green mới từ NewStickies / stickyCells (mid-spin parser gán stickyCells = news)
+        const greenMap = new Map<string, number>();
+        const news: any[] = Array.isArray(resp?.newStickies)
+            ? resp.newStickies
+            : (Array.isArray(resp?.stickyCells) ? resp.stickyCells : []);
+        for (const cell of news) {
+            if (!cell) continue;
+            const reel = Number(cell.reel ?? cell.Reel);
+            const row = Number(cell.row ?? cell.Row);
+            if (Number.isNaN(reel) || Number.isNaN(row)) continue;
+            const sym = cell.symbolId ?? cell.SymbolId;
+            if (sym != null && sym !== SymbolId.STICKY_GREEN) continue;
+            // Ô đã có Gold/sticky từ trước → không override
+            const existing = GameData.instance.stickyCells.get(`${reel}-${row}`);
+            if (existing
+                && existing.symbolId !== SymbolId.STICKY_GREEN
+                && existing.symbolId !== SymbolId.PLUS_ONE_SPIN) {
+                continue;
+            }
+            greenMap.set(`${reel}-${row}`, Number(cell.credit ?? cell.Credit ?? 0) || 0);
+        }
+
         let stopCalls = 0;
         for (let i = 0; i < this.cellCount; i++) {
             const col = Math.floor(i / rows);
+            const row = i % rows;
+            const key = `${col}-${row}`;
             const index = Number(rands[col] ?? 0) || 0;
+            const isGreen = greenMap.has(key);
+            const credit = greenMap.get(key) ?? 0;
             const slot = {
-                type: TopupReelType.NONE,
-                Type: TopupReelType.NONE,
+                type: isGreen ? TopupReelType.GREEN : TopupReelType.NONE,
+                Type: isGreen ? TopupReelType.GREEN : TopupReelType.NONE,
                 index,
                 Index: index,
-                win: 0,
-                Win: 0,
+                win: credit,
+                Win: credit,
+                _symbolId: isGreen ? SymbolId.STICKY_GREEN : undefined,
             };
             this._pendingResults[i] = slot;
 
@@ -675,7 +703,7 @@ export class TopUpManager extends Component {
 
         Log.e(
             `[CarnivalMatsuri] stopReels via Rands=[${rands.join(',')}]` +
-            ` rows=${rows} cells=${this.cellCount} stopCalls=${stopCalls}` +
+            ` greens=${greenMap.size} rows=${rows} cells=${this.cellCount} stopCalls=${stopCalls}` +
             ` spun=${this._spunCount} stopped=${this._stoppedCount}`,
         );
 

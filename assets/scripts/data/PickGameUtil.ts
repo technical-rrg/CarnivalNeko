@@ -3,9 +3,14 @@
  *
  * Doc: 5×3 = 15 ô; match 3 JP; 3 Upgrade → nâng tier (Grand → ×2).
  * Map PS ↔ client dùng chung cho MockAdapter + Real API parse.
+ *
+ * PS Pick IDs (API / ParSheet named fields — ascending):
+ *   81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade
+ * Ưu tiên GameData.psToClientMap (từ MiniJackpotID… trên Enter) khi có.
  */
 
 import { JackpotType, SymbolId } from './SlotTypes';
+import { GameData } from './GameData';
 
 /** Lưới Pick Game theo design: 5 cột × 3 hàng. */
 export const PICK_GAME_COLS = 5;
@@ -13,15 +18,15 @@ export const PICK_GAME_ROWS = 3;
 export const PICK_GAME_CELL_COUNT = PICK_GAME_COLS * PICK_GAME_ROWS; // 15
 
 /**
- * Server / PS Pick symbol IDs (backend remapped).
- * 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade.
+ * Default PS Pick IDs (khớp MiniJackpotID→GrandJackpotID ascending).
+ * Trước đây bị invert (82=Grand…85=Mini) → visual Grand nhưng server trả Mini.
  */
 export const PS_PICK = {
     IDLE: 81,
-    GRAND: 82,
-    MAJOR: 83,
-    MINOR: 84,
-    MINI: 85,
+    MINI: 82,
+    MINOR: 83,
+    MAJOR: 84,
+    GRAND: 85,
     UPGRADE: 86,
 } as const;
 
@@ -56,31 +61,68 @@ export const JP_TYPE_TO_TIER_NAME: Partial<Record<JackpotType, PickTierName>> = 
     [JackpotType.GRAND]: 'GRAND',
 };
 
-/** PS ID → client SymbolId (Pick only). Unselected / idle → JP_IDLE. */
+const _FALLBACK_PS_TO_CLIENT: Record<number, number> = {
+    [PS_PICK.IDLE]: SymbolId.JP_IDLE,
+    [PS_PICK.MINI]: SymbolId.JP_MINI,
+    [PS_PICK.MINOR]: SymbolId.JP_MINOR,
+    [PS_PICK.MAJOR]: SymbolId.JP_MAJOR,
+    [PS_PICK.GRAND]: SymbolId.JP_GRAND,
+    [PS_PICK.UPGRADE]: SymbolId.JP_UPGRADE,
+    [-1]: SymbolId.JP_IDLE,
+};
+
+const _JP_CLIENT_IDS = new Set<number>([
+    SymbolId.JP_IDLE,
+    SymbolId.JP_MINI,
+    SymbolId.JP_MINOR,
+    SymbolId.JP_MAJOR,
+    SymbolId.JP_GRAND,
+    SymbolId.JP_UPGRADE,
+]);
+
+/** PS ID → client SymbolId (Pick only). Ưu tiên map từ Enter/PS named fields. */
 export function psPickToClient(psId: number): number {
-    switch (psId) {
-        case PS_PICK.IDLE: return SymbolId.JP_IDLE;
-        case PS_PICK.GRAND: return SymbolId.JP_GRAND;
-        case PS_PICK.MAJOR: return SymbolId.JP_MAJOR;
-        case PS_PICK.MINOR: return SymbolId.JP_MINOR;
-        case PS_PICK.MINI: return SymbolId.JP_MINI;
-        case PS_PICK.UPGRADE: return SymbolId.JP_UPGRADE;
-        case -1: return SymbolId.JP_IDLE;
-        default: return SymbolId.JP_IDLE;
+    if (psId === -1) return SymbolId.JP_IDLE;
+
+    const dyn = GameData.instance?.psToClientMap;
+    if (dyn && typeof dyn[psId] === 'number' && _JP_CLIENT_IDS.has(dyn[psId])) {
+        return dyn[psId];
     }
+
+    return _FALLBACK_PS_TO_CLIENT[psId] ?? SymbolId.JP_IDLE;
 }
 
 /** Client SymbolId → PS ID (Pick only). */
 export function clientPickToPs(clientId: number): number {
+    const dyn = GameData.instance?.psToClientMap;
+    if (dyn) {
+        for (const [psStr, cid] of Object.entries(dyn)) {
+            if (cid === clientId && _JP_CLIENT_IDS.has(cid)) {
+                return parseInt(psStr, 10);
+            }
+        }
+    }
+
     switch (clientId) {
         case SymbolId.JP_IDLE: return PS_PICK.IDLE;
-        case SymbolId.JP_GRAND: return PS_PICK.GRAND;
-        case SymbolId.JP_MAJOR: return PS_PICK.MAJOR;
-        case SymbolId.JP_MINOR: return PS_PICK.MINOR;
         case SymbolId.JP_MINI: return PS_PICK.MINI;
+        case SymbolId.JP_MINOR: return PS_PICK.MINOR;
+        case SymbolId.JP_MAJOR: return PS_PICK.MAJOR;
+        case SymbolId.JP_GRAND: return PS_PICK.GRAND;
         case SymbolId.JP_UPGRADE: return PS_PICK.UPGRADE;
         default: return PS_PICK.MINI;
     }
+}
+
+/** PS Idle id (từ map hoặc default 81) — dùng skip unrevealed. */
+export function psPickIdleId(): number {
+    const dyn = GameData.instance?.psToClientMap;
+    if (dyn) {
+        for (const [psStr, cid] of Object.entries(dyn)) {
+            if (cid === SymbolId.JP_IDLE) return parseInt(psStr, 10);
+        }
+    }
+    return PS_PICK.IDLE;
 }
 
 export function isPickJackpotSymbol(sym: number): boolean {

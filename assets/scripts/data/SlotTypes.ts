@@ -291,7 +291,7 @@ export interface ForceFeatureEntryData {
  * Carnival Neko API V1.0.1 PS IDs:
  *   Low 1–6 → MINOR_* | High 11–15 → MAJOR_* | Wild 21 → WILD
  *   Trail 41/42/43 → TRAIL_BLUE/GREEN/RED | Sticky 44/45 → STICKY_GREEN / STICKY_YELLOW(Gold)
- *   Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
+ *   Pick: 81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade
  */
 export enum SymbolId {
     // ── Pay symbols (PS Low01–06 = 1–6; art tạm giữ tên cũ) ──
@@ -368,6 +368,17 @@ export function isTrailSymbol(s: number): boolean {
         || s === SymbolId.TRAIL_BLUE
         || s === SymbolId.TRAIL_RED
         || s === SymbolId.TRAIL_GREEN;
+}
+
+/**
+ * Reel display: luôn hiện TRAIL_NORMAL trước khi flip màu.
+ * Strip/API có thể trả TRAIL_BLUE/GREEN/RED — map về NORMAL khi render trên reel.
+ */
+export function toReelDisplayTrailSymbol(s: number): number {
+    if (s === SymbolId.TRAIL_BLUE || s === SymbolId.TRAIL_RED || s === SymbolId.TRAIL_GREEN) {
+        return SymbolId.TRAIL_NORMAL;
+    }
+    return s;
 }
 
 /** Feature kích hoạt khi Pot nổ (Carnival Neko). */
@@ -506,7 +517,7 @@ export function wildSubstitutes(s: number): boolean { return isMinor(s) || isMaj
  * Low: 1–6 | High: 11–15 | Wild: 21
  * Trail: 41 Blue, 42 Green, 43 Red
  * Sticky: 44 Green (detect), 45 Gold (overlay)
- * Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
+ * Pick: 81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade
  *
  * Legacy 46–50: không dùng CN primary (giữ map nhẹ cho mock cũ nếu còn).
  */
@@ -538,12 +549,12 @@ export const PS_TO_CLIENT: Record<number, number> = {
     48: SymbolId.STICKY_YELLOW,
     49: SymbolId.STICKY_GREEN,
     50: SymbolId.PLUS_ONE_SPIN,
-    // ─── Pick Game (remapped): 82 Grand, 83 Major, 84 Minor, 85 Mini ───
+    // ─── Pick Game: 82 Mini, 83 Minor, 84 Major, 85 Grand ───
     81: SymbolId.JP_IDLE,
-    82: SymbolId.JP_GRAND,
-    83: SymbolId.JP_MAJOR,
-    84: SymbolId.JP_MINOR,
-    85: SymbolId.JP_MINI,
+    82: SymbolId.JP_MINI,
+    83: SymbolId.JP_MINOR,
+    84: SymbolId.JP_MAJOR,
+    85: SymbolId.JP_GRAND,
     86: SymbolId.JP_UPGRADE,
     99: -1,
 };
@@ -570,10 +581,10 @@ export const CLIENT_TO_PS: Record<number, number> = {
     [SymbolId.STICKY_RED]:      46, // legacy
     [SymbolId.PLUS_ONE_SPIN]:   50, // legacy
     [SymbolId.JP_IDLE]:         81,
-    [SymbolId.JP_GRAND]:        82,
-    [SymbolId.JP_MAJOR]:        83,
-    [SymbolId.JP_MINOR]:        84,
-    [SymbolId.JP_MINI]:         85,
+    [SymbolId.JP_MINI]:         82,
+    [SymbolId.JP_MINOR]:        83,
+    [SymbolId.JP_MAJOR]:        84,
+    [SymbolId.JP_GRAND]:        85,
     [SymbolId.JP_UPGRADE]:      86,
 };
 
@@ -992,7 +1003,7 @@ export interface ServerMatchedLinePay {
  * Field optional (Upgrade*) — mock gửi; real API bỏ qua nếu server chưa có.
  */
 export interface ServerPickResponse {
-    /** Grid state (15 items) — PS: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade; -1=unselected */
+    /** Grid state (15 items) — PS: 81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade; -1=unselected */
     PickGame: number[];
     PickResults?: number;
     PickStage?: number;
@@ -1184,6 +1195,18 @@ export interface CashRaceMyRankGetFirstResponse {
     TopRanks: NwCashRaceRankerSimple[];
     BottomRanks: NwCashRaceRankerSimple[];
     PrizeRangePercent: number;
+}
+
+/**
+ * Response CashRaceMyRankGetPage (API V1.0.2).
+ * Server có thể trả Ranks hoặc tái dùng TopRanks/BottomRanks — parse linh hoạt.
+ */
+export interface CashRaceMyRankGetPageResponse {
+    Ranks?: NwCashRaceRankerSimple[];
+    TopRanks?: NwCashRaceRankerSimple[];
+    BottomRanks?: NwCashRaceRankerSimple[];
+    MyRank?: NwCashRaceRankerSimple | null;
+    PrizeRangePercent?: number;
 }
 
 /** Win broadcast message */

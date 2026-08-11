@@ -45,6 +45,8 @@ export const LOCALE_EN: LocaleData = {
     jackpot_feature_type: 'Jackpot Feature',
     jackpot_feature_desc: 'Match 3 Lucky Symbols',
     matsuri_with_reel: 'with {cols}x{rows} Reel',
+    red_mystery_envelope_title: 'RED MYSTERY ENVELOPE',
+    red_mystery_envelope_awarded: 'AWARDED',
     setting_broadcast: 'BROADCAST',
     setting_intro: 'INTRO SCREEN',
     setting_music: 'MUSIC',

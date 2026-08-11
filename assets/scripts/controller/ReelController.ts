@@ -29,7 +29,7 @@
 
 import { _decorator, Component, Node, tween, Vec3, Tween } from 'cc';
 import { GameData } from '../data/GameData';
-import { SymbolId } from '../data/SlotTypes';
+import { SymbolId, toReelDisplayTrailSymbol } from '../data/SlotTypes';
 import { Log } from '../core/Logger';
 import { SymbolView } from './SymbolView';
 
@@ -504,7 +504,7 @@ export class ReelController extends Component {
                 // Random symbol khi wrap (tạo cảm giác slot machine)
                 if (stripLen > 0) {
                     const randIdx = Math.floor(Math.random() * stripLen);
-                    const symId = this._strip[randIdx];
+                    const symId = toReelDisplayTrailSymbol(this._strip[randIdx]);
                     this.symbolNodes[i].emit('symbol-changed', symId);
                 }
             }
@@ -715,10 +715,10 @@ export class ReelController extends Component {
                     // Wrap cuối: gán symbol kết quả đúng cho vị trí này
                     const isTopUp = GameData.instance.currentMode === 'respin';
                     const offset = isTopUp ? (i - 2) : (2 - i); // TopUp: logic order; Normal: reversed display
-                    symId = strip[((this._decelCenterIdx + offset) % L + L) % L];
+                    symId = toReelDisplayTrailSymbol(strip[((this._decelCenterIdx + offset) % L + L) % L]);
                 } else {
                     // Wrap trung gian: random, giống spinning thường
-                    symId = strip[Math.floor(Math.random() * L)];
+                    symId = toReelDisplayTrailSymbol(strip[Math.floor(Math.random() * L)]);
                 }
                 this.symbolNodes[i].emit('symbol-changed', symId);
                 if (isFinalResultWrap) {
@@ -885,11 +885,11 @@ export class ReelController extends Component {
         const result: number[] = [];
         if (reverse) {
             for (let off = 2; off >= -2; off--) {
-                result.push(strip[((c + off) % L + L) % L]);
+                result.push(toReelDisplayTrailSymbol(strip[((c + off) % L + L) % L]));
             }
         } else {
             for (let off = -2; off <= 2; off++) {
-                result.push(strip[((c + off) % L + L) % L]);
+                result.push(toReelDisplayTrailSymbol(strip[((c + off) % L + L) % L]));
             }
         }
         return result;

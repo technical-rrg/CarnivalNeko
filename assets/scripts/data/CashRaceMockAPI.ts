@@ -214,15 +214,31 @@ export async function getRaceInfo(): Promise<RaceInfo | null> {
 }
 
 /**
- * Láº¥y báº£ng xáº¿p háº¡ng.
+ * Lấy bảng xếp hạng.
  * @param isTop3
- *   false â†’ BottomRanks (5 dÃ²ng nearby xung quanh tÃ´i)
- *   true  â†’ TopRanks   (3 dÃ²ng Ä‘áº§u)
+ *   false → BottomRanks từ CashRaceMyRankGetFirst (nearby)
+ *   true  → CashRaceMyRankGetPage (StartRank=1, PageItemCnt=3), fallback TopRanks của GetFirst
  */
 export async function getLeaderboard(isTop3: boolean): Promise<RankItem[]> {
     if (!USE_REAL_API) {
         await _mockDelay();
         return _getMockLeaderboard(isTop3);
+    }
+
+    if (isTop3) {
+        try {
+            const page = await NetworkManager.instance.sendCashRaceMyRankGetPage(3, 1);
+            const list = page?.Ranks?.length
+                ? page.Ranks
+                : (page?.TopRanks ?? []);
+            if (list.length > 0) {
+                const myRankNum = page?.MyRank?.Rank ?? 0;
+                Log.d(`[CashRace][GetPage] top ranks=${list.length}`);
+                return list.map((r: any) => _mapRanker(r, myRankNum));
+            }
+        } catch (err) {
+            Log.w('[CashRace][GetPage] failed — fallback GetFirst.TopRanks', err);
+        }
     }
 
     const resp = await _fetchRealData();

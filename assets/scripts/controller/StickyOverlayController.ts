@@ -631,11 +631,17 @@ export class StickyOverlayController extends Component {
         this._fadeInOverlay();
         const isMatsuri = GameData.instance.currentMode === 'matsuri';
         if (isMatsuri) {
-            // Matsuri enter: grid trống — Start Gold chỉ hiện khi seed orb land
             this.alignPositionsFromTopUpManager();
             this._previouslyActiveSlots.clear();
             this._matsuriPendingFlipKeys.clear();
             this._matsuriFlippingKeys.clear();
+            // Resume mid-feature: sticky đã có → hiện ngay (không chờ seed orb)
+            if (GameData.instance.stickyCells.size > 0) {
+                this._refreshAll(false, false);
+                Log.d(`[StickyOverlay] Matsuri resume — show ${GameData.instance.stickyCells.size} stickies`);
+                return;
+            }
+            // Enter mới: grid trống — Start Gold chỉ hiện khi seed orb land
             this._hideAll();
             Log.d('[StickyOverlay] Matsuri enter — blank overlay (chờ seed)');
             return;

@@ -31,6 +31,7 @@ import { TopUpEndPopup } from './TopUpEndPopup';
 import { TransitionMode } from './TopUpTransitionPopup';
 import { MatsuriStartPopup } from './MatsuriStartPopup';
 import { JackpotStartPopup } from './JackpotStartPopup';
+import { RedEnvelopePopup } from './RedEnvelopePopup';
 import { CarnivalFeatureTrigger } from '../data/SlotTypes';
 import { Log } from '../core/Logger';
 
@@ -55,6 +56,7 @@ const PREFAB_NAMES = {
     topUpEnd:         'TopUpEndPopup',
     matsuriStart:     'MatsuriStartPopup',
     jackpotStart:     'JackpotStartPopup',
+    redEnvelope:      'RedEnvelopePopup',
 } as const;
 
 @ccclass('PopupLoader')
@@ -80,6 +82,7 @@ export class PopupLoader extends Component {
     private _topUpEndNode: Node | null = null;
     private _matsuriStartNode: Node | null = null;
     private _jackpotStartNode: Node | null = null;
+    private _redEnvelopeNode: Node | null = null;
 
     /** Các prefab đang trong quá trình load — tránh double-instantiate */
     private _loadingSet: Set<string> = new Set();
@@ -102,6 +105,7 @@ export class PopupLoader extends Component {
         EventBus.instance.on(GameEvents.TOPUP_END_POPUP,         this._onTopUpEndPopup,         this);
         EventBus.instance.on(GameEvents.MATSURI_START_POPUP,     this._onMatsuriStartPopup,     this);
         EventBus.instance.on(GameEvents.PICK_GAME_START_POPUP,   this._onJackpotStartPopup,     this);
+        EventBus.instance.on(GameEvents.CARNIVAL_RED_ENVELOPE,   this._onRedEnvelopePopup,      this);
         // Any popup opened → re-raise PayTable to top if active/present
         EventBus.instance.on(GameEvents.POPUP_OPENED, this._ensurePayTableOnTop, this);
 
@@ -424,6 +428,83 @@ export class PopupLoader extends Component {
         node.active = true;
         node.setSiblingIndex(this.node.children.length - 1);
         Log.e(`[PopupLoader] JackpotStartPopup show active=${node.active}`);
+    }
+
+    private _onRedEnvelopePopup(payload: { amount: number }): void {
+        const amount = Number(payload?.amount ?? 0);
+        if (!(amount > 0)) {
+            Log.w('[PopupLoader] RED_ENVELOPE amount<=0 — emit closed');
+            EventBus.instance.emit(GameEvents.CARNIVAL_RED_ENVELOPE_CLOSED);
+            return;
+        }
+        if (this._redEnvelopeNode?.isValid) {
+            this._redEnvelopeNode.setSiblingIndex(this.node.children.length - 1);
+            this._showRedEnvelope(this._redEnvelopeNode, amount);
+            return;
+        }
+
+        const showFallback = () => {
+            if (this._redEnvelopeNode?.isValid) return;
+            Log.w('[PopupLoader] RED_ENVELOPE using runtime fallback node');
+            const node = new Node('RedEnvelopePopup');
+            this.node.addChild(node);
+            this._redEnvelopeNode = node;
+            this._showRedEnvelope(node, amount);
+        };
+
+        const bundle = assetManager.getBundle(BUNDLE_NAME);
+        if (!bundle) {
+            showFallback();
+            return;
+        }
+        const prefabName = PREFAB_NAMES.redEnvelope;
+        if (this._loadingSet.has(prefabName)) return;
+        this._loadingSet.add(prefabName);
+        bundle.load(prefabName, Prefab, (err: Error | null, prefab: Prefab) => {
+            this._loadingSet.delete(prefabName);
+            if (err || !prefab) {
+                Log.e(`[PopupLoader] Load prefab thất bại: ${prefabName}`, err);
+                showFallback();
+                return;
+            }
+            const node = instantiate(prefab);
+            this.node.addChild(node);
+            this._redEnvelopeNode = node;
+            node.setSiblingIndex(this.node.children.length - 1);
+            this._showRedEnvelope(node, amount);
+            this._ensurePayTableOnTop();
+        });
+    }
+
+    private _showRedEnvelope(node: Node, amount: number): void {
+        let popup = node.getComponent(RedEnvelopePopup);
+        if (!popup) {
+            Log.w('[PopupLoader] RedEnvelopePopup missing on prefab — addComponent fallback');
+            popup = node.addComponent(RedEnvelopePopup);
+            this._wireRedEnvelopeNodes(node, popup);
+        }
+        popup.showPopup(amount);
+        node.active = true;
+        node.setSiblingIndex(this.node.children.length - 1);
+        Log.e(`[PopupLoader] RedEnvelopePopup show amount=${amount}`);
+    }
+
+    private _wireRedEnvelopeNodes(node: Node, popup: RedEnvelopePopup): void {
+        const overlay = node.getChildByName('Overlay');
+        const panel = node.getChildByName('Panel');
+        const title = node.getChildByName('Title')?.getComponent(Label);
+        if (overlay) {
+            popup.overlayNode = overlay;
+            popup.clickOverlay = overlay;
+        }
+        if (panel) {
+            popup.popupNode = panel;
+            const awarded = panel.getChildByName('Awarded')?.getComponent(Label);
+            const amount = panel.getChildByName('Amount')?.getComponent(Label);
+            if (awarded) popup.awardedLabel = awarded;
+            if (amount) popup.amountLabel = amount;
+        }
+        if (title) popup.titleLabel = title;
     }
 
     /** Wire Overlay/Panel/Labels theo tên node (khi script mới addComponent). */

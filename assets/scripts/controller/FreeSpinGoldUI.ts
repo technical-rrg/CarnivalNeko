@@ -119,15 +119,17 @@ export class FreeSpinGoldUI extends Component {
         if (!this._matsuriMode) return;
         if (payload?.totalWin == null) return;
         this._goldAccumulated = Math.max(0, payload.totalWin);
+        GameData.instance.topUpDisplayedEachWin = this._goldAccumulated;
         this._showGoldTotal();
     }
 
     private _onMatsuriCollectCredit(payload: { credit?: number }): void {
         if (!this._matsuriMode) return;
-        // TOPUP_TOTAL_UPDATED cũng tới — vẫn cộng nếu chỉ có credit event
+        // TOPUP_TOTAL_UPDATED cũng tới — vẫn sync nếu chỉ có credit event
         if (payload?.credit != null && payload.credit > 0) {
             // total đã được GM cộng; sync từ GameData cho chắc
             this._goldAccumulated = GameData.instance.respinTotalWin;
+            GameData.instance.topUpDisplayedEachWin = this._goldAccumulated;
             this._showGoldTotal();
         }
     }

@@ -99,6 +99,8 @@ export const GameEvents = {
     CARNIVAL_MATSURI_END: 'carnival:matsuri:end',
     /** Red Mystery Envelope payout (normal spin). Payload: { amount: number } */
     CARNIVAL_RED_ENVELOPE: 'carnival:red:envelope',
+    /** Red Mystery Envelope popup đóng (tap hoặc auto 3s). No payload. */
+    CARNIVAL_RED_ENVELOPE_CLOSED: 'carnival:red:envelope:closed',
     /** Matsuri full grid Grand. Payload: { amount: number } */
     CARNIVAL_GRID_FULL: 'carnival:grid:full',
     /**

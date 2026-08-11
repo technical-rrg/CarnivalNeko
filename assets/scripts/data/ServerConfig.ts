@@ -160,8 +160,10 @@ export const ServerConfig = {
         FEATURE_ITEM_BUY: '/Slot/{slotId}/FeatureItemBuy',
         /** Game option change */
         GAME_OPT_CHANGE:  '/Slot/{slotId}/GameOptChange',
-        /** Cash race rank */
+        /** Cash race rank (nearby + top snapshot) */
         CASH_RACE_RANK:   '/Slot/{slotId}/CashRaceMyRankGetFirst',
+        /** Cash race rank page (pagination / top page) — API V1.0.2 §8.2 */
+        CASH_RACE_RANK_PAGE: '/Slot/{slotId}/CashRaceMyRankGetPage',
         /** Refresh balance from partner (dùng khi balance thay đổi bên ngoài, e.g. top-up) */
         BALANCE_GET:      '/Slot/{slotId}/BalanceGet',
     },
@@ -316,6 +318,9 @@ export const DEV_FORCE_LANG: string | null = null;  // null = auto-detect từ U
  *  'topup_mid'              — Tắt giữa TopUp (còn lượt, có sticky grid)
  *  'topup_need_claim'       — Tắt SAU KHI TopUp kết thúc, chưa Claim
  *  'pick_game'              — Tắt khi đang ở Pick Game (trúng Pot/Jackpot, chưa pick xong) → mở lại Pick Game
+ *  'matsuri_mid'            — Tắt giữa Matsuri Hold&Spin (còn re-spin, có AllStickies)
+ *  'matsuri_start'          — Tắt lúc FREE_SPIN_START Matsuri (Start popup + StarterCoins)
+ *  'matsuri_need_claim'     — Tắt SAU Matsuri FREE_SPIN_END, chưa Claim
  */
 export type MockResumeScenario =
     | 'none'
@@ -327,7 +332,10 @@ export type MockResumeScenario =
     | 'buy_free_spin_need_claim'
     | 'topup_mid'
     | 'topup_need_claim'
-    | 'pick_game';
+    | 'pick_game'
+    | 'matsuri_mid'
+    | 'matsuri_start'
+    | 'matsuri_need_claim';
 
 // ★ 'none' = vào game bình thường (dùng MOCK_SPIN_SCENARIO cho spin test)
 // ★ 'pick_game' = giả lập tắt game giữa Pick Game → mở lại Pick Game ngay khi Enter

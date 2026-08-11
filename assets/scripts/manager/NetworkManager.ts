@@ -36,6 +36,7 @@ import {
     FeatureItem,
     ServerFeatureItem,
     CashRaceMyRankGetFirstResponse,
+    CashRaceMyRankGetPageResponse,
     NwCashRaceInfoDetail,
     NwCashRaceRankerSimple,
     ServerFeatureItemGetResponse,
@@ -75,6 +76,7 @@ import { GameData } from '../data/GameData';
 import {
     clientPickToPs,
     psPickToClient,
+    psPickIdleId,
     resolvePickState,
     JP_TYPE_TO_TIER_NAME,
     PICK_GAME_CELL_COUNT,
@@ -97,6 +99,7 @@ import {
     MOCK_RESUME_NORMAL_SPIN, MOCK_RESUME_FREE_SPIN_MID, MOCK_RESUME_FREE_SPIN_NEED_CLAIM,
     MOCK_RESUME_FREE_SPIN_JACKPOT_MID, MOCK_RESUME_BUY_FREE_SPIN_MID, MOCK_RESUME_BUY_FREE_SPIN_NEED_CLAIM,
     MOCK_RESUME_TOPUP_MID, MOCK_RESUME_TOPUP_NEED_CLAIM, MOCK_RESUME_PICK_GAME,
+    MOCK_RESUME_MATSURI_MID, MOCK_RESUME_MATSURI_START, MOCK_RESUME_MATSURI_NEED_CLAIM,
 } from '../data/mock/MockScenariosData';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -326,9 +329,12 @@ export interface INetworkAdapter {
     pollJackpot(): Promise<ServerJackpotResponse>;
     /** HeartBeat (mỗi 10 giây) */
     sendHeartBeat(): Promise<void>;
-    /** Notify server immediately when bet/coinValue changes */
+    /**
+     * @deprecated CN API V1.0.2: GameOptChange chỉ hỗ trợ UseBroadcast (Opt=0).
+     * Bet/Coin sync qua /Spin (BetIndex, CoinValueIndex) — method này no-op.
+     */
     sendGameOptChange(betIndex: number, coinValueIndex: number): Promise<void>;
-    /** Toggle server win broadcast reception on/off */
+    /** Toggle server win broadcast reception on/off (GameOptChange Opt=0) */
     sendBroadcastOptionChange(enabled: boolean): Promise<void>;
     /** Lấy danh sách gói Feature (Buy Bonus) */
     sendFeatureItemGet(): Promise<FeatureItem[]>;
@@ -338,6 +344,10 @@ export interface INetworkAdapter {
     sendBalanceGet(): Promise<{ balance: number; currency: string }>;
     /** Lấy thông tin Cash Race + bảng xếp hạng */
     sendCashRaceMyRankGetFirst(): Promise<CashRaceMyRankGetFirstResponse | null>;
+    /** Cash Race rank page (Top / pagination) — API V1.0.2 */
+    sendCashRaceMyRankGetPage(pageItemCnt?: number, startRank?: number): Promise<CashRaceMyRankGetPageResponse | null>;
+    /** Kết thúc session — POST /Auth/ReqLogout */
+    sendLogout(): Promise<void>;
 }
 
 // ─── Gauge API field helpers (StickyAccumulated / StickyEarned) ─────────────
@@ -544,6 +554,9 @@ class MockNetworkAdapter implements INetworkAdapter {
             case 'topup_mid':               lastSpinResponse = MOCK_RESUME_TOPUP_MID;               break;
             case 'topup_need_claim':        lastSpinResponse = MOCK_RESUME_TOPUP_NEED_CLAIM;        break;
             case 'pick_game':               lastSpinResponse = MOCK_RESUME_PICK_GAME;               break;
+            case 'matsuri_mid':             lastSpinResponse = MOCK_RESUME_MATSURI_MID;             break;
+            case 'matsuri_start':           lastSpinResponse = MOCK_RESUME_MATSURI_START;           break;
+            case 'matsuri_need_claim':      lastSpinResponse = MOCK_RESUME_MATSURI_NEED_CLAIM;      break;
             default:                        lastSpinResponse = null;                                 break; // 'none'
         }
         if (lastSpinResponse) {
@@ -762,7 +775,7 @@ class MockNetworkAdapter implements INetworkAdapter {
     }
 
     async sendGameOptChange(_betIndex: number, _coinValueIndex: number): Promise<void> {
-        // Mock: no-op
+        // CN: bet sync qua Spin — no-op
     }
 
     async sendBroadcastOptionChange(_enabled: boolean): Promise<void> {
@@ -834,6 +847,14 @@ class MockNetworkAdapter implements INetworkAdapter {
         // Mock: dùng CashRaceMockAPI để tạo data (import lazy để tránh circular)
         // Trả về null để báo hiệu 'hãy dùng mock path riêng'
         return null;
+    }
+
+    async sendCashRaceMyRankGetPage(_pageItemCnt?: number, _startRank?: number): Promise<CashRaceMyRankGetPageResponse | null> {
+        return null;
+    }
+
+    async sendLogout(): Promise<void> {
+        // Mock: no-op
     }
 
     private _delay(ms: number): Promise<void> {
@@ -1545,35 +1566,15 @@ class RealNetworkAdapter implements INetworkAdapter {
 
     // ─── GAME OPT CHANGE ───
 
+    /**
+     * CN API V1.0.2 §8.6: GameOptChange chỉ có Opt=0 (UseBroadcast).
+     * Bet/CoinValue sync qua /Spin — không gọi API giả Opt/NewVal=0 (sẽ tắt broadcast).
+     */
     async sendGameOptChange(betIndex: number, coinValueIndex: number): Promise<void> {
-        const data = GameData.instance;
-        const session = data.serverSession!;
-
-        const requestData = {
-            SlotId: ServerConfig.SLOT_ID,
-            Opt: 0,
-            NewVal: 0,
-        };
-
-        const encrypted = this._encryptAES256(JSON.stringify(requestData), session.aky);
-        const packet = this._buildPacket(
-            ServerConfig.API.GAME_OPT_CHANGE,
-            session.memberIdx,
-            session.sessionKey,
-            data.currentSeq,
-            encrypted
+        Log.d(
+            `[GameOptChange] skipped — CN bet sync via Spin ` +
+            `(betIndex=${betIndex} coinIndex=${coinValueIndex}). Use sendBroadcastOptionChange for Opt=0.`,
         );
-
-        try {
-            const responsePacket = await this._sendRequest(
-                this._getUrl(ServerConfig.API.GAME_OPT_CHANGE),
-                packet
-            );
-            this._checkResponseCode(responsePacket);
-            data.updateSeq(responsePacket[4]);
-        } catch (err) {
-            Log.w('[GameOptChange] Failed:', err);
-        }
     }
 
     async sendBroadcastOptionChange(enabled: boolean): Promise<void> {
@@ -1811,8 +1812,8 @@ class RealNetworkAdapter implements INetworkAdapter {
         const data = GameData.instance;
         const session = data.serverSession!;
 
-        // Doc: HeartBeat Data — LID (Int32, Country Code Table)
-        const requestData = { LID: this._getLangId() };
+        // API V1.0.2 ReqHeartBeat: { "Lang": "ko" } (language code string)
+        const requestData = { Lang: this._getLangCode() };
         const encrypted = this._encryptAES256(JSON.stringify(requestData), session.aky);
 
         const packet = this._buildPacket(
@@ -1942,6 +1943,88 @@ class RealNetworkAdapter implements INetworkAdapter {
             BottomRanks:        raw.BottomRanks        ?? [],
             PrizeRangePercent:  raw.PrizeRangePercent  ?? 0,
         } as CashRaceMyRankGetFirstResponse;
+    }
+
+    /**
+     * CashRaceMyRankGetPage — API V1.0.2 §8.2 (REQ 20015).
+     * Dùng cho trang Top / phân trang; body gần giống GetFirst + StartRank.
+     */
+    async sendCashRaceMyRankGetPage(
+        pageItemCnt: number = 5,
+        startRank: number = 1,
+    ): Promise<CashRaceMyRankGetPageResponse | null> {
+        const data = GameData.instance;
+        const session = data.serverSession!;
+
+        const requestData = {
+            SlotId: ServerConfig.SLOT_ID,
+            PageItemCnt: pageItemCnt,
+            StartRank: startRank,
+        };
+
+        const encrypted = this._encryptAES256(JSON.stringify(requestData), session.aky);
+        const packet = this._buildPacket(
+            ServerConfig.API.CASH_RACE_RANK_PAGE,
+            session.memberIdx,
+            session.sessionKey,
+            data.currentSeq,
+            encrypted,
+        );
+
+        const responsePacket = await this._sendRequest(
+            this._getUrl(ServerConfig.API.CASH_RACE_RANK_PAGE),
+            packet,
+        );
+        this._checkResponseCode(responsePacket);
+
+        const decrypted = this._decryptAES256(responsePacket[8], session.aky);
+        const raw = JSON.parse(decrypted);
+        ResponseLogger.log('CashRaceMyRankGetPage', raw);
+
+        const ranks: NwCashRaceRankerSimple[] =
+            raw.Ranks ?? raw.ranks ?? raw.TopRanks ?? raw.topRanks ?? [];
+
+        return {
+            Ranks: ranks,
+            TopRanks: raw.TopRanks ?? raw.topRanks ?? ranks,
+            BottomRanks: raw.BottomRanks ?? raw.bottomRanks ?? [],
+            MyRank: raw.MyRank ?? raw.myRank ?? null,
+            PrizeRangePercent: raw.PrizeRangePercent ?? raw.prizeRangePercent ?? 0,
+        };
+    }
+
+    /** POST /Auth/ReqLogout — NormalRequest, body rỗng. */
+    async sendLogout(): Promise<void> {
+        const data = GameData.instance;
+        const session = data.serverSession;
+        if (!session?.aky) {
+            Log.d('[Logout] skip — no session');
+            return;
+        }
+
+        const encrypted = this._encryptAES256(JSON.stringify({}), session.aky);
+        const packet = this._buildPacket(
+            ServerConfig.API.LOGOUT,
+            session.memberIdx,
+            session.sessionKey,
+            data.currentSeq,
+            encrypted,
+        );
+
+        try {
+            const responsePacket = await this._sendRequest(
+                this._getUrl(ServerConfig.API.LOGOUT),
+                packet,
+            );
+            const code = responsePacket[5] as number;
+            if (code !== 0) {
+                Log.w(`[Logout] server code=${code} msg=${responsePacket[6]}`);
+            } else {
+                Log.d('[Logout] session terminated');
+            }
+        } catch (err) {
+            Log.w('[Logout] Failed:', err);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -2710,27 +2793,30 @@ class RealNetworkAdapter implements INetworkAdapter {
         if (Array.isArray(raw)) {
             const grid: number[] = new Array(PICK_GAME_CELL_COUNT).fill(SymbolId.JP_IDLE);
             const revealed: number[] = [];
+            const idlePs = psPickIdleId();
             if (raw.length > 0 && typeof raw[0] === 'number') {
                 for (let i = 0; i < Math.min(raw.length, PICK_GAME_CELL_COUNT); i++) {
                     const ps = raw[i] as number;
                     if (ps === -1) continue;
                     grid[i] = psPickToClient(ps);
-                    if (ps !== 81) revealed.push(i);
+                    if (ps !== idlePs) revealed.push(i);
                 }
             } else {
                 for (const item of raw) {
                     if (item == null || item.Index == null) continue;
                     const ps = item.SymbolId ?? item.symbolId ?? -1;
                     grid[item.Index] = psPickToClient(ps);
-                    if (ps !== -1 && ps !== 81) revealed.push(item.Index);
+                    if (ps !== -1 && ps !== idlePs) revealed.push(item.Index);
                 }
             }
             return { grid, revealed };
         }
-        // Object format — normalize PascalCase keys
-        const grid: number[] | undefined = raw.grid ?? raw.Grid;
+        // Object format — normalize PascalCase keys; convert PS IDs (≥81) → client
+        const rawGrid: number[] | undefined = raw.grid ?? raw.Grid;
         const revealed: number[] | undefined = raw.revealed ?? raw.Revealed ?? [];
-        if (!grid) return undefined;
+        if (!rawGrid) return undefined;
+        const looksLikePs = rawGrid.some((v) => typeof v === 'number' && v >= 81);
+        const grid = looksLikePs ? rawGrid.map((ps) => psPickToClient(ps)) : rawGrid.slice();
         return {
             grid,
             revealed,
@@ -3263,20 +3349,26 @@ class RealNetworkAdapter implements INetworkAdapter {
             Log.e('[PS:NormalMap] CN 1–6 Low, 11–15 High, 21 Wild');
         }
 
-        // ═══ Pick Game — 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade ═══
+        // ═══ Pick Game — 81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade ═══
+        // Named MiniJackpotID… đã map ở trên; block này chỉ fill khi PS thiếu field.
         {
             const _pickSymbols: Record<number, number> = {
                 81: SymbolId.JP_IDLE,
-                82: SymbolId.JP_GRAND,
-                83: SymbolId.JP_MAJOR,
-                84: SymbolId.JP_MINOR,
-                85: SymbolId.JP_MINI,
+                82: SymbolId.JP_MINI,
+                83: SymbolId.JP_MINOR,
+                84: SymbolId.JP_MAJOR,
+                85: SymbolId.JP_GRAND,
                 86: SymbolId.JP_UPGRADE,
             };
             for (const [psId, clientId] of Object.entries(_pickSymbols)) {
                 const id = parseInt(psId, 10);
                 if (!(id in dynMap)) dynMap[id] = clientId as number;
             }
+            Log.e(
+                `[PS:PickMap] Idle=81 Mini=82 Minor=83 Major=84 Grand=85 Upgrade=86` +
+                ` | dyn Mini=${Object.entries(dynMap).find(([, v]) => v === SymbolId.JP_MINI)?.[0] ?? '?'}` +
+                ` Grand=${Object.entries(dynMap).find(([, v]) => v === SymbolId.JP_GRAND)?.[0] ?? '?'}`,
+            );
         }
 
         // ═══ Fallback sequential: chỉ chạy khi dynMap quá ít (PS không có named fields nào) ═══
@@ -3719,6 +3811,23 @@ class RealNetworkAdapter implements INetworkAdapter {
     }
 
     /**
+     * Language code string cho ReqHeartBeat ({ "Lang": "ko" }) — API V1.0.2.
+     * Map locale nội bộ (zh-cn/sg/…) → mã ngắn server hay dùng.
+     */
+    private _getLangCode(): string {
+        const lang = LocalizationManager.instance.currentLanguage || 'en';
+        const MAP: Record<string, string> = {
+            'en': 'en', 'sg': 'en', 'au': 'en', 'hk': 'en',
+            'ja': 'ja', 'ko': 'ko', 'th': 'th', 'es': 'es',
+            'de': 'de', 'fr': 'fr', 'id': 'id', 'it': 'it',
+            'pt': 'pt', 'tr': 'tr', 'vi': 'vi',
+            'zh-cn': 'zh', 'zh-tw': 'zh',
+            'km': 'km', 'fil': 'fil', 'ms': 'ms', 'hi': 'hi',
+        };
+        return MAP[lang] ?? 'en';
+    }
+
+    /**
      * Map ngôn ngữ game hiện tại → Country Code (LID / LangID) theo bảng API doc.
      * Country Code Table:
      *   0=en, 1=ja, 2=ko, 3=th, 4=es, 5=de, 6=fr, 7=id, 8=it, 9=pt,
@@ -3820,6 +3929,7 @@ export class NetworkManager {
      * @param params - { gp: string } cho WebLink login, hoặc undefined cho test login
      */
     login(params?: any): Promise<ServerSession> {
+        this._logoutSent = false;
         return this._adapter.login(params);
     }
 
@@ -3844,7 +3954,10 @@ export class NetworkManager {
         return this._adapter.sendPickRequest(pickIndex);
     }
 
-    /** Notify server of bet/coinValue change immediately */
+    /**
+     * @deprecated CN: bet/coin sync qua /Spin. GameOptChange chỉ dùng cho broadcast
+     * → gọi sendBroadcastOptionChange. Method này no-op để tránh tắt UseBroadcast nhầm.
+     */
     sendGameOptChange(): Promise<void> {
         if (!USE_REAL_API) return Promise.resolve();
         const data = GameData.instance;
@@ -3878,6 +3991,24 @@ export class NetworkManager {
         return this._adapter.sendCashRaceMyRankGetFirst();
     }
 
+    /** Cash Race rank page (Top / pagination) */
+    sendCashRaceMyRankGetPage(
+        pageItemCnt: number = 5,
+        startRank: number = 1,
+    ): Promise<CashRaceMyRankGetPageResponse | null> {
+        return this._adapter.sendCashRaceMyRankGetPage(pageItemCnt, startRank);
+    }
+
+    private _logoutSent = false;
+
+    /** Kết thúc session server (/Auth/ReqLogout) — gọi tối đa 1 lần / session. */
+    sendLogout(): Promise<void> {
+        if (!USE_REAL_API) return Promise.resolve();
+        if (this._logoutSent) return Promise.resolve();
+        this._logoutSent = true;
+        return this._adapter.sendLogout();
+    }
+
     /** Bắt đầu polling jackpot (mỗi 2 giây) */
     startJackpotPolling(): void {
         this.stopJackpotPolling();
@@ -3905,10 +4036,11 @@ export class NetworkManager {
         }
     }
 
-    /** Bắt đầu HeartBeat (mỗi 10 giây) */
+    /** Bắt đầu HeartBeat (mỗi 10 giây) + đăng ký logout khi rời trang */
     startHeartBeat(): void {
         this.stopHeartBeat();
         if (!USE_REAL_API) return;
+        this._ensureLogoutOnUnload();
         this._heartBeatTimer = setInterval(async () => {
             try {
                 await this._adapter.sendHeartBeat();
@@ -3930,10 +4062,29 @@ export class NetworkManager {
         }
     }
 
-    /** Dọn dẹp tất cả timers */
+    private _logoutUnloadBound = false;
+    private _onPageUnload = (): void => {
+        // fire-and-forget — browser có thể kill tab trước khi await xong
+        void this.sendLogout();
+    };
+
+    private _ensureLogoutOnUnload(): void {
+        if (this._logoutUnloadBound || typeof window === 'undefined') return;
+        this._logoutUnloadBound = true;
+        window.addEventListener('pagehide', this._onPageUnload);
+        window.addEventListener('beforeunload', this._onPageUnload);
+    }
+
+    /** Dọn dẹp tất cả timers (+ logout 1 lần khi dispose chủ động) */
     dispose(): void {
         this.stopJackpotPolling();
         this.stopHeartBeat();
+        if (typeof window !== 'undefined' && this._logoutUnloadBound) {
+            window.removeEventListener('pagehide', this._onPageUnload);
+            window.removeEventListener('beforeunload', this._onPageUnload);
+            this._logoutUnloadBound = false;
+        }
+        void this.sendLogout();
     }
 }
 export { USE_REAL_API };

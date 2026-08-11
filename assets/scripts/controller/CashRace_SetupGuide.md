@@ -204,7 +204,7 @@ export async function getLeaderboard(isTop3: boolean): Promise<RankItem[]> {
 | Endpoint | Method | Response |
 |----------|--------|----------|
 | `/Slot/{slotId}/CashRaceMyRankGetFirst` | GET | Thông tin rank + event (đã có trong ServerConfig) |
-| `/Slot/{slotId}/CashRaceLeaderboard?top3=true` | GET | Mảng RankItem (cần bổ sung) |
+| `/Slot/{slotId}/CashRaceMyRankGetPage` | POST | Top / page ranks (`PageItemCnt`, `StartRank`) — đã gắn qua `sendCashRaceMyRankGetPage` |
 
 ---
 

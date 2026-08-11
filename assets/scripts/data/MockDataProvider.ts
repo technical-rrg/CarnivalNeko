@@ -1157,6 +1157,8 @@ export class ForcedMockAdapter implements INetworkAdapter {
         return { balance: GameData.instance.player.balance, currency: 'USD' };
     }
     async sendCashRaceMyRankGetFirst(): Promise<any | null> { return null; }
+    async sendCashRaceMyRankGetPage(_pageItemCnt?: number, _startRank?: number): Promise<any | null> { return null; }
+    async sendLogout(): Promise<void> {}
     async sendSelectFeature(nextStage: SlotStageType, reelIndex: number = 0): Promise<SelectFeatureResponse> {
         await this._delay(50);
         const remain = nextStage === SlotStageType.TOPUP_SPIN_START

@@ -182,3 +182,65 @@ export const MOCK_RESUME_TOPUP_NEED_CLAIM = {
     RemainFeatureSpinCount: 0,
     TopupReel: MOCK_TOPUP_REEL,
 };
+
+/** Tắt GIỮA Matsuri Hold&Spin (Mighty 5×3) — còn 2 re-spin, đã có AllStickies. */
+export const MOCK_RESUME_MATSURI_MID = {
+    NextStage: SlotStageType.FREE_SPIN,        // 4
+    Rands: [0, 0, 0, 0, 0],
+    TotalBet: 1,
+    TotalWin: 0,
+    FeatureSpinTotalWin: 48,
+    RemainFeatureSpinCount: 2,
+    CurrentFeatureType: 0,                     // Mighty
+    FeatureRows: 3,
+    StickyCount: 6,
+    AllStickies: [
+        { Reel: 0, Row: 0, Credit: 8 },
+        { Reel: 1, Row: 1, Credit: 8 },
+        { Reel: 2, Row: 0, Credit: 8 },
+        { Reel: 2, Row: 2, Credit: 8 },
+        { Reel: 3, Row: 1, Credit: 8 },
+        { Reel: 4, Row: 2, Credit: 8 },
+    ],
+};
+
+/** Tắt khi FREE_SPIN_START Matsuri (chưa Press to Start / chưa seed xong). */
+export const MOCK_RESUME_MATSURI_START = {
+    NextStage: SlotStageType.FREE_SPIN_START,  // 3
+    Rands: [0, 0, 0, 0, 0],
+    TotalBet: 1,
+    TotalWin: 0,
+    FeatureSpinTotalWin: 0,
+    RemainFeatureSpinCount: 3,
+    CurrentFeatureType: 1,                     // Mega
+    FeatureRows: 4,
+    StarterCoins: [
+        { Reel: 0, Row: 0, Credit: 5 },
+        { Reel: 0, Row: 2, Credit: 5 },
+        { Reel: 1, Row: 1, Credit: 5 },
+        { Reel: 2, Row: 0, Credit: 5 },
+        { Reel: 2, Row: 3, Credit: 5 },
+        { Reel: 3, Row: 2, Credit: 5 },
+        { Reel: 4, Row: 1, Credit: 5 },
+        { Reel: 4, Row: 3, Credit: 5 },
+    ],
+};
+
+/** Tắt SAU KHI Matsuri kết thúc, chưa Claim → Claim + end popup. */
+export const MOCK_RESUME_MATSURI_NEED_CLAIM = {
+    NextStage: SlotStageType.FREE_SPIN_END,    // 101
+    Rands: [0, 0, 0, 0, 0],
+    TotalBet: 1,
+    TotalWin: 0,
+    FeatureSpinTotalWin: 220,
+    RemainFeatureSpinCount: 0,
+    CurrentFeatureType: 0,
+    FeatureRows: 3,
+    AllStickies: [
+        { Reel: 0, Row: 0, Credit: 10 },
+        { Reel: 1, Row: 1, Credit: 10 },
+        { Reel: 2, Row: 0, Credit: 10 },
+        { Reel: 3, Row: 2, Credit: 10 },
+        { Reel: 4, Row: 1, Credit: 10 },
+    ],
+};

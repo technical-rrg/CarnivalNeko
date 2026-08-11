@@ -67,6 +67,11 @@ export class CarnivalTrailController extends Component {
     @property({ tooltip: 'Flip half duration (giây)' })
     flipHalfDuration: number = 0.12;
 
+    @property({
+        tooltip: 'Sau khi reel dừng + hiện TRAIL_NORMAL xong, chờ bao lâu (giây) rồi mới flip/bay.',
+    })
+    postStopHoldDuration: number = 0.25;
+
     @property({ tooltip: 'Thời gian particle bay Normal (giây) — khớp Wild Trail' })
     flyDurationNormal: number = 0.8;
 
@@ -167,6 +172,7 @@ export class CarnivalTrailController extends Component {
     }
 
     private _onReelsStartSpin(): void {
+        this.unscheduleAllCallbacks();
         this._pending = [];
         this._flyingCount = 0;
         this._started = false;
@@ -186,7 +192,7 @@ export class CarnivalTrailController extends Component {
         const batch = [...this._pending];
         this._pending = [];
         Log.e(`[CarnivalTrail] REELS_STOPPED fallback — ${batch.length} trails`);
-        for (const hit of batch) this._animateHit(hit);
+        for (const hit of batch) this._holdNormalThenAnimate(hit);
     }
 
     private _onTrailOne(hit: CarnivalTrailHit): void {
@@ -195,15 +201,30 @@ export class CarnivalTrailController extends Component {
 
         const symbolNode = this._getSymbolNode(hit.reel, hit.row);
         const reelCtrl = this.reels[hit.reel];
-        // Chờ stop-bounce xong (SETTLING → IDLE + reel-settled) rồi mới flip/bay —
-        // tránh lấy world pos lúc symbol còn overshoot dưới rest.
+        // Chờ stop-bounce xong → ép TRAIL_NORMAL → giữ 0.5s → flip/bay
         if (symbolNode?.isValid && reelCtrl && !reelCtrl.isIdle) {
             symbolNode.once('reel-settled', () => {
-                if (symbolNode.isValid) this._animateHit(hit);
+                if (symbolNode.isValid) this._holdNormalThenAnimate(hit);
             });
             return;
         }
-        this._animateHit(hit);
+        this._holdNormalThenAnimate(hit);
+    }
+
+    /** Ép hình gốc TRAIL_NORMAL, giữ postStopHoldDuration rồi mới flip + bay. */
+    private _holdNormalThenAnimate(hit: CarnivalTrailHit): void {
+        const symbolNode = this._getSymbolNode(hit.reel, hit.row);
+        const view = symbolNode?.getComponent(SymbolView);
+        if (view?.isValid) {
+            view.setSymbol(SymbolId.TRAIL_NORMAL);
+            this._resetSpriteColor(view);
+        }
+        const hold = Math.max(0, this.postStopHoldDuration);
+        if (hold <= 0) {
+            this._animateHit(hit);
+            return;
+        }
+        this.scheduleOnce(() => this._animateHit(hit), hold);
     }
 
     private _animateHit(hit: CarnivalTrailHit): void {
@@ -221,6 +242,7 @@ export class CarnivalTrailController extends Component {
         const baseX = symbolNode.scale.x;
         const baseY = symbolNode.scale.y;
 
+        // Đảm bảo vẫn đang ở NORMAL trước khi bắt đầu flip (sau hold 0.5s)
         if (view) {
             view.setSymbol(SymbolId.TRAIL_NORMAL);
             this._resetSpriteColor(view);

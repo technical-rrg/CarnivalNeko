@@ -103,7 +103,6 @@ export class WaysPayDisplay extends Component {
         bus.on(GameEvents.FREE_SPIN_START,    this._onFeatureStart, this);
         bus.on(GameEvents.FREE_SPIN_GOLD_START, this._onFeatureStart, this);
         bus.on(GameEvents.TOPUP_START,         this._onFeatureStart, this);
-        bus.on(GameEvents.CREDIT_FLY_IN_START, this._onFeatureStart, this);
         // Carnival Feature entry (có thể kèm lineWin cùng spin)
         bus.on(GameEvents.CARNIVAL_POT_BURST,      this._onFeatureStart, this);
         bus.on(GameEvents.MATSURI_START_POPUP,     this._onFeatureStart, this);

@@ -204,7 +204,6 @@ export class SoundManager extends Component {
     private _crossfadeFadeTick: (() => void) | null = null;
     private _bonusLoopCallback: (() => void) | null = null;
     private _transitionSoundPlayed: boolean = false;
-    private _featureSelectSoundPlayed: boolean = false;
     private _stickyLandCount: number = 0;
     private _stickyWinSoundPlayedThisSpin: boolean = false;
     /** In-flight lazy clip loads — avoid duplicate bundle.load */
@@ -256,9 +255,6 @@ export class SoundManager extends Component {
         bus.on(GameEvents.JACKPOT_END, this._onFeatureOrJackpotEnd, this);
         bus.on(GameEvents.PICK_GAME_MATCH_FOUND, this._onPickGameMatchFound, this);
 
-        bus.on(GameEvents.FEATURE_SELECT_OPEN,  this._onFeatureSelectOpen,  this);
-        bus.on(GameEvents.FEATURE_SELECT_CLOSE,  this._onFeatureSelectClose, this);
-        bus.on(GameEvents.FEATURE_SELECT_CHOICE, this._onFeatureChosen, this);
         bus.on(GameEvents.FREE_SPIN_START, this._onFeatureStart, this);
         bus.on(GameEvents.FREE_SPIN_GOLD_START, this._onFeatureStart, this);
         bus.on(GameEvents.TOPUP_START, this._onFeatureStart, this);
@@ -275,14 +271,23 @@ export class SoundManager extends Component {
         bus.on(GameEvents.PICK_GAME_CLOSE,          this._onPickGameClose,  this);
         bus.on(GameEvents.TOPUP_TRANSITION_SHOW, this._onTransitionShow,  this);
         bus.on(GameEvents.TOPUP_TRANSITION_DONE,  this._onTransitionDone,  this);
-        bus.on(GameEvents.WILD_TRAIL_ONE, this._onWildTrailOne, this);
-        bus.on(GameEvents.WILD_TRAIL_ONE_HIT, this._onWildTrailHit, this);
         bus.on(GameEvents.RED_CREDIT_UPDATED, this._onRedCreditUpdated, this);
         bus.on(GameEvents.TOPUP_ABSORB_START, this._onTopUpAbsorbStart, this);
-        bus.on(GameEvents.FREE_SPIN_GOLD_COIN_LAND, this._onGoldCoinLand, this);
 
         bus.on(GameEvents.BUY_BONUS_REQUEST, this._onBuyBonusRequest, this);
         bus.on(GameEvents.BUY_BONUS_DEACTIVATE, this._onBuyBonusDeactivate, this);
+
+        // Carnival trail → pot (thay WILD_TRAIL_* legacy)
+        bus.on(GameEvents.CARNIVAL_TRAIL_ONE, this._onCarnivalTrailOne, this);
+        bus.on(GameEvents.CARNIVAL_TRAIL_ONE_HIT, this._onCarnivalTrailHit, this);
+    }
+
+    private _onCarnivalTrailOne(): void {
+        this.playPotTrailWhoosh();
+    }
+
+    private _onCarnivalTrailHit(): void {
+        this._playSfxProp('sxPotHit');
     }
 
     private _onBuyBonusRequest(): void {
@@ -374,7 +379,7 @@ export class SoundManager extends Component {
 
     /**
      * Sticky Red land SFX — progressive sx_bonus_sticky_land → _5 (reset mỗi spin).
-     * Dùng chung cho reel stop thường và StickyFillEffect (Force Feature Entry).
+     * Dùng chung cho reel stop thường và sticky land FX.
      */
     playStickyLandSfx(): void {
         const props = [
@@ -755,20 +760,6 @@ export class SoundManager extends Component {
         this._cutToCurrentLoopNow();
     }
 
-    private _onFeatureSelectOpen(): void {
-        if (this._featureSelectSoundPlayed) return;
-        this._featureSelectSoundPlayed = true;
-        this._playSfxProp('sxSelectAFeature');
-    }
-
-    private _onFeatureSelectClose(): void {
-        this._featureSelectSoundPlayed = false;
-    }
-
-    private _onFeatureChosen(): void {
-        // sxFeatureSelect và BGM đã được play ngay khi nhấn nút trong FeatureSelectionPopup
-    }
-
     private _onFeatureStart(): void {
         this._inFeatureMusic = true;
         this._startFeatureMusic();
@@ -847,14 +838,6 @@ export class SoundManager extends Component {
         this._transitionSoundPlayed = false;
     }
 
-    private _onWildTrailOne(): void {
-        this._playSfxProp('sxPotTrailWhoosh');
-    }
-
-    private _onWildTrailHit(): void {
-        this._playSfxProp('sxPotHit');
-    }
-
     private _onRedCreditUpdated(payload?: { totalRedCredit?: number; redCount?: number; reelIndex?: number }): void {
         const redCount = payload?.redCount ?? 0;
         this.playStickyLandSfx();
@@ -870,10 +853,6 @@ export class SoundManager extends Component {
     private _onTopUpAbsorbStart(_payload?: { newCells?: StickyCellLike[]; plusOneSpinCount?: number }): void {
         // +1 spin sound is now handled by TopUpAbsorbEffect when the +1 symbol is actually shown on StickyOverlay.
         // Yellow/Green coin absorb sound is handled by StickyOverlayController when they appear on overlay.
-    }
-
-    private _onGoldCoinLand(_payload?: { cells?: StickyCellLike[] }): void {
-        // sxBonusStickyGoldLand được play trực tiếp trong SymbolView._playLandBounce per-coin
     }
 
     private _startFeatureMusic(): void {
@@ -1102,11 +1081,6 @@ export class SoundManager extends Component {
     /** TransitionPopup vừa bắt đầu play spine anim. */
     playPickGame(): void {
         this._playSfxProp('sxPickGame');
-    }
-
-    /** FeatureEntryGuide vừa xuất hiện / bắt đầu anim. */
-    playLuchHas(): void {
-        this._playSfxProp('sxLuchHas');
     }
 
     playBonusSelect(type: JackpotType): void {

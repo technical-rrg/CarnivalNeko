@@ -30,7 +30,6 @@ import { TransitionLoader }        from './TransitionLoader';
 import { TransitionController }    from './TransitionController';
 import { BroadcastPopupLoader }    from './BroadcastPopupLoader';
 import { DebbugManagerLoader }     from './DebbugManagerLoader';
-import { FeatureEntryGuideLoader } from './FeatureEntryGuideLoader';
 import { OrientationLayout }       from './OrientationLayout';
 import { GuideShellLoader }        from '../core/GuideShellLoader';
 import { GameManager }             from '../manager/GameManager';
@@ -548,7 +547,7 @@ export class GameEntryController extends Component {
         }
     }
 
-    /** Gắn lazy-load Transition / Broadcast / Debug / FeatureEntryGuide trên Base root. */
+    /** Gắn lazy-load Transition / Broadcast / Debug trên Base root. */
     private _initOverlayLoaders(): void {
         const shell = this.node;
 
@@ -565,9 +564,6 @@ export class GameEntryController extends Component {
         if (!debug) debug = shell.addComponent(DebbugManagerLoader);
         debug.init(shell, this.gameRoot);
 
-        let featureGuide = shell.getComponent(FeatureEntryGuideLoader);
-        if (!featureGuide) featureGuide = shell.addComponent(FeatureEntryGuideLoader);
-        featureGuide.init(shell, this.gameRoot);
     }
 
     /** Chuyển sharedNode từ GuideView sang GameRoot (gọi sau khi GuideView active=false). */

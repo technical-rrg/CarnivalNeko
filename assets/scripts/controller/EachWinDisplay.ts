@@ -12,7 +12,7 @@
  *   - Ẩn mặc định.
  *   - Khi nhận RED_CREDIT_UPDATED (mỗi khi reel dừng có Red) → hiện + cập nhật tổng.
  *   - Khi REELS_START_SPIN → ẩn + reset (chuẩn bị cho spin mới).
- *   - Khi FEATURE_SELECT_OPEN → giữ nguyên giá trị (popup sẽ dùng sumCredit riêng).
+ *   - Giữ nguyên giá trị khi feature UI cần sumCredit riêng.
  */
 
 import { _decorator, Component, Label, Node, tween, Vec3, Tween } from 'cc';

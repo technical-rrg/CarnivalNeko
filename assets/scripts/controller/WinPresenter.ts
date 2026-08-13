@@ -77,13 +77,6 @@ export class WinPresenter extends Component {
     /** Danh sách WaysPayWin của vòng quay gần nhất (Ways Pay) */
     private _lastWaysPayWins: WaysPayWin[] = [];
     /** Wild trail đang diễn animation → delay highlight */
-    private _isWildTrailAnimating: boolean = false;
-    /** Response đang chờ wild trail xong để emit highlight */
-    private _pendingWinResponse: SpinResponse | null = null;
-    private _pendingWinGen: number = -1;
-    /** Gen đã nhận WILD_TRAIL_FLY_DONE (để biết wild trail của vòng hiện tại đã xong) */
-    private _wildTrailFlyDoneGen: number = -1;
-
     // ─── LIFECYCLE ───
 
     onLoad(): void {
@@ -94,13 +87,8 @@ export class WinPresenter extends Component {
         EventBus.instance.on(GameEvents.WIN_HIGHLIGHT_CLEAR, this._onWinHighlightClear, this);
         EventBus.instance.on(GameEvents.JACKPOT_END, this._onJackpotEndForCycle, this);
         EventBus.instance.on(GameEvents.AUTO_SPIN_CHANGED, this._onAutoSpinChanged, this);
-        EventBus.instance.on(GameEvents.WILD_TRAIL_START, this._onWildTrailStart, this);
-        EventBus.instance.on(GameEvents.WILD_TRAIL_FLY_DONE, this._onWildTrailFlyDone, this);
-        EventBus.instance.on(GameEvents.CREDIT_FLY_IN_START, this._onCreditFlyInStart, this);
         EventBus.instance.on(GameEvents.PICK_GAME_OPEN, this._onPickGameOpen, this);
         EventBus.instance.on(GameEvents.PICK_GAME_CLOSE, this._onPickGameClose, this);
-        EventBus.instance.on(GameEvents.FORCE_FEATURE_ENTRY_START, this._onWinHighlightClear, this);
-        EventBus.instance.on(GameEvents.FEATURE_ENTRY_GUIDE_SHOW, this._onWinHighlightClear, this);
         // Carnival Feature entry — dừng cycle line/ways trước khi pot burst / Matsuri popup
         EventBus.instance.on(GameEvents.CARNIVAL_POT_BURST, this._onWinHighlightClear, this);
         EventBus.instance.on(GameEvents.MATSURI_START_POPUP, this._onWinHighlightClear, this);
@@ -118,10 +106,6 @@ export class WinPresenter extends Component {
             this._isPresenting = false;
             this._highlightAnimDone = false;
             this._pendingPresentEndGen = -1;
-            this._wildTrailFlyDoneGen = -1;
-            this._isWildTrailAnimating = false;
-            this._pendingWinResponse = null;
-            this._pendingWinGen = -1;
             this._lastMatchedLines = [];
             this._lastWaysPayWins = [];
         }, this);
@@ -133,10 +117,6 @@ export class WinPresenter extends Component {
             this._isPresenting = false;
             this._highlightAnimDone = false;
             this._pendingPresentEndGen = -1;
-            this._wildTrailFlyDoneGen = -1;
-            this._isWildTrailAnimating = false;
-            this._pendingWinResponse = null;
-            this._pendingWinGen = -1;
             this._lastMatchedLines = [];
             this._lastWaysPayWins = [];
         }, this);
@@ -157,10 +137,6 @@ export class WinPresenter extends Component {
         this._isQuickStopSpin = false;
         this._highlightAnimDone = false;
         this._pendingPresentEndGen = -1;
-        this._wildTrailFlyDoneGen = -1;
-        this._isWildTrailAnimating = false;
-        this._pendingWinResponse = null;
-        this._pendingWinGen = -1;
         // Reset để vòng quay mới không dùng lines của vòng quay trước (đặc biệt quan trọng
         // khi jackpot path không emit WIN_PRESENT_START → _lastMatchedLines không được cập nhật).
         this._lastMatchedLines = [];
@@ -200,29 +176,14 @@ export class WinPresenter extends Component {
             return;
         }
 
-        // GameManager đã defer WIN_PRESENT_START đến sau WILD_TRAIL_FLY_DONE.
-        // Chỉ delay thêm khi trail VẪN đang bay (_isWildTrailAnimating).
-        // ★ BUG FIX: không so sánh _wildTrailFlyDoneGen !== myGen — _generation bị bump
-        // ngay đầu hàm nên sau FLY_DONE so sánh luôn fail → pending forever → chỉ thấy
-        // tiền cộng (UIController) mà không emit WIN_SHOW_ALL_WAYS/LINES.
-        // Log.e(
-        //     `[SPIN-HANG][WinHL] WIN_PRESENT_START | gen=${myGen} totalWin=${response.totalWin} ` +
-        //     `ways=${waysLen} lines=${linesLen} wildTrailCount=${response.wildTrailCount ?? 0} ` +
-        //     `animating=${this._isWildTrailAnimating} flyDoneGen=${this._wildTrailFlyDoneGen}`
-        // );
-        if (this._isWildTrailAnimating) {
-            this._pendingWinResponse = response;
-            this._pendingWinGen = myGen;
-            // Log.e(`[SPIN-HANG][WinHL] DELAY highlight — wild trail still animating | gen=${myGen}`);
-            return;
-        }
-
+        // GameManager đã defer WIN_PRESENT_START đến sau CARNIVAL_TRAIL_FLY_DONE (nếu có).
+        void waysLen;
+        void linesLen;
         this._emitHighlights(response, myGen);
     }
 
     /**
      * Emit highlight events, win popup, và setup cycling timers.
-     * Dùng từ _onWinStart hoặc _onWildTrailFlyDone khi wild trail xong.
      */
     private _emitHighlights(response: SpinResponse, myGen: number): void {
         this._isPresenting = true;
@@ -527,16 +488,7 @@ export class WinPresenter extends Component {
         }
     }
 
-    private _onWildTrailStart(): void {
-        this._isWildTrailAnimating = true;
-        Log.d(`[WinHL] WILD_TRAIL_START — block highlight until fly done`);
-    }
-
-    private _onCreditFlyInStart(): void {
-        this._stopCycling();
-    }
-
-    /** Feature select: tắt cycling trước khi red bounce / credit fly. */
+    /** Tắt cycling trước khi feature entry / pot burst. */
     private _onWinHighlightClear(): void {
         this._generation++;
         this._stopCycling();
@@ -569,10 +521,6 @@ export class WinPresenter extends Component {
         this._isPresenting = false;
         this._highlightAnimDone = false;
         this._pendingPresentEndGen = -1;
-        this._wildTrailFlyDoneGen = -1;
-        this._isWildTrailAnimating = false;
-        this._pendingWinResponse = null;
-        this._pendingWinGen = -1;
     }
 
     private _resumePickGameWinHighlight(gen: number): void {
@@ -598,14 +546,10 @@ export class WinPresenter extends Component {
         }
     }
 
-    /**
-     * FreeSpin / FreeSpin Gold đang chạy.
-     * Dùng currentMode (ổn định cả lượt FS cuối remaining=0) + flag remaining.
-     */
+    /** FreeSpin đang chạy (currentMode ổn định cả lượt FS cuối remaining=0). */
     private _isInFreeSpinMode(): boolean {
         if (this._isFreeSpinMode) return true;
-        const mode = GameData.instance.currentMode;
-        return mode === 'freespin' || mode === 'freespin_gold';
+        return GameData.instance.currentMode === 'freespin';
     }
 
     private _isPickGameJackpotFlow(): boolean {
@@ -622,23 +566,4 @@ export class WinPresenter extends Component {
             || nextStage === SlotStageType.PICK_GAME_END;
     }
 
-    private _onWildTrailFlyDone(): void {
-        this._isWildTrailAnimating = false;
-        this._wildTrailFlyDoneGen = this._generation;
-        Log.d(
-            `[WinHL] WILD_TRAIL_FLY_DONE | gen=${this._generation} ` +
-            `pending=${!!this._pendingWinResponse} pendingGen=${this._pendingWinGen}`
-        );
-
-        // Nếu có win response đang chờ → emit highlight ngay
-        // (WIN_PRESENT_START đến khi trail còn animating — order FLY_DONE listeners)
-        if (this._pendingWinResponse && this._pendingWinGen === this._generation) {
-            const response = this._pendingWinResponse;
-            const myGen = this._pendingWinGen;
-            this._pendingWinResponse = null;
-            this._pendingWinGen = -1;
-            Log.d(`[WinHL] flush pending highlight after fly done | gen=${myGen}`);
-            this._emitHighlights(response, myGen);
-        }
-    }
 }

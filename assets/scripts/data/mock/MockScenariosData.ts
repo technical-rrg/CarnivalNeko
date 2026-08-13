@@ -11,10 +11,7 @@
  *   SCENARIO_BIG_WIN         → BIG_WIN     (Cleopatra 5×3)
  *   SCENARIO_LONG_SPIN       → LONG_SPIN_TRIGGER (3 Red reel 0..2)
  *   SCENARIO_JACKPOT         → GRAND_JACKPOT (Pick Game Grand)
- *   FULL_FREE_SEQUENCE       → FreeSpin flow placeholder (dùng generateSpinResponse)
- *   DEFAULT_SEQUENCE         → [NO_WIN, NORMAL_WIN, FEATURE_TRIGGER_RESPIN]
- *
- * Resume scenarios — stub null (resume logic sẽ xử lý riêng ở B3/GameManager refactor).
+ *   DEFAULT_SEQUENCE         → [NO_WIN, NORMAL_WIN, …]
  */
 
 import { SlotStageType, SpinResponse, TopupReelType } from '../SlotTypes';
@@ -31,25 +28,6 @@ export const SCENARIO_JACKPOT:    SpinResponse = MockDataProvider.buildScenario(
 
 // ─── SEQUENCE SCENARIOS ───────────────────────────────────────────────────────
 
-/** Normal spin → Feature Select → Re-Spin flow */
-export const FULL_FREE_SEQUENCE: SpinResponse[] = [
-    MockDataProvider.buildScenario(TestScenario.NO_WIN),
-    MockDataProvider.buildScenario(TestScenario.NORMAL_WIN),
-    MockDataProvider.buildScenario(TestScenario.FEATURE_TRIGGER_RESPIN),
-];
-
-/** Feature Select → Free Spin flow */
-export const FULL_FREE_JACKPOT_SEQUENCE: SpinResponse[] = [
-    MockDataProvider.buildScenario(TestScenario.NO_WIN),
-    MockDataProvider.buildScenario(TestScenario.FEATURE_TRIGGER_FREESPIN),
-];
-
-/** ★ Force Feature Entry: spin 1 gauge → spin 2 feature (2 Red + 4 orb fill). */
-export const FORCE_FEATURE_ENTRY_SEQUENCE: SpinResponse[] = [
-    MockDataProvider.buildScenario(TestScenario.FEATURE_GAUGE_WARMUP),
-    MockDataProvider.buildScenario(TestScenario.FORCE_FEATURE_ENTRY),
-];
-
 /** Pot Win → Grand Jackpot flow */
 export const FULL_FREE_RETRIGGER_SEQUENCE: SpinResponse[] = [
     MockDataProvider.buildScenario(TestScenario.NORMAL_WIN),
@@ -61,14 +39,14 @@ export const FULL_FREE_RETRIGGER_SEQUENCE: SpinResponse[] = [
 export const DEFAULT_SEQUENCE: SpinResponse[] = [
     MockDataProvider.buildScenario(TestScenario.NO_WIN),
     MockDataProvider.buildScenario(TestScenario.NORMAL_WIN),
-    MockDataProvider.buildScenario(TestScenario.FEATURE_TRIGGER_RESPIN),
+    MockDataProvider.buildScenario(TestScenario.NO_WIN),
     MockDataProvider.buildScenario(TestScenario.BIG_WIN),
     MockDataProvider.buildScenario(TestScenario.LONG_SPIN_TRIGGER),
 ];
 
-/** Buy Feature flow — placeholder, dùng FEATURE_TRIGGER_RESPIN */
+/** Buy Feature flow — placeholder */
 export const BUY_FREE_SPIN_SEQUENCE: SpinResponse[] = [
-    MockDataProvider.buildScenario(TestScenario.FEATURE_TRIGGER_RESPIN),
+    MockDataProvider.buildScenario(TestScenario.NO_WIN),
 ];
 
 // ─── RESUME SCENARIOS ─────────────────────────────────────────────────────────

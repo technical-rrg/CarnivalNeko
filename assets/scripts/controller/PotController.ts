@@ -18,13 +18,11 @@
  *   4. potSpine vẫn dùng xuyên suốt code (idle, transition, impact…).
  *
  * FLOW:
- *   - WILD_TRAIL_FLY_DONE  → _onFlyDone()   → apply pending level (lên level SAU khi hết trail bay)
- *   - POT_LEVEL_CHANGED    → _onLevelChanged → chỉ queue pending; có wild thì chờ FLY_DONE
- *   - WILD_TRAIL_START     → hủy apply sớm (0.7s) — không lên level khi wild vừa xuất hiện
+ *   - POT_LEVEL_CHANGED    → _onLevelChanged → queue + apply (legacy single pot)
  *   - POT_WIN_INTRO        → _onPotWinIntro()→ particle + emit POT_WIN_DONE (level do server)
  *   - Nổ hũ xong (reset)   → level về 0, chạy LV{old}_transition_LV0 → idle_LV0
  *
- * Node gốc PotController = potNode cho WildTrailController.
+ * Carnival Neko trail/pot UI dùng CarnivalTrailController + CarnivalPotBoard.
  * jackpotEffectNode = particle khi nổ hũ.
  */
 
@@ -53,10 +51,10 @@ export class PotController extends Component {
     @property({ type: Node, tooltip: 'Particle effect node khi Pot win (nổ hũ) — active + play khi POT_WIN_INTRO' })
     jackpotEffectNode: Node | null = null;
 
-    @property({ type: Node, tooltip: 'Node particle effect để clone khi Wild particle trúng Pot — mỗi lần WILD_TRAIL_ONE_HIT sẽ instantiate 1 bản sao' })
+    @property({ type: Node, tooltip: 'Node particle effect khi particle trúng Pot (legacy single pot)' })
     hitParticleNode: Node | null = null;
 
-    @property({ type: Node, tooltip: 'Node particle effect thay thế (10%) khi Wild particle trúng Pot — sẽ instantiate 1 bản sao' })
+    @property({ type: Node, tooltip: 'Node particle effect thay thế (10%) khi particle trúng Pot' })
     hitParticleNode2: Node | null = null;
 
     @property({ tooltip: 'Delay trước khi emit POT_WIN_DONE sau pot win intro (giây)' })
@@ -93,9 +91,6 @@ export class PotController extends Component {
 
     onLoad(): void {
         const bus = EventBus.instance;
-        bus.on(GameEvents.WILD_TRAIL_FLY_DONE,  this._onFlyDone,      this);
-        bus.on(GameEvents.WILD_TRAIL_ONE_HIT,   this._onOneHit,        this);
-        bus.on(GameEvents.WILD_TRAIL_START,     this._onWildTrailStart, this);
         bus.on(GameEvents.POT_LEVEL_CHANGED,    this._onLevelChanged,  this);
         bus.on(GameEvents.POT_WIN_INTRO,        this._onPotWinIntro,   this);
         bus.on(GameEvents.TRANSITION_DONE,     this._onTransitionDone, this);
@@ -167,41 +162,18 @@ export class PotController extends Component {
 
     // ─── EVENT HANDLERS ────────────────────────────────────────────────────
 
-    /**
-     * WILD_TRAIL_START: có wild đang / sắp bay → hủy apply sớm.
-     * GameManager emit ngay sau POT_LEVEL_CHANGED; level-up chỉ chạy ở FLY_DONE.
-     */
-    private _onWildTrailStart(): void {
-        this.unschedule(this._applyPendingLevel);
-        Log.d('[PotController] WILD_TRAIL_START — defer level-up until WILD_TRAIL_FLY_DONE');
-    }
-
-    /** WILD_TRAIL_FLY_DONE: tất cả particle đã bay vào hũ → apply pending level */
-    private _onFlyDone(): void {
-        Log.d(`[PotController] _onFlyDone — _currentLevel=${this._currentLevel}, pending=${this._pendingLevel}`);
-        this.unschedule(this._applyPendingLevel);
-        if (this._pendingLevel !== null && this._pendingLevel !== this._currentLevel) {
-            this._transitionToLevel(this._pendingLevel);
-            this._pendingLevel = null;
-        } else {
-            // Không có transition — vẫn emit để GameManager không treo chờ POT_TRANSITION_END
-            this._pendingLevel = null;
-            EventBus.instance.emit(GameEvents.POT_TRANSITION_END);
-        }
-    }
-
-    /** WILD_TRAIL_ONE_HIT: một particle vừa đến hũ → lấy từ pool + play hit particle + pot impact */
-    private _onOneHit(): void {
+    /** Legacy hit particle helper (kept for pot impact VFX reuse). */
+    playHitParticle(): void {
         const useRare = this.hitParticleNode2 && Math.random() < 0.1;
         const pool = useRare ? this._hitParticlePool2 : this._hitParticlePool;
         const prefab = useRare ? this.hitParticleNode2 : this.hitParticleNode;
-        Log.d(`[PotController] _onOneHit — useRare=${useRare}, prefab=${prefab ? 'SET' : 'NULL'}, pool=${pool ? 'SET' : 'NULL'}`);
+        Log.d(`[PotController] playHitParticle — useRare=${useRare}, prefab=${prefab ? 'SET' : 'NULL'}, pool=${pool ? 'SET' : 'NULL'}`);
         if (!prefab || !pool) {
             Log.w('[PotController] hitParticleNode or pool is null — no hit effect');
             return;
         }
         const hitNode = pool.size() > 0 ? pool.get()! : instantiate(prefab);
-        Log.d(`[PotController] _onOneHit — got hitNode from pool, isValid=${hitNode?.isValid}`);
+        Log.d(`[PotController] playHitParticle — got hitNode from pool, isValid=${hitNode?.isValid}`);
         hitNode.setParent(this.node);
         hitNode.setPosition(0, 0, 0);
         hitNode.active = true;
@@ -324,19 +296,15 @@ export class PotController extends Component {
     }
 
     /**
-     * POT_LEVEL_CHANGED: chỉ queue pending — không play transition ngay.
-     * Có wild: WILD_TRAIL_START hủy timer dưới; FLY_DONE mới lên level.
-     * Không wild: safety apply sau 0.7s (không có FLY_DONE).
+     * POT_LEVEL_CHANGED: queue + apply (legacy single pot; Carnival dùng CarnivalPotBoard).
      */
     private _onLevelChanged(payload: { level: number; total: number }): void {
         const newLevel = this._normalizeLevel(payload.level);
         Log.d(`[PotController] _onLevelChanged — visualLevel: ${this._currentLevel} → ${newLevel}, total=${payload.total}`);
         if (newLevel !== this._currentLevel) {
             this._pendingLevel = newLevel;
-            Log.d(`[PotController] level ${this._currentLevel} → ${newLevel} queued (wait FLY_DONE or no-wild fallback)`);
             this.unschedule(this._applyPendingLevel);
-            // Chỉ dùng khi KHÔNG có wild; có wild thì _onWildTrailStart sẽ hủy timer này
-            this.scheduleOnce(this._applyPendingLevel, 0.7);
+            this.scheduleOnce(this._applyPendingLevel, 0.05);
         }
     }
 

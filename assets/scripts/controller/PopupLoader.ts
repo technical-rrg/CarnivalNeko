@@ -26,7 +26,6 @@ import { SystemPopupPayload } from '../core/PopUpMessage';
 import { AutoSettingPopup } from './AutoSettingPopup';
 import { BetSettingsPopup } from './BetSettingsPopup';
 import { SettingPopup } from './SettingPopup';
-import { FeatureSelectPayload } from './FeatureSelectionPopup';
 import { TopUpEndPopup } from './TopUpEndPopup';
 import { TransitionMode } from './TopUpTransitionPopup';
 import { MatsuriStartPopup } from './MatsuriStartPopup';
@@ -52,7 +51,6 @@ const PREFAB_NAMES = {
     gameSetting:      'GameSettingPopUp',
     pickGame:         'PickGamePopup',
     topUpTransition:  'TransitionPopup',
-    featureSelection: 'FeatureSelectPopUp',
     topUpEnd:         'TopUpEndPopup',
     matsuriStart:     'MatsuriStartPopup',
     jackpotStart:     'JackpotStartPopup',
@@ -78,7 +76,6 @@ export class PopupLoader extends Component {
     private _gameSettingPopupNode: Node | null = null;
     private _pickGameNode: Node | null = null;
     private _topUpTransitionNode: Node | null = null;
-    private _featureSelectionNode: Node | null = null;
     private _topUpEndNode: Node | null = null;
     private _matsuriStartNode: Node | null = null;
     private _jackpotStartNode: Node | null = null;
@@ -101,7 +98,6 @@ export class PopupLoader extends Component {
         EventBus.instance.on(GameEvents.GAME_SETTING_OPEN,      this._onGameSettingOpen,      this);
         EventBus.instance.on(GameEvents.PICK_GAME_OPEN,          this._onPickGameOpen,          this);
         EventBus.instance.on(GameEvents.TOPUP_TRANSITION_SHOW,   this._onTopUpTransitionShow,   this);
-        EventBus.instance.on(GameEvents.FEATURE_SELECT_OPEN,     this._onFeatureSelectOpen,     this);
         EventBus.instance.on(GameEvents.TOPUP_END_POPUP,         this._onTopUpEndPopup,         this);
         EventBus.instance.on(GameEvents.MATSURI_START_POPUP,     this._onMatsuriStartPopup,     this);
         EventBus.instance.on(GameEvents.PICK_GAME_START_POPUP,   this._onJackpotStartPopup,     this);
@@ -355,14 +351,6 @@ export class PopupLoader extends Component {
         this._loadPrefab(PREFAB_NAMES.topUpTransition, (node) => {
             this._topUpTransitionNode = node;
             EventBus.instance.emit(GameEvents.TOPUP_TRANSITION_SHOW, mode);
-        });
-    }
-
-    private _onFeatureSelectOpen(payload: FeatureSelectPayload): void {
-        if (this._featureSelectionNode) return;
-        this._loadPrefab(PREFAB_NAMES.featureSelection, (node) => {
-            this._featureSelectionNode = node;
-            EventBus.instance.emit(GameEvents.FEATURE_SELECT_OPEN, payload);
         });
     }
 

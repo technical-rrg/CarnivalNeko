@@ -5,7 +5,6 @@
  * Hỗ trợ đầy đủ feature mới:
  *  - Wild Trail (reel 1/2/3), Sticky Red/Yellow/Green, +1 Spin
  *  - Long Spin trigger (3+ Red trên reel 0..3)
- *  - Feature Select (6+ Red trên grid)
  *  - Re-Spin (Top Up) — sticky lock, có thể +1 Spin
  *  - Free Spin (8 spin, yellow wild reel 1/2/3)
  *  - Pot Win + Pick Game (4 tier jackpot)
@@ -23,10 +22,6 @@ import {
     ServerEnterResponse,
     ServerJackpotResponse,
     ServerPickResponse,
-    SelectFeatureResponse,
-    ForceFeatureEntryData,
-    pickForcedStickyValue,
-    FEATURE_ENTRY_REQUIRED_STICKY,
     TrailColor,
     CarnivalTrailHit,
     CarnivalPotLevels,
@@ -75,7 +70,7 @@ export class MockDataProvider {
 
         if (mode === 'respin')                     return MockDataProvider._generateRespin();
         if (mode === 'matsuri')                    return MockDataProvider._generateMatsuri();
-        if (mode === 'freespin' || mode === 'freespin_gold') return MockDataProvider._generateFreeSpin();
+        if (mode === 'freespin') return MockDataProvider._generateFreeSpin();
         return MockDataProvider._generateNormal();
     }
 
@@ -122,11 +117,6 @@ export class MockDataProvider {
             ? MockDataProvider._buildRedStickies(grid, totalBet)
             : [];
         let nextStage = SlotStageType.SPIN;
-
-        // Khi đang test Carnival Trail — bỏ Feature Select / Pot Win GoF để không chen flow
-        if (!MOCK_FORCE_CARNIVAL_TRAILS && redCount >= 6) {
-            nextStage = SlotStageType.FEATURE_SELECT_START;
-        }
 
         let potVisualLevel = data.potLevel;
         if (!MOCK_FORCE_CARNIVAL_TRAILS && nextStage === SlotStageType.SPIN && wildTrailCount > 0) {
@@ -574,63 +564,6 @@ export class MockDataProvider {
         return { redCount, redReels: Array.from(redReelsSet).sort(), wildTrailCount };
     }
 
-    private static _buildFeatureTriggerRands(strips: number[][], minRedCount: number): number[] {
-        const picks = strips.map((strip) => {
-            if (strip.length === 0) return { center: 0, redCount: 0, maxCenter: 0, maxRedCount: 0 };
-
-            let singleCenter = -1;
-            let maxCenter = 0;
-            let maxRedCount = -1;
-            let maxHasMidRed = false;
-
-            for (let center = 0; center < strip.length; center++) {
-                const len = strip.length;
-                const visible = [
-                    strip[((center - 1) % len + len) % len],
-                    strip[center],
-                    strip[(center + 1) % len],
-                ];
-                const redCount = visible.filter(s => s === SymbolId.STICKY_RED).length;
-                const hasMidRed = strip[center] === SymbolId.STICKY_RED;
-
-                if (redCount === 1 && hasMidRed && singleCenter < 0) {
-                    singleCenter = center;
-                }
-                if (redCount > maxRedCount || (redCount === maxRedCount && hasMidRed && !maxHasMidRed)) {
-                    maxCenter = center;
-                    maxRedCount = redCount;
-                    maxHasMidRed = hasMidRed;
-                }
-            }
-
-            const center = singleCenter >= 0 ? singleCenter : maxCenter;
-            const redCount = singleCenter >= 0 ? 1 : maxRedCount;
-            return { center, redCount, maxCenter, maxRedCount };
-        });
-
-        let totalReds = picks.reduce((sum, pick) => sum + pick.redCount, 0);
-        while (totalReds < minRedCount) {
-            let bestIndex = -1;
-            let bestGain = 0;
-            for (let i = 0; i < picks.length; i++) {
-                const gain = picks[i].maxRedCount - picks[i].redCount;
-                if (gain > bestGain) {
-                    bestGain = gain;
-                    bestIndex = i;
-                }
-            }
-            if (bestIndex < 0) break;
-            picks[bestIndex].center = picks[bestIndex].maxCenter;
-            picks[bestIndex].redCount = picks[bestIndex].maxRedCount;
-            totalReds += bestGain;
-        }
-
-        if (totalReds < minRedCount) {
-            console.warn(`[MockDataProvider] Feature trigger rands only produce ${totalReds}/${minRedCount} real reds. Check DEFAULT_REEL_STRIPS red adjacency.`);
-        }
-        return picks.map(pick => pick.center);
-    }
-
     private static _buildRedStickies(grid: number[][], totalBet: number): StickyCell[] {
         const out: StickyCell[] = [];
         for (let r = 0; r < grid.length; r++) {
@@ -879,122 +812,6 @@ export class MockDataProvider {
                     stickyCells: longStickies,
                 });
             }
-
-            case TestScenario.FEATURE_TRIGGER_RESPIN: {
-                // 6+ Red: dùng rands trỏ vào STICKY_RED trên strip → visual khớp
-                // Mỗi reel có 2 Red, center=Red → mid row hiện Red. Với 5 reel × mid=Red → ít nhất 5.
-                // Thêm Red ở adjacent row (top/bot) để đạt >= 6.
-                const strips = data.getReelStrips(false);
-                const featureRands = MockDataProvider._buildFeatureTriggerRands(strips, 6);
-                const featureGrid = data.getBaseGrid(featureRands, false);
-                const { redCount: frc, redReels: frr } = MockDataProvider._countSpecials(featureGrid);
-                const stickies = MockDataProvider._buildRedStickies(featureGrid, totalBet);
-                return enrich({
-                    rands: featureRands,
-                    waysPayWins: [], matchedLinePays: [],
-                    totalBet, totalWin: 0, updateCash: true,
-                    nextStage: SlotStageType.FEATURE_SELECT_START,
-                    redCount: frc,
-                    redReels: frr.length >= 3 ? frr : [0, 1, 2, 3, 4],
-                    stickyCells: stickies,
-                });
-            }
-
-            case TestScenario.FEATURE_TRIGGER_FREESPIN: {
-                // 7+ Red: tương tự RESPIN nhưng cần nhiều hơn
-                const strips2 = data.getReelStrips(false);
-                const fsRands = MockDataProvider._buildFeatureTriggerRands(strips2, 7);
-                const fsGrid = data.getBaseGrid(fsRands, false);
-                const { redCount: fsrc, redReels: fsrr } = MockDataProvider._countSpecials(fsGrid);
-                const fsStickies = MockDataProvider._buildRedStickies(fsGrid, totalBet);
-                return enrich({
-                    rands: fsRands,
-                    waysPayWins: [], matchedLinePays: [],
-                    totalBet, totalWin: 0, updateCash: true,
-                    nextStage: SlotStageType.FEATURE_SELECT_START,
-                    redCount: fsrc,
-                    redReels: fsrr.length >= 3 ? fsrr : [0, 1, 2, 3],
-                    stickyCells: fsStickies,
-                });
-            }
-
-            case TestScenario.FEATURE_GAUGE_WARMUP: {
-                // Spin 1 test: có Red trên reel + gauge sáng, KHÔNG vào Feature.
-                const strips = data.getReelStrips(false);
-                const rands = [
-                    findMidRand(strips[0] ?? [], SymbolId.STICKY_RED),
-                    findMidRand(strips[1] ?? [], SymbolId.STICKY_RED),
-                    findMidRand(strips[2] ?? [], SymbolId.STICKY_RED),
-                    findNoSymbolRand(strips[3] ?? [], SymbolId.STICKY_RED),
-                    findNoSymbolRand(strips[4] ?? [], SymbolId.STICKY_RED),
-                ];
-                const grid = data.getBaseGrid(rands, false);
-                const stickies = MockDataProvider._buildRedStickies(grid, totalBet);
-                const earned = stickies.length;
-                return enrich({
-                    rands,
-                    waysPayWins: [], matchedLinePays: [],
-                    totalBet, totalWin: 0, updateCash: true,
-                    nextStage: SlotStageType.SPIN,
-                    redCount: earned,
-                    stickyCells: stickies,
-                    naturalStickyCount: earned,
-                    wildCount: earned,
-                    stickyEarnedThisSpin: earned,
-                    potVisualLevel: 2,
-                    potCount: 40,
-                    stickyAccumulated: 40,
-                    lightingStage: 3,
-                });
-            }
-
-            case TestScenario.FORCE_FEATURE_ENTRY: {
-                // ★ Force Feature Entry demo: đúng 2 Red tự nhiên (reel 0+1 mid), 4 ô còn lại do StickyFillEffect đổ.
-                const strips = data.getReelStrips(false);
-                const naturalRands = [
-                    findMidRand(strips[0] ?? [], SymbolId.STICKY_RED),
-                    findMidRand(strips[1] ?? [], SymbolId.STICKY_RED),
-                    findNoSymbolRand(strips[2] ?? [], SymbolId.STICKY_RED),
-                    findNoSymbolRand(strips[3] ?? [], SymbolId.STICKY_RED),
-                    findNoSymbolRand(strips[4] ?? [], SymbolId.STICKY_RED),
-                ];
-                const naturalGrid = data.getBaseGrid(naturalRands, false);
-                const existingCells = MockDataProvider._buildRedStickies(naturalGrid, totalBet);
-                const naturalCount = existingCells.length;
-
-                const occupied = new Set(existingCells.map(c => `${c.reel}-${c.row}`));
-                const fillCells: StickyCell[] = [];
-                for (let r = 0; r < 5 && existingCells.length + fillCells.length < FEATURE_ENTRY_REQUIRED_STICKY; r++) {
-                    for (let row = 0; row < 3 && existingCells.length + fillCells.length < FEATURE_ENTRY_REQUIRED_STICKY; row++) {
-                        if (naturalGrid[r][row] === SymbolId.STICKY_RED) continue;
-                        const key = `${r}-${row}`;
-                        if (occupied.has(key)) continue;
-                        occupied.add(key);
-                        fillCells.push({
-                            reel: r, row, symbolId: SymbolId.STICKY_RED,
-                            credit: pickForcedStickyValue() * (totalBet || 1),
-                        });
-                    }
-                }
-
-                const force: ForceFeatureEntryData = { existingCells, fillCells, naturalCount };
-                return enrich({
-                    rands: naturalRands,
-                    waysPayWins: [], matchedLinePays: [],
-                    totalBet, totalWin: 0, updateCash: true,
-                    nextStage: SlotStageType.FEATURE_SELECT_START,
-                    redCount: naturalCount,
-                    stickyCells: existingCells,
-                    naturalStickyCount: naturalCount,
-                    wildCount: naturalCount,
-                    stickyEarnedThisSpin: naturalCount,
-                    potCount: 60,
-                    stickyAccumulated: 60,
-                    isForcedFeatureEntry: true,
-                    forceFeatureEntry: force,
-                });
-            }
-
             case TestScenario.POT_WIN: {
                 // Wild (con dơi, id=8) nằm ở reel 1/2/3 trong strip
                 // Tìm rands thực → visual hiện Wild → Wild Trail animation khớp
@@ -1031,29 +848,6 @@ export class MockDataProvider {
                     pickGame: pick,
                 });
             }
-
-            case TestScenario.WILD_TRAIL_ONE: {
-                // Mỗi spin có 2 wild (reel 1 + reel 2 mid), nextStage=SPIN — dùng để test tích lũy Pot
-                const strips = data.getReelStrips(false);
-                const rands = [
-                    0,
-                    findMidRand(strips[1] ?? [], SymbolId.WILD),   // Reel 1: mid = Wild
-                    findMidRand(strips[2] ?? [], SymbolId.WILD),   // Reel 2: mid = Wild
-                    0,
-                    0,
-                ];
-                const grid = data.getBaseGrid(rands, false);
-                const wins = WaysPayCalculator.calculate(grid, totalBet);
-                return enrich({
-                    rands,
-                    waysPayWins: wins,
-                    matchedLinePays: MockDataProvider._toLegacyLinePays(wins),
-                    totalBet, totalWin: WaysPayCalculator.totalWin(wins), updateCash: true,
-                    nextStage: SlotStageType.SPIN,   // ★ Không force POT_WIN — để GameManager tích lũy
-                    wildTrailCount: 2,               // Báo cho GameManager: spin này có 2 wild
-                });
-            }
-
             case TestScenario.NO_WIN:
             default:
                 return enrich({
@@ -1069,17 +863,10 @@ export class MockDataProvider {
 // ─── TEST SCENARIO ENUM ───
 
 export enum TestScenario {
-    WILD_TRAIL_ONE           = 'wild_trail_one',      // 1 wild/spin, nextStage=SPIN (test tích lũy)
     NO_WIN                   = 'no_win',
     NORMAL_WIN               = 'normal_win',
     BIG_WIN                  = 'big_win',
     LONG_SPIN_TRIGGER        = 'long_spin_trigger',
-    FEATURE_TRIGGER_RESPIN   = 'feature_respin',
-    FEATURE_TRIGGER_FREESPIN = 'feature_freespin',
-    /** Spin 1: Red + gauge sáng (không Feature). Spin 2: Force Feature Entry. */
-    FEATURE_GAUGE_WARMUP       = 'feature_gauge_warmup',
-    /** ★ Force Feature Entry: Sticky tự nhiên < 6 → hệ thống đổ đủ 6 (guide + sticky fill). */
-    FORCE_FEATURE_ENTRY      = 'force_feature_entry',
     POT_WIN                  = 'pot_win',
     GRAND_JACKPOT            = 'grand_jackpot',
 }
@@ -1088,7 +875,7 @@ export enum TestScenario {
 //
 // Cách dùng trong GameManager.onLoad():
 //   import { ForcedMockAdapter, TestScenario } from '../data/MockDataProvider';
-//   NetworkManager.instance.setAdapter(new ForcedMockAdapter(TestScenario.FEATURE_TRIGGER_RESPIN));
+//   NetworkManager.instance.setAdapter(new ForcedMockAdapter(TestScenario.NORMAL_WIN));
 
 export class ForcedMockAdapter implements INetworkAdapter {
     private _scenario: TestScenario;
@@ -1159,13 +946,6 @@ export class ForcedMockAdapter implements INetworkAdapter {
     async sendCashRaceMyRankGetFirst(): Promise<any | null> { return null; }
     async sendCashRaceMyRankGetPage(_pageItemCnt?: number, _startRank?: number): Promise<any | null> { return null; }
     async sendLogout(): Promise<void> {}
-    async sendSelectFeature(nextStage: SlotStageType, reelIndex: number = 0): Promise<SelectFeatureResponse> {
-        await this._delay(50);
-        const remain = nextStage === SlotStageType.TOPUP_SPIN_START
-            ? 6
-            : (reelIndex >= 2 && reelIndex <= 6 ? 20 - (reelIndex - 2) * 2 : 8);
-        return { nextStage, remainFeatureSpinCount: remain, reelIndex };
-    }
 
     async sendPickRequest(_pickIndex: number): Promise<ServerPickResponse> {
         await this._delay(100);

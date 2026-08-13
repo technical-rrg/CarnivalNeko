@@ -257,9 +257,9 @@ export class TopUpAbsorbEffect extends Component {
         }
     }
 
-    // ── PUBLIC: chia sẻ fly pool với FreeSpinGoldCoinEffect ──────────────────
+    // ── PUBLIC: chia sẻ fly pool với effect khác ─────────────────────────────
 
-    /** Mượn 1 fly effect node từ pool để dùng ngoài class này (vd. FreeSpinGoldCoinEffect). */
+    /** Mượn 1 fly effect node từ pool để dùng ngoài class này. */
     public borrowFlyEffect(): Node | null {
         return this._borrowEffect(this._flyPool, this.flyEffectTemplate, 'flyPool[shared]');
     }

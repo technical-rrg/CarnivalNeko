@@ -230,9 +230,7 @@ export class GameData {
      * StickyAccumulated từ server — dùng tính lighting stage gauge (10 ô).
      * Chỉ track Normal Spin; reset khi vào feature (server gửi 0).
      */
-    featureGaugeAccumulated: number = 0;
     /** Lighting stage hiện tại của gauge (0..10). */
-    featureGaugeStage: number = 0;
 
     /** Pick Game state hiện tại (active khi `gameStage = PICK_GAME`). */
     pickGameState: import('./SlotTypes').PickGameState | null = null;
@@ -241,7 +239,7 @@ export class GameData {
     pickGameWinAmount: number = 0;
 
     /** Feature mode đang active để Mock API biết generate strip nào. */
-    currentMode: 'normal' | 'respin' | 'freespin' | 'freespin_gold' | 'matsuri' = 'normal';
+    currentMode: 'normal' | 'respin' | 'freespin' | 'matsuri' = 'normal';
 
     /** Matsuri Hold&Spin — số hàng grid (3|4|5). */
     matsuriRows: number = 3;
@@ -453,7 +451,7 @@ export class GameData {
      * legacy `stripIndex === 3 → respin` (respin strips chứa Green Sticky + +1).
      */
     getReelStrips(isFreeSpin: boolean = false, stripIndex?: number): number[][] {
-        const isFsMode = isFreeSpin || this.currentMode === 'freespin' || this.currentMode === 'freespin_gold';
+        const isFsMode = isFreeSpin || this.currentMode === 'freespin';
 
         if (stripIndex != null) {
             // Free Spin (kể cả tier 2–6) trước mọi shortcut TopUp/Re-Spin.
@@ -491,7 +489,7 @@ export class GameData {
 
     /** Raw PS strips cùng mode với getReelStrips(), dùng cho payout/jackpot debug chính xác. */
     getRawPsStrips(isFreeSpin: boolean = false, stripIndex?: number): number[][] {
-        const isFsMode = isFreeSpin || this.currentMode === 'freespin' || this.currentMode === 'freespin_gold';
+        const isFsMode = isFreeSpin || this.currentMode === 'freespin';
         const purchaseOrNormal = this.rawPsPurchaseReelStrips.length > 0
             ? this.rawPsPurchaseReelStrips
             : this.rawPsStrips;
@@ -576,8 +574,6 @@ export class GameData {
         this.freeSpinGoldRemaining = 0;
         this.freeSpinGoldTotalWin = 0;
         this.selectedFreeSpinReelIndex = null;
-        this.featureGaugeAccumulated = 0;
-        this.featureGaugeStage = 0;
     }
 
     /** Reset server session (khi logout hoặc reconnect) */

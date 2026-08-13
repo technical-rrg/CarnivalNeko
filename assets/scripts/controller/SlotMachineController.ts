@@ -1085,9 +1085,7 @@ export class SlotMachineController extends Component {
         // ★ Progressive Long Spin: tính toán reel nào cần long spin dựa trên tổng red SYMBOLS
         if (this._isLongSpinActive) {
             // Force Feature Entry: chỉ đếm existingCells — fillCells chưa nằm trên grid
-            const stickyCells = (response.isForcedFeatureEntry && response.forceFeatureEntry)
-                ? (response.forceFeatureEntry.existingCells ?? [])
-                : (response.stickyCells ?? []);
+            const stickyCells = response.stickyCells ?? [];
             const redCountPerReel: number[] = new Array(this.reels.length).fill(0);
             for (const cell of stickyCells) {
                 if (cell.symbolId === SymbolId.STICKY_RED && cell.reel >= 0 && cell.reel < this.reels.length) {

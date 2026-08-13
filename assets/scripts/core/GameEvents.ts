@@ -49,17 +49,7 @@ export const GameEvents = {
     /** Cycling từng way một (payload: WaysPayWin) */
     WIN_CYCLE_ONE_WAY: 'win:cycle:one:way',
 
-    // ─── WILD TRAIL + POT (Gold of Fortune — legacy single pot) ───
-    /** Bat/Wild symbol vừa land — bắt đầu hiệu ứng bay vào hũ.
-     *  Payload: { positions: {reel:number, row:number}[], count: number } */
-    WILD_TRAIL_START: 'wildtrail:start',
-    /** Một reel vừa dừng và có Wild — bay ngay con dơi đó vào hũ.
-     *  Payload: { reel: number, row: number } */
-    WILD_TRAIL_ONE: 'wildtrail:one',
-    /** Một con dơi vừa đến hũ (particle landing) — pot bounce ngay lập tức. No payload. */
-    WILD_TRAIL_ONE_HIT: 'wildtrail:one:hit',
-    /** Tất cả particle đã bay vào hũ xong — pot có thể cập nhật level */
-    WILD_TRAIL_FLY_DONE: 'wildtrail:fly:done',
+    // ─── POT (legacy single pot / Pick) ───
     /** Pot level hoặc tổng counter thay đổi. Payload: { level:number, total:number } */
     POT_LEVEL_CHANGED: 'pot:level:changed',
     /** Server trigger pot win — bắt đầu animation intro hũ. No payload. */
@@ -328,18 +318,7 @@ export const GameEvents = {
     /** Hiển thị system popup thông báo lỗi — payload: SystemPopupPayload */
     SHOW_SYSTEM_POPUP: 'ui:system:popup',
 
-    // ─── FEATURE SELECTION (6 Red → chọn TopUp + 5 tier Free Spin) ───
-    /** Mở popup Feature Selection — payload: { sumCredit, stickyCells, options? } */
-    FEATURE_SELECT_OPEN: 'feature:select:open',
-    /** Người chơi chọn 1 trong 6 option — payload: { option, onAccepted?, onRejected? } */
-    FEATURE_SELECT_CHOICE: 'feature:select:choice',
-    /** @deprecated Dùng FEATURE_SELECT_CHOICE */
-    FEATURE_SELECT_RESPIN: 'feature:select:respin',
-    /** @deprecated Dùng FEATURE_SELECT_CHOICE */
-    FEATURE_SELECT_FREESPIN: 'feature:select:freespin',
-    /** Popup Feature Selection đóng xong (sau khi người chơi chọn). No payload. */
-    FEATURE_SELECT_CLOSE: 'feature:select:close',
-    /** Tất cả STICKY_RED symbol trên màn hình nhún nhẹ cùng lúc (trước khi fly-in). No payload. */
+    /** Tất cả STICKY_RED symbol trên màn hình nhún nhẹ cùng lúc. No payload. */
     RED_SYMBOL_BOUNCE: 'feature:red:bounce',
     /** Tất cả Sticky đỏ vừa land đã zoom/bounce xong — GameManager mới được highlight win. No payload. */
     STICKY_RED_LAND_BOUNCE_DONE: 'feature:red:land:bounce:done',
@@ -351,19 +330,6 @@ export const GameEvents = {
      * UI component (EachWinDisplay) listen event này để hiện running total.
      */
     RED_CREDIT_UPDATED: 'feature:red:credit:updated',
-
-    /**
-     * Bắt đầu animation bay credit label vào EachWin node.
-     * payload: { stickyCells: StickyCell[], sumCredit: number }
-     * CreditFlyInEffect component listen event này.
-     */
-    CREDIT_FLY_IN_START: 'feature:credit:fly:start',
-
-    /**
-     * Animation bay credit hoàn tất — tất cả credit đã bay vào EachWin.
-     * No payload. GameManager listen để mở FeatureSelectionPopup.
-     */
-    CREDIT_FLY_IN_DONE: 'feature:credit:fly:done',
 
     // ─── TOPUP GAME ───
     /** Hiện transition popup. Payload: TransitionMode (FreeSpin | TopUp | PickGame). */
@@ -400,14 +366,8 @@ export const GameEvents = {
     FREE_SPIN_GOLD_END: 'freespin:gold:end',
     /** Số lượt quay FreeSpin Gold còn lại thay đổi — payload: count: number */
     FREE_SPIN_GOLD_COUNT_UPDATED: 'freespin:gold:count:updated',
-    /** Đồng xu vàng hạ cánh sau khi reel dừng — payload: { cells: StickyCell[] } */
-    FREE_SPIN_GOLD_COIN_LAND: 'freespin:gold:coin:land',
     /** 1 đồng xu vàng vừa hút xong — cộng credit vào tổng — payload: { credit: number } */
     FREE_SPIN_GOLD_ABSORB_CREDIT: 'freespin:gold:absorb:credit',
-    /** Win của mỗi spin FreeSpin Gold (payline) — payload: eachWin: number */
-    FREE_SPIN_GOLD_EACH_WIN: 'freespin:gold:each:win',
-    /** Tất cả đồng xu vàng đã bay xong + zoom bounce highlight xong — GameManager dùng để phát WIN_PRESENT_START */
-    FREE_SPIN_GOLD_FLY_DONE: 'freespin:gold:fly:done',
 
     // ─── POPUP TRACKING (dùng để block Space key) ───
     /** Bất kỳ popup nào mở ra — dùng để block phím Space */
@@ -415,35 +375,4 @@ export const GameEvents = {
     /** Bất kỳ popup nào đóng lại */
     POPUP_CLOSED: 'ui:popup:closed',
 
-    // ─── FEATURE ENTRY LOGIC ADDED — Reel UI Gauge (chữ tượng hình 2 cột) ───
-    /**
-     * Cập nhật gauge sau mỗi Normal Spin (đọc StickyAccumulated/StickyEarned từ server).
-     * payload: { stage, accumulated (=StickyAccumulated), earned (=StickyEarned), animate }
-     */
-    FEATURE_GAUGE_UPDATE: 'feature:gauge:update',
-    /** Reset gauge về 0 khi vào feature (server StickyAccumulated=0). No payload. */
-    FEATURE_GAUGE_RESET: 'feature:gauge:reset',
-    /** 1 đèn gauge vừa bật — dùng để trigger rung Pot ở giữa. payload: { stage: number } */
-    FEATURE_GAUGE_LIGHT_ON: 'feature:gauge:light:on',
-
-    // ─── FEATURE ENTRY LOGIC ADDED — Force Feature Entry (Sticky < 6 → đổ đủ 6) ───
-    /**
-     * Bắt đầu chuỗi hiệu ứng Force Feature Entry.
-     * payload: ForceFeatureEntryData — orchestrator (FeatureEntryController) chạy:
-     *   guide (nữ thần) → sticky fill (Pot charge → orb → convert) rồi emit DONE.
-     */
-    FORCE_FEATURE_ENTRY_START: 'feature:force-entry:start',
-    /** Toàn bộ chuỗi Force Feature Entry xong → GameManager tiếp tục credit-fly + popup. */
-    FORCE_FEATURE_ENTRY_DONE: 'feature:force-entry:done',
-    /** Hiệu ứng nữ thần dẫn dắt hiện (Appear→Hold→Exit). No payload. */
-    FEATURE_ENTRY_GUIDE_SHOW: 'feature:entry:guide:show',
-    /** Hiệu ứng nữ thần kết thúc (light burst white-out xong). No payload. */
-    FEATURE_ENTRY_GUIDE_DONE: 'feature:entry:guide:done',
-    /**
-     * Bắt đầu hiệu ứng đổ Sticky (Pot charge → orb → lodge → convert).
-     * payload: ForceFeatureEntryData
-     */
-    STICKY_FILL_START: 'feature:sticky-fill:start',
-    /** Đổ Sticky xong (đã convert đủ 6). No payload. */
-    STICKY_FILL_DONE: 'feature:sticky-fill:done',
 } as const;

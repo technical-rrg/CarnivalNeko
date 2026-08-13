@@ -15,7 +15,7 @@
  *   4. Xóa StickyOverlay khỏi Base — không còn reference Prefab trên Base.
  *
  * ── FLOW ──
- *   GameManager._enterTopUp / resume → await ensureLoaded()
+ *   GameManager TopUp prepare / resume → await ensureLoaded()
  *   → emit TOPUP_START (overlay + TopUpManager đã sẵn sàng)
  *   TOPUP_END → unload() destroy instance
  */

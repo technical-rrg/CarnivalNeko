@@ -833,7 +833,7 @@ export class SymbolView extends Component {
         Tween.stopAllByTarget(this.node);
 
         // Play sound when a sticky yellow coin lands in FreeSpin Gold
-        if (this._currentSymbolId === SymbolId.STICKY_YELLOW && GameData.instance.currentMode === 'freespin_gold') {
+        if (this._currentSymbolId === SymbolId.STICKY_YELLOW && GameData.instance.currentMode === 'freespin') {
             SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
         }
 

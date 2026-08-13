@@ -262,19 +262,13 @@ export class SymbolHighlighter extends Component {
         bus.on(GameEvents.LONG_SPIN_JACKPOT_REVEAL, this._onLongSpinJackpotReveal, this);
         // Bonus reveal: highlight symbol Bonus trước khi FreeSpinPopup hiện
         bus.on(GameEvents.FREE_SPIN_BONUS_REVEAL, this._onBonusReveal, this);
-        // Feature Select popup hiện → cleanup spine/credit labels ngay (sớm hơn FREE_SPIN_START)
-        bus.on(GameEvents.FEATURE_SELECT_OPEN, this._onFeatureSelectOpen, this);
-        bus.on(GameEvents.CREDIT_FLY_IN_START, this._onFeatureSelectOpen, this);
-        // FeatureEntryGuide xuất hiện → tắt highlight symbol ngay trước khi guide chạy
-        bus.on(GameEvents.FORCE_FEATURE_ENTRY_START, this._onFeatureSelectOpen, this);
-        bus.on(GameEvents.FEATURE_ENTRY_GUIDE_SHOW, this._onFeatureSelectOpen, this);
         // Carnival Feature (Normal + lineWin cùng spin) → clear spine/highlight ngay khi pot burst
         bus.on(GameEvents.CARNIVAL_POT_BURST, this._onFeatureSelectOpen, this);
         bus.on(GameEvents.MATSURI_START_POPUP, this._onFeatureSelectOpen, this);
         bus.on(GameEvents.CARNIVAL_MATSURI_START, this._onFeatureGameStart, this);
         bus.on(GameEvents.PICK_GAME_OPEN, this._onPickGameBoundary, this);
         bus.on(GameEvents.PICK_GAME_CLOSE, this._onPickGameBoundary, this);
-        // Red symbol bounce trước khi fly-in (6+ Red → feature)
+        // Red symbol bounce (kept for sticky red land FX)
         bus.on(GameEvents.RED_SYMBOL_BOUNCE, this._onRedSymbolBounce, this);
 
         // Chặn match SFX khi cycle line lẻ nếu đang có popup / feature flow
@@ -284,16 +278,12 @@ export class SymbolHighlighter extends Component {
         bus.on(GameEvents.PROGRESSIVE_WIN_END, this._onMatchSfxBlockEnd, this);
         bus.on(GameEvents.PICK_GAME_OPEN, this._onMatchSfxBlockBegin, this);
         bus.on(GameEvents.PICK_GAME_CLOSE, this._onMatchSfxBlockEnd, this);
-        bus.on(GameEvents.FEATURE_SELECT_OPEN, this._onMatchSfxBlockBegin, this);
-        bus.on(GameEvents.FEATURE_SELECT_CLOSE, this._onMatchSfxBlockEnd, this);
         bus.on(GameEvents.FREE_SPIN_END_POPUP, this._onMatchSfxBlockBegin, this);
         bus.on(GameEvents.FREE_SPIN_END_POPUP_CLOSED, this._onMatchSfxBlockEnd, this);
         bus.on(GameEvents.TOPUP_END_POPUP, this._onMatchSfxBlockBegin, this);
         bus.on(GameEvents.TOPUP_END_POPUP_CLOSED, this._onMatchSfxBlockEnd, this);
         bus.on(GameEvents.TOPUP_TRANSITION_SHOW, this._onMatchSfxBlockBegin, this);
         bus.on(GameEvents.TOPUP_TRANSITION_DONE, this._onMatchSfxBlockEnd, this);
-        bus.on(GameEvents.FORCE_FEATURE_ENTRY_START, this._onMatchSfxBlockBegin, this);
-        bus.on(GameEvents.FORCE_FEATURE_ENTRY_DONE, this._onMatchSfxBlockEnd, this);
         bus.on(GameEvents.FREE_SPIN_POPUP, () => { this._blockingFreeSpinPopup = true; }, this);
         bus.on(GameEvents.FREE_SPIN_START, () => { this._blockingFreeSpinPopup = false; }, this);
     }
@@ -735,8 +725,7 @@ export class SymbolHighlighter extends Component {
     }
 
     private _isFreeSpinMode(): boolean {
-        const mode = GameData.instance.currentMode;
-        return mode === 'freespin' || mode === 'freespin_gold';
+        return GameData.instance.currentMode === 'freespin';
     }
 
     /** Path prefab trong MainBundle cho SymbolId (Inspector override → default map → null). */
@@ -1034,7 +1023,7 @@ export class SymbolHighlighter extends Component {
                 continue;
             }
 
-            // Nếu WildTrailController đang chạy spine (Impact/trail chưa xong) → để nó tự kết thúc,
+            // Nếu trail/impact spine đang chạy → để nó tự kết thúc,
             // không xóa. SymbolHighlighter sẽ spawn spine highlight của riêng mình lên trên.
             // Chỉ destroy nếu spine đó không còn active (đã freeze ở frame cuối).
             const wildTrailSpine = this._findSpineNodeOnNode(symbolNode);
@@ -2012,7 +2001,7 @@ export class SymbolHighlighter extends Component {
 
     /**
      * Tìm spine node (có sp.Skeleton) trong descendant của symbol node.
-     * Trả về node đó hoặc null. Dùng để replay animation khi WildTrailController đã spawn spine.
+     * Trả về node đó hoặc null. Dùng để replay animation khi trail effect đã spawn spine.
      */
     private _findSpineNodeOnNode(node: Node): Node | null {
         if (node.getComponent(sp.Skeleton)) return node;

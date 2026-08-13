@@ -148,8 +148,6 @@ export const ServerConfig = {
         CLAIM:          '/Slot/{slotId}/Claim',
         /** Pick Game — gửi PickIndex khi người chơi bấm ô */
         PICK:           '/Slot/{slotId}/Pick',
-        /** Select feature after 6+ Trail symbols (Topup / Free Spin) */
-        SELECT_FEATURE: '/Slot/{slotId}/SelectFeature',
         /** Jackpot info (poll every 2s) */
         JACKPOT:        '/Slot/{slotId}/Jackpot',
         /** HeartBeat (every 10s) */
@@ -194,11 +192,9 @@ export const ServerConfig = {
  *  'normal_win'        — Cleopatra 3-of-kind
  *  'big_win'           — Cleopatra 5×3 (243 ways combo)
  *  'long_spin'         — 3 Red sticky reel 0..2 → Long Spin
- *  'feature_respin'    — 6 Red sticky → Feature Select → Re-Spin
- *  'feature_freespin'  — 6+ Red sticky → Feature Select → Free Spin
  *  'pot_win'           — Wild Trail tích lũy → Pot Win → Pick Game
  *  'grand_jackpot'     — Pick Game match 3 Grand
- *  'sequence'          — Lần lượt: no_win → normal_win → feature_respin → big_win → long_spin
+ *  'sequence'          — Lần lượt: no_win → normal_win → big_win → long_spin
  */
 export type MockScenario =
     | 'random'
@@ -206,19 +202,11 @@ export type MockScenario =
     | 'normal_win'
     | 'big_win'
     | 'long_spin'
-    | 'feature_respin'
-    | 'feature_freespin'
-    | 'force_feature_entry' // ★ TEST: spin1 gauge (3 Red) → spin2 Force Feature Entry (2 Red + 4 orb fill)
     | 'pot_win'
     | 'grand_jackpot'
-    | 'sequence'
-    | 'wild_trail';   // ★ TEST: mỗi spin 1 wild, tích lũy dần (nextStage=SPIN, không force POT_WIN ngay)
+    | 'sequence';
 
-// ★ Đổi sang 'wild_trail' để test tích lũy Pot | 'random' để test ngẫu nhiên | 'pot_win' để test POT_WIN trigger ngay
 export const MOCK_SPIN_SCENARIO: MockScenario = 'random';
-
-/** Mock: giữ gauge sáng N giây trước reset khi Force Feature Entry (chỉ USE_REAL_API=false). 0 = reset ngay. */
-export const MOCK_GAUGE_HOLD_SEC_BEFORE_FORCE_ENTRY: number = 2;
 
 // ═══════════════════════════════════════════════════════════
 //  ★★★  DEBUG RANDS: Force server result (dùng DebugArray)  ★★★

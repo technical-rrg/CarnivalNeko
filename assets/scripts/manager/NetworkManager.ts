@@ -42,7 +42,6 @@ import {
     ServerFeatureItemGetResponse,
     ServerFeatureItemBuyResponse,
     ServerBalanceGetResponse,
-    SelectFeatureResponse,
     TopupReelSlot,
     TopupReelType,
     PickGameState,
@@ -52,11 +51,6 @@ import {
     FREE_SPIN_TIER_REEL_INDICES,
     isFreeSpinTierReelIndex,
     StickyCell,
-    ForceFeatureEntryData,
-    FEATURE_ENTRY_REQUIRED_STICKY,
-    pickForcedStickyValue,
-    isSticky,
-    gaugeStageFromAccumulated,
     TrailColor,
     ClaimResult,
     cnFreeSpinStripGroupStart,
@@ -94,8 +88,8 @@ import {
 } from '../data/ServerConfig';
 import {
     SCENARIO_NO_WIN, SCENARIO_NORMAL_WIN, SCENARIO_MULTI_LINE, SCENARIO_BIG_WIN,
-    SCENARIO_LONG_SPIN, SCENARIO_JACKPOT, FULL_FREE_SEQUENCE, FULL_FREE_JACKPOT_SEQUENCE, FULL_FREE_RETRIGGER_SEQUENCE, DEFAULT_SEQUENCE,
-    BUY_FREE_SPIN_SEQUENCE, FORCE_FEATURE_ENTRY_SEQUENCE,
+    SCENARIO_LONG_SPIN, SCENARIO_JACKPOT, FULL_FREE_RETRIGGER_SEQUENCE, DEFAULT_SEQUENCE,
+    BUY_FREE_SPIN_SEQUENCE,
     MOCK_RESUME_NORMAL_SPIN, MOCK_RESUME_FREE_SPIN_MID, MOCK_RESUME_FREE_SPIN_NEED_CLAIM,
     MOCK_RESUME_FREE_SPIN_JACKPOT_MID, MOCK_RESUME_BUY_FREE_SPIN_MID, MOCK_RESUME_BUY_FREE_SPIN_NEED_CLAIM,
     MOCK_RESUME_TOPUP_MID, MOCK_RESUME_TOPUP_NEED_CLAIM, MOCK_RESUME_PICK_GAME,
@@ -319,8 +313,6 @@ export interface INetworkAdapter {
     enterGame(): Promise<ServerEnterResponse>;
     /** Spin request */
     sendSpinRequest(isFreeSpin: boolean): Promise<SpinResponse>;
-    /** Select Topup / FreeSpin after FEATURE_SELECT */
-    sendSelectFeature(nextStage: SlotStageType, reelIndex?: number): Promise<SelectFeatureResponse>;
     /** Pick Game — gửi PickIndex khi người chơi bấm ô */
     sendPickRequest(pickIndex: number): Promise<ServerPickResponse>;
     /** Claim winnings (free spin kết thúc, pick game, etc.) */
@@ -350,96 +342,6 @@ export interface INetworkAdapter {
     sendLogout(): Promise<void>;
 }
 
-// ─── Gauge API field helpers (StickyAccumulated / StickyEarned) ─────────────
-/** Normal-spin only. Sticky* là nguồn chính; PotCount/WildCount chỉ fallback legacy. */
-const GAUGE_ACCUMULATED_KEYS = [
-    'StickyAccumulated', 'stickyAccumulated',
-    'PotCount', 'potCount',
-] as const;
-const GAUGE_EARNED_KEYS = [
-    'StickyEarned', 'stickyEarned', 'StickyEarnedCount', 'stickyEarnedCount',
-    'WildCount', 'wildCount',
-] as const;
-
-interface GaugePick {
-    value: number;
-    key: string;
-    sourceIndex: number;
-}
-
-function _pickGaugeNumberWithKey(src: any, keys: readonly string[]): { value: number; key: string } | undefined {
-    if (!src || typeof src !== 'object') return undefined;
-    for (const k of keys) {
-        const v = src[k];
-        if (typeof v === 'number' && Number.isFinite(v)) return { value: v, key: k };
-        if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) {
-            return { value: Number(v), key: k };
-        }
-    }
-    return undefined;
-}
-
-function _pickGaugeNumber(src: any, keys: readonly string[]): number | undefined {
-    return _pickGaugeNumberWithKey(src, keys)?.value;
-}
-
-/** Ưu tiên nguồn đầu tiên có giá trị: Res → LastSpinResponse → Ack root. */
-function resolveGaugeApiFields(...sources: any[]): {
-    /** StickyAccumulated (cumulative Red Sticky) — drive 10 ô gauge. */
-    stickyAccumulated?: number;
-    /** StickyEarned (Red Sticky landed this spin). */
-    stickyEarned?: number;
-    accumulatedPick?: GaugePick;
-    earnedPick?: GaugePick;
-    /** @deprecated alias — giữ tương thích call site cũ. */
-    potCount?: number;
-    /** @deprecated alias — giữ tương thích call site cũ. */
-    wildCount?: number;
-    potPick?: GaugePick;
-    wildPick?: GaugePick;
-} {
-    let accumulatedPick: GaugePick | undefined;
-    let earnedPick: GaugePick | undefined;
-    for (let i = 0; i < sources.length; i++) {
-        const src = sources[i];
-        if (!accumulatedPick) {
-            const p = _pickGaugeNumberWithKey(src, GAUGE_ACCUMULATED_KEYS);
-            if (p) accumulatedPick = { ...p, sourceIndex: i };
-        }
-        if (!earnedPick) {
-            const w = _pickGaugeNumberWithKey(src, GAUGE_EARNED_KEYS);
-            if (w) earnedPick = { ...w, sourceIndex: i };
-        }
-        if (accumulatedPick && earnedPick) break;
-    }
-    return {
-        stickyAccumulated: accumulatedPick?.value,
-        stickyEarned: earnedPick?.value,
-        accumulatedPick,
-        earnedPick,
-        potCount: accumulatedPick?.value,
-        wildCount: earnedPick?.value,
-        potPick: accumulatedPick,
-        wildPick: earnedPick,
-    };
-}
-
-/** GoF FeatureGauge debug — tắt (Carnival Neko dùng 3 Pot, không có StickyAccumulated). */
-function logFeatureGauge(
-    _stickyAccumulated?: number,
-    _stickyEarned?: number,
-    _detail?: {
-        accumulatedPick?: GaugePick;
-        earnedPick?: GaugePick;
-        potPick?: GaugePick;
-        wildPick?: GaugePick;
-        sources?: any[];
-        sourceLabels?: string[];
-    },
-): void {
-    // no-op
-}
-
 // ═══════════════════════════════════════════════════════════
 //  MOCK ADAPTER (offline dev/test — dùng MockScenariosData)
 // ═══════════════════════════════════════════════════════════
@@ -460,15 +362,6 @@ class MockNetworkAdapter implements INetworkAdapter {
 
     /** Log gauge từ mock SpinResponse (stickyAccumulated / stickyEarned). */
     private _finishMockSpin(resp: SpinResponse): SpinResponse {
-        if (GameData.instance.currentMode === 'normal' && (resp.reelIndex ?? 0) === 0) {
-            const g = resolveGaugeApiFields(resp);
-            logFeatureGauge(g.stickyAccumulated, g.stickyEarned, {
-                accumulatedPick: g.accumulatedPick,
-                earnedPick: g.earnedPick,
-                sources: [resp],
-                sourceLabels: ['MockSpin'],
-            });
-        }
         return resp;
     }
     private _savedQueueIdx: number = 0;
@@ -492,11 +385,7 @@ class MockNetworkAdapter implements INetworkAdapter {
             case 'normal_win':          this._queue = [SCENARIO_NORMAL_WIN];             break;
             case 'big_win':             this._queue = [SCENARIO_BIG_WIN];               break;
             case 'long_spin':           this._queue = [SCENARIO_LONG_SPIN];             break;
-            case 'feature_respin':      this._queue = [...FULL_FREE_SEQUENCE];           break;
-            case 'feature_freespin':    this._queue = [...FULL_FREE_JACKPOT_SEQUENCE];   break;
-            case 'force_feature_entry': this._queue = [...FORCE_FEATURE_ENTRY_SEQUENCE]; break;
             case 'pot_win':             this._queue = [...FULL_FREE_RETRIGGER_SEQUENCE]; break;
-            case 'wild_trail':          this._queue = [];                                break; // dùng ForcedMockAdapter một spin riêng
             case 'grand_jackpot':       this._queue = [SCENARIO_JACKPOT];               break;
             case 'sequence':            this._queue = [...DEFAULT_SEQUENCE];             break;
             default:                    this._queue = [];                                break; // 'random'
@@ -635,21 +524,8 @@ class MockNetworkAdapter implements INetworkAdapter {
             // Tất cả entries đều là free spin mid → fallback random
         }
 
-        // ★ wild_trail: mỗi spin build fresh WILD_TRAIL_ONE (1 wild, nextStage=SPIN) để test tích lũy Pot
-        if (MOCK_SPIN_SCENARIO === 'wild_trail') {
-            return this._finishMockSpin(MockDataProvider.buildScenario(TestScenario.WILD_TRAIL_ONE));
-        }
-
         // Fallback: tạo ngẫu nhiên (MOCK_SPIN_SCENARIO = 'random')
         return this._finishMockSpin(MockDataProvider.generateSpinResponse(false));
-    }
-
-    async sendSelectFeature(nextStage: SlotStageType, reelIndex: number = 0): Promise<SelectFeatureResponse> {
-        await this._delay(50);
-        const remain = nextStage === SlotStageType.TOPUP_SPIN_START
-            ? 6
-            : (reelIndex >= 2 && reelIndex <= 6 ? 20 - (reelIndex - 2) * 2 : 8);
-        return { nextStage, remainFeatureSpinCount: remain, reelIndex };
     }
 
     async sendPickRequest(pickIndex: number): Promise<ServerPickResponse> {
@@ -1096,14 +972,6 @@ class RealNetworkAdapter implements INetworkAdapter {
         const ls = raw.LastSpinResponse;
         const lsBody = ls?.Res && typeof ls.Res === 'object' ? ls.Res : ls;
         const enterPotVisualLevel = (raw as any).PotVisualLevel ?? lsBody?.PotVisualLevel;
-        const enterStickyAccumulated = lsBody?.StickyAccumulated ?? (lsBody as any)?.stickyAccumulated;
-        const enterGauge = resolveGaugeApiFields(lsBody, raw);
-        logFeatureGauge(enterGauge.stickyAccumulated, enterGauge.stickyEarned, {
-            accumulatedPick: enterGauge.accumulatedPick,
-            earnedPick: enterGauge.earnedPick,
-            sources: [lsBody, raw],
-            sourceLabels: ['LastSpinResponse', 'EnterRoot'],
-        });
 
         // Carnival Neko: 3 pot levels từ LastSpin / Enter root
         const enterBlue = lsBody?.BluePotLevel ?? (raw as any).BluePotLevel;
@@ -1120,11 +988,6 @@ class RealNetworkAdapter implements INetworkAdapter {
 
         if (enterPotVisualLevel != null) {
             data.potLevel = Math.max(0, Math.min(6, enterPotVisualLevel as number));
-        }
-        const enterAccumulated = enterGauge.stickyAccumulated ?? enterStickyAccumulated ?? null;
-        if (enterAccumulated != null) {
-            data.featureGaugeAccumulated = enterAccumulated as number;
-            data.featureGaugeStage = gaugeStageFromAccumulated(data.featureGaugeAccumulated);
         }
 
         // ─── Giải nén PS (ParSheet) và áp dụng config ───
@@ -1308,53 +1171,6 @@ class RealNetworkAdapter implements INetworkAdapter {
         // Log.d(`%c[MULTIPLIER DEBUG] FeatureMultiple=${result.featureMultiple} (từ server: FreeSpinMultiplier=${raw.Res.FreeSpinMultiplier} | FeatureMultiple=${raw.Res.FeatureMultiple} | MysteryMultiple=${raw.Res.MysteryMultiple})`, 'color:#f80;font-weight:bold');
 
         return result;
-    }
-
-    async sendSelectFeature(nextStage: SlotStageType, reelIndex: number = 0): Promise<SelectFeatureResponse> {
-        const data = GameData.instance;
-        const session = data.serverSession!;
-        const apiPath = ServerConfig.API.SELECT_FEATURE;
-        const requestData = {
-            NextStage: nextStage,
-            ReelIndex: reelIndex,
-            SlotId: ServerConfig.SLOT_ID,
-        };
-
-        Log.e(`[SelectFeature] SEND request=${JSON.stringify(requestData)} seq=${data.currentSeq} url=${this._getUrl(apiPath)}`);
-
-        const encrypted = this._encryptAES256(JSON.stringify(requestData), session.aky);
-        const packet = this._buildPacket(
-            apiPath,
-            session.memberIdx,
-            session.sessionKey,
-            data.currentSeq,
-            encrypted
-        );
-
-        const responsePacket = await this._sendRequestWithRetry(
-            this._getUrl(apiPath),
-            packet
-        );
-
-        // ★ updateSeq TRƯỚC _checkResponseCode để SEQ luôn đồng bộ ngay cả khi server trả lỗi.
-        // Nếu server trả CODE != 0, SEQ trong response vẫn là SEQ tiếp theo hợp lệ.
-        // Không updateSeq trước → request tiếp theo dùng SEQ cũ → thất bại dây chuyền.
-        data.updateSeq(responsePacket[4]);
-        this._checkResponseCode(responsePacket);
-
-        const decrypted = this._decryptAES256(responsePacket[8], session.aky);
-        const raw = JSON.parse(decrypted);
-        Log.e(`[SelectFeature] request=${JSON.stringify(requestData)} ack=${JSON.stringify(raw)}`);
-
-        if (raw.SMM) {
-            EventBus.instance.emit(GameEvents.SERVER_MAINTENANCE, this._parseSMM(raw.SMM));
-        }
-
-        return {
-            nextStage: raw.NextStage ?? nextStage,
-            remainFeatureSpinCount: raw.RemainFeatureSpinCount ?? raw.RemainFreeSpinCount ?? 0,
-            reelIndex: raw.ReelIndex ?? reelIndex,
-        };
     }
 
     // ─── CLAIM ───
@@ -2394,7 +2210,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         const reelIdx = (res.ReelIndex as number) ?? 0;
         const isFreeSpin =
             data.currentMode === 'freespin'
-            || data.currentMode === 'freespin_gold'
+           
             || (data.currentMode !== 'respin' && (reelIdx === 1 || isFreeSpinTierReelIndex(reelIdx)));
         const grid = data.getBaseGrid(rands, isFreeSpin, reelIdx);
         const waysPayWins = res.TotalWin > 0
@@ -2459,8 +2275,6 @@ class RealNetworkAdapter implements INetworkAdapter {
         // ★ Carnival Neko CNSpinResponse → feature / sticky / envelope
         this._applyCarnivalCnSpinFields(spinResp, res as any);
 
-        // ★ FEATURE ENTRY LOGIC ADDED — phát hiện Force Feature Entry + cập nhật gauge
-        this._applyFeatureEntryLogic(spinResp, res, grid, raw);
 
         this._applyForceNormalSpinOnly(spinResp);
         return spinResp;
@@ -2655,8 +2469,6 @@ class RealNetworkAdapter implements INetworkAdapter {
         resp.redEnvelopePay = undefined;
         resp.isGridFull = undefined;
         resp.gridFullGrandWin = undefined;
-        resp.isForcedFeatureEntry = false;
-        resp.forceFeatureEntry = undefined;
         resp.redCount = undefined;
         resp.redReels = undefined;
         resp.wildTrailCount = undefined;
@@ -2684,101 +2496,6 @@ class RealNetworkAdapter implements INetworkAdapter {
         return last;
     }
 
-    /**
-     * ★ FEATURE ENTRY LOGIC ADDED
-     * Phát hiện "Force Feature Entry" (Sticky tự nhiên < 6 nhưng server cho vào
-     * Feature) và tính dữ liệu gauge (chữ tượng hình 2 cột).
-     *
-     * - naturalStickyCount: đếm Sticky (Red/Yellow/Green) thực sự trên grid spin này.
-     * - isForcedFeatureEntry: server flag, hoặc suy luận (nextStage=FEATURE_SELECT
-     *   ở Normal Spin, naturalCount < 6, nhưng tổng stickyCells >= 6).
-     * - forceFeatureEntry: chia existing (tự nhiên) / fill (đổ thêm) + gán credit.
-     * - gauge: StickyAccumulated → 10 UI đèn; StickyEarned → earned/spin (normal only).
-     *   PotVisualLevel chỉ dùng cho Pot UI, KHÔNG dùng cho gauge.
-     * - force entry: IsForceFeatureEnter; NoramlSpinLinkReel chứa đủ 6 ô + credit.
-     */
-    private _applyFeatureEntryLogic(
-        resp: SpinResponse,
-        res: ServerSpinResponse['Res'],
-        grid: number[][],
-        rawOuter?: ServerSpinResponse,
-    ): void {
-        const anyRes = res as any;
-        const isNormalSpin = (resp.reelIndex ?? 0) === 0 && GameData.instance.currentMode === 'normal';
-
-        // 1) Đếm Sticky tự nhiên trên grid (5 reel × 3 row)
-        let naturalCount = 0;
-        const naturalPositions = new Set<string>();
-        for (let reel = 0; reel < grid.length; reel++) {
-            const col = grid[reel] ?? [];
-            for (let row = 0; row < col.length; row++) {
-                if (isSticky(col[row])) {
-                    naturalCount++;
-                    naturalPositions.add(`${reel}-${row}`);
-                }
-            }
-        }
-        resp.naturalStickyCount = naturalCount;
-
-        // 2) Gauge: StickyAccumulated / StickyEarned từ AckSpin.Res (normal spin only).
-        // StickyAccumulated → 10 ô FeatureEntryGauge; StickyEarned → earned spin này.
-        // PotCount/WildCount chỉ fallback legacy (thường = 0).
-        const potVisualLevel = anyRes.PotVisualLevel ?? anyRes.potVisualLevel;
-        const gauge = resolveGaugeApiFields(res, rawOuter);
-        const stickyAccumulated = gauge.stickyAccumulated;
-        const stickyEarned = gauge.stickyEarned;
-        if (isNormalSpin) {
-            logFeatureGauge(stickyAccumulated, stickyEarned, {
-                accumulatedPick: gauge.accumulatedPick,
-                earnedPick: gauge.earnedPick,
-                sources: [res, rawOuter],
-                sourceLabels: ['AckSpin.Res', 'AckSpin.root'],
-            });
-        }
-        if (potVisualLevel != null) {
-            resp.potVisualLevel = potVisualLevel;
-        }
-        if (stickyAccumulated != null) {
-            resp.stickyAccumulated = stickyAccumulated;
-            resp.potCount = stickyAccumulated;
-            resp.lightingStage = gaugeStageFromAccumulated(stickyAccumulated);
-        }
-        if (stickyEarned != null) {
-            resp.stickyEarnedThisSpin = stickyEarned;
-            resp.wildCount = stickyEarned;
-        }
-
-        // 3) Chỉ xét Force Feature Entry cho Normal Spin
-        const enteringFeature = resp.nextStage === SlotStageType.FEATURE_SELECT
-            || resp.nextStage === SlotStageType.FEATURE_SELECT_START;
-        if (!isNormalSpin || !enteringFeature) return;
-
-        const serverForced = anyRes.IsForceFeatureEnter ?? anyRes.ForceFeatureEnter ?? anyRes.IsForcedFeatureEntry;
-        const linkReel = anyRes.NoramlSpinLinkReel ?? anyRes.NormalSpinLinkReel;
-        const linkCells = linkReel ? this._parseMainGridLinkReelStickyCells(linkReel) : undefined;
-        const cells: StickyCell[] = linkCells ?? resp.stickyCells ?? [];
-        const totalSticky = cells.length;
-        const inferredForced = naturalCount < FEATURE_ENTRY_REQUIRED_STICKY && totalSticky >= FEATURE_ENTRY_REQUIRED_STICKY;
-        const isForced = serverForced === true || (serverForced == null && inferredForced);
-        if (!isForced) return;
-
-        // 4) Chia existing / fill: Rands có sticky = tự nhiên, còn lại trong link reel = force-fill
-        const existingCells: StickyCell[] = [];
-        const fillCells: StickyCell[] = [];
-        for (const c of cells) {
-            if (naturalPositions.has(`${c.reel}-${c.row}`)) existingCells.push(c);
-            else fillCells.push(c);
-        }
-        for (const c of fillCells) {
-            if (!(c.credit > 0)) c.credit = pickForcedStickyValue() * (resp.totalBet || 1);
-        }
-
-        const data: ForceFeatureEntryData = { existingCells, fillCells, naturalCount };
-        resp.isForcedFeatureEntry = true;
-        resp.forceFeatureEntry = data;
-        resp.stickyCells = cells;
-        Log.e(`[FEATURE-ENTRY] Force Feature Entry — natural=${naturalCount} fill=${fillCells.length} total=${totalSticky} serverFlag=${serverForced} linkReel=${!!linkReel}`);
-    }
 
     /**
      * Parse server PickGame data → PickGameState.
@@ -2909,36 +2626,6 @@ class RealNetworkAdapter implements INetworkAdapter {
         return credits;
     }
 
-    /**
-     * Parse NoramlSpinLinkReel → StickyCell[] trên lưới 5×3 (Normal Spin / Force Feature Entry).
-     * Backend: khi IsForceFeatureEnter, link reel chứa đủ 6 Trail + credit; diff với Rands = fill.
-     */
-    private _parseMainGridLinkReelStickyCells(raw: any): StickyCell[] | undefined {
-        const slots = this._parseTopupReel(raw);
-        if (!slots) return undefined;
-
-        const cells: StickyCell[] = [];
-        for (let i = 0; i < Math.min(15, slots.length); i++) {
-            const slot = slots[i];
-            if (slot.type === TopupReelType.NONE || slot.type === TopupReelType.GRAND) continue;
-
-            const apiRow = Math.floor(i / 5);
-            const reel = i % 5;
-            const row = apiRow;
-
-            let symbolId = SymbolId.STICKY_RED;
-            if (slot.type === TopupReelType.YELLOW) symbolId = SymbolId.STICKY_YELLOW;
-            else if (slot.type === TopupReelType.GREEN) symbolId = SymbolId.STICKY_GREEN;
-
-            cells.push({ reel, row, symbolId, credit: slot.win ?? 0 });
-        }
-
-        if (cells.length > 0) {
-            Log.e(`[FEATURE-ENTRY] LinkReel → ${cells.length} cells: ${cells.map(c => `r${c.reel}row${c.row}=$${c.credit}`).join(', ')}`);
-        }
-        return cells.length > 0 ? cells : undefined;
-    }
-
     private _toStickyCreditFromRate(rate: number): number {
         if (rate <= 0) return 0;
         return rate < 1 ? rate * 2500 : rate;
@@ -3028,7 +2715,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         const data = GameData.instance;
         const isFreeSpin =
             data.currentMode === 'freespin'
-            || data.currentMode === 'freespin_gold'
+           
             || (data.currentMode !== 'respin' && (reelIndex === 1 || isFreeSpinTierReelIndex(reelIndex)));
         const rawStrips = data.getRawPsStrips(isFreeSpin, reelIndex);
         const payouts = data.symbolPayouts; // {psId: rate, ...} từ PS SymbolRates
@@ -3940,10 +3627,6 @@ export class NetworkManager {
 
     sendSpinRequest(isFreeSpin: boolean): Promise<SpinResponse> {
         return this._adapter.sendSpinRequest(isFreeSpin);
-    }
-
-    sendSelectFeature(nextStage: SlotStageType, reelIndex?: number): Promise<SelectFeatureResponse> {
-        return this._adapter.sendSelectFeature(nextStage, reelIndex ?? 0);
     }
 
     sendClaimRequest(): Promise<ClaimResult> {

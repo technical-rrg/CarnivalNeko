@@ -55,7 +55,7 @@ const { ccclass } = _decorator;
  *   E → EXPIRED_LINK
  *   R → WRONG_PARSHEET
  *   I → INVALID_REQUEST
- *   (T dành cho WildTrail mouse-follow test trên WildTrailController)
+ *   (T reserved — legacy wild trail mouse-follow test removed)
  *
  * [TEST PROGRESSIVE WIN]
  *   B → BIG WIN
@@ -171,7 +171,7 @@ export class DebugManager {
                 ' | 7=SCENARIO:RANDOM | 8=SCENARIO:TOP3 | 9=SCENARIO:NEARBY' +
                 ' | F1=en | F2=ko | F3=zh-cn | F4=zh-tw | F5=fil | F6=ja | F7=th' +
                 ' | P=DISCONNECTED | Q=RELOGIN | W=INSUFFICIENT_BALANCE | E=EXPIRED | R=WRONG_PARSHEET | I=INVALID_REQUEST' +
-                ' | (T=WildTrail mouse-follow — xem WildTrailController)' +
+                ' | (T=legacy wild trail mouse-follow removed)' +
                 ' | B=BIG_WIN | M=MEGA_WIN | J=MAJOR_WIN | S=SUPER_WIN | E=EPIC_WIN | U=ULTRA_WIN | O=MONSTER_WIN | X=MAX_WIN' +
                 ' | Y=TOPUP_END_POPUP | V=BROADCAST_MOCK (cycle)'
             );

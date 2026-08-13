@@ -3,7 +3,7 @@
  *
  * ── KIẾN TRÚC ──
  *   - Component quản lý TOÀN BỘ flow mua/bật bonus item.
- *   - Tách biệt với BuyBonusPopup cũ (chỉ xử lý Free Spin ticket).
+ *   - UI chọn gói Matsuri (Mighty/Mega/Super); không dùng popup ticket GoF cũ.
  *
  * ── NODE HIERARCHY ──
  *   popupRootNode               ← Node gốc chứa toàn bộ popup (active = false mặc định)

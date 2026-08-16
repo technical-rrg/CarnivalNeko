@@ -14,10 +14,10 @@
  *   1. Gắn SymbolHighlighter vào 1 Node nào đó (ví dụ cùng node với SlotMachineController).
  *   2. Kéo ReelController vào mảng "reels".
  *   3. Tạo fillBlack nodes (Sprite màu đen) → kéo vào "fillBlackNodes".
- *   4. Spine effect: Prefab trong MainBundle/SymbolSpine/{id}.
- *      Có prefab → clone/borrow từ pool, play spine highlight.
- *      Không có prefab → fallback clone sprite + zoom nhún (code).
- *      Prefab preload ở start(); highlight chỉ bật fillBlack sau khi prefab sẵn sàng.
+ *   4. Highlight effect:
+ *      USE_SPINE_HIGHLIGHT = false (tạm): clone sprite + zoom nhún nhẹ.
+ *      USE_SPINE_HIGHLIGHT = true: Prefab MainBundle/SymbolSpine/{id} → play spine.
+ *      Không có prefab / load fail → vẫn fallback zoom nhún.
  *
  * ── NODE LAYOUT ReelController ──
  *   symbolNodes[0] = ExtraTop1  (buffer/clip)
@@ -53,6 +53,13 @@ const { ccclass, property } = _decorator;
 
 /** DEBUG flag - tắt trong production để tối ưu performance */
 const DEBUG = false;
+
+/**
+ * Tạm tắt spine highlight — symbol mới chưa có animation tương ứng.
+ * false = chỉ zoom nhún sprite (không load / play SymbolSpine).
+ * Bật lại `true` khi đã có prefab SymbolSpine mới.
+ */
+export const USE_SPINE_HIGHLIGHT = false;
 
 /** Bundle chứa prefab spine symbol (đã load sẵn bởi LoadingController). */
 const SPINE_BUNDLE = 'MainBundle';
@@ -287,6 +294,7 @@ export class SymbolHighlighter extends Component {
     }
 
     start(): void {
+        if (!USE_SPINE_HIGHLIGHT) return;
         // Preload SymbolSpine (đặc biệt Wild/11) trước spin đầu — tránh fillBlack/WaysPay
         // hiện sớm trong lúc bundle.load lazy lần đầu.
         const ids = Object.keys(DEFAULT_SPINE_PREFAB_PATHS).map(Number);
@@ -305,6 +313,7 @@ export class SymbolHighlighter extends Component {
      * trước khi bật underlay highlight — tránh overlay hiện trước Wild spine.
      */
     ensureSpinesForDisplayCells(cells: Array<{ col: number; row: number }>): Promise<void> {
+        if (!USE_SPINE_HIGHLIGHT) return Promise.resolve();
         return this._ensureSpinePrefabs(this._collectNeededSpineIds(cells));
     }
 
@@ -322,7 +331,7 @@ export class SymbolHighlighter extends Component {
             this._playSymbolMatchSound(linePay.matchedSymbols ?? [], linePay.containsWild, false);
         }
         void this._runHighlightWithSpines(cells, this.lineCycleHighlightDuration, false, () => {
-            this._zoomCells(cells);
+            if (USE_SPINE_HIGHLIGHT) this._zoomCells(cells);
         });
     }
 
@@ -495,6 +504,11 @@ export class SymbolHighlighter extends Component {
      * hay chờ setCompleteListener. Loop / chỉ Wild → emit ngay.
      */
     private _finishShowAllHighlightWatch(loopSpine: boolean): void {
+        // Zoom-nhún tạm (không spine) / Wild / loop không tự complete — emit ngay.
+        if (!USE_SPINE_HIGHLIGHT) {
+            EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_ANIM_DONE);
+            return;
+        }
         // Wild / loop không tự complete — emit ngay. Còn lại chờ setCompleteListener / bounce complete.
         const nonWildActive = this._activeSpines.filter(e => e.symId !== SymbolId.WILD);
         Log.d(
@@ -549,7 +563,7 @@ export class SymbolHighlighter extends Component {
         }
 
         void this._runHighlightWithSpines(cells, this.lineCycleHighlightDuration, false, () => {
-            this._zoomCells(cells);
+            if (USE_SPINE_HIGHLIGHT) this._zoomCells(cells);
         });
     }
 
@@ -792,6 +806,7 @@ export class SymbolHighlighter extends Component {
 
     /** true nếu SymbolId có (hoặc có thể có) prefab SymbolSpine — chưa biết missing. */
     private _canTrySpine(symId: number): boolean {
+        if (!USE_SPINE_HIGHLIGHT) return false;
         return symId >= 0 && !!this._getSpinePrefabPath(symId) && !this._spinePrefabMissing.has(symId);
     }
 
@@ -977,7 +992,7 @@ export class SymbolHighlighter extends Component {
                 continue;
             }
 
-            // Không có SymbolSpine prefab → bounce bằng code (giữ hành vi cũ)
+            // USE_SPINE_HIGHLIGHT=false hoặc không có prefab → zoom nhún sprite
             if (!this._canTrySpine(symId) || !this._spinePrefabCache.has(symId)) {
                 this._activateSpriteBounceForCell(symbolNode, view, symId, highlightDuration, loopSpine, existing);
                 continue;
@@ -1211,7 +1226,10 @@ export class SymbolHighlighter extends Component {
         loopSpine: boolean,
         existing: ActiveSpineEntry | null,
     ): void {
-        const shouldLoop = symId === SymbolId.WILD || loopSpine || symId === SymbolId.STICKY_YELLOW;
+        const shouldLoop = !USE_SPINE_HIGHLIGHT
+            || symId === SymbolId.WILD
+            || loopSpine
+            || symId === SymbolId.STICKY_YELLOW;
 
         if (existing) {
             if (!existing.spriteBounce) {
@@ -1252,7 +1270,7 @@ export class SymbolHighlighter extends Component {
         symbolNode.on('symbol-changed', onSymChanged);
     }
 
-    private _startSpriteBounce(entry: ActiveSpineEntry, highlightDuration: number): void {
+    private _startSpriteBounce(entry: ActiveSpineEntry, _highlightDuration: number): void {
         const symbolNode = entry.symbolNode;
         if (!symbolNode?.isValid) return;
 
@@ -1269,15 +1287,14 @@ export class SymbolHighlighter extends Component {
         const origPos = this._bounceOrigPos.get(bounceNode)!;
         bounceNode.setPosition(origPos);
 
-        const dur = Math.max(0.18, Math.min(0.32, highlightDuration * 0.12));
-        const liftY = 10;
+        // Zoom nhún nhẹ — dùng cellZoomScale / cellZoomDuration (Inspector).
+        const zoom = Math.max(1.01, this.cellZoomScale);
+        const dur = Math.max(0.12, this.cellZoomDuration);
         const bounceOnce = tween(bounceNode)
             .to(dur, {
-                position: new Vec3(origPos.x, origPos.y + liftY, origPos.z),
-                scale: new Vec3(baseScale * 1.05, baseScale * 1.05, 1),
+                scale: new Vec3(baseScale * zoom, baseScale * zoom, 1),
             }, { easing: 'sineOut' })
             .to(dur, {
-                position: origPos,
                 scale: new Vec3(baseScale, baseScale, 1),
             }, { easing: 'sineIn' });
 

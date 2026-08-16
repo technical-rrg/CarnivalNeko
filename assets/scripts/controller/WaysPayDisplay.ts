@@ -2,6 +2,7 @@
  * WaysPayDisplay — Highlight ô symbol thắng (Ways Pay + Line Pay).
  *
  * Dùng Spine skeleton loop trên overlay nodes. Pool lazy: tạo khi cần, reuse khi return.
+ * Tạm tắt khi USE_SPINE_HIGHLIGHT = false (SymbolHighlighter zoom-nhún thay thế).
  *
  * FLOW:
  *   1. WIN_SHOW_ALL_WAYS / WIN_SHOW_ALL_LINES → hiện TOÀN BỘ ô thắng
@@ -30,7 +31,7 @@ import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
 import { MatchedLinePay, WaysPayWin } from '../data/SlotTypes';
 import { ReelController } from './ReelController';
-import { SymbolHighlighter } from './SymbolHighlighter';
+import { SymbolHighlighter, USE_SPINE_HIGHLIGHT } from './SymbolHighlighter';
 import { SymbolView } from './SymbolView';
 
 const { ccclass, property } = _decorator;
@@ -173,6 +174,7 @@ export class WaysPayDisplay extends Component {
      */
     private async _applyCellsWhenSpinesReady(wanted: Set<string>): Promise<void> {
         const gen = this._applyGen;
+        if (!USE_SPINE_HIGHLIGHT) return;
         const hl = this._symbolHighlighter
             ?? this.node.scene?.getComponentInChildren(SymbolHighlighter)
             ?? null;
@@ -319,6 +321,7 @@ export class WaysPayDisplay extends Component {
      * đặt position, bật Spine loop.
      */
     private _showOverlay(col: number, row: number): void {
+        if (!USE_SPINE_HIGHLIGHT) return;
         if (this._overlays[col]?.[row]) return; // đang hiện rồi
 
         const symNode = this.reels[col]?.symbolNodes[row + VISIBLE_ROW_OFFSET];

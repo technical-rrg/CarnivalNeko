@@ -13,7 +13,7 @@
 
 import {
     _decorator, Component, Node, Label, tween, Vec3, Tween,
-    Sprite, SpriteFrame, sp, Layout, Button, Color,
+    Sprite, SpriteFrame, sp, Layout, Button, Color, Prefab, UITransform,
 } from 'cc';
 import { EventBus }      from '../core/EventBus';
 import { GameEvents }    from '../core/GameEvents';
@@ -30,6 +30,7 @@ import { GameData }      from '../data/GameData';
 import { NetworkManager } from '../manager/NetworkManager';
 import { SoundManager }  from '../manager/SoundManager';
 import { Log }           from '../core/Logger';
+import { SpriteNumber }  from '../core/SpriteNumber';
 import { TransitionMode } from './TopUpTransitionPopup';
 import {
     fadeNodeOpacity,
@@ -67,9 +68,52 @@ export class PickGamePopup extends Component {
 
     @property({
         type: SpriteFrame,
-        tooltip: 'SpriteFrame Upgrade khi chưa có spine — fallback visual.',
+        tooltip: 'SpriteFrame Upgrade (ps_86) — dùng tạm khi chưa có spine.',
     })
     frameJpUpgrade: SpriteFrame | null = null;
+
+    @property({
+        type: SpriteFrame,
+        tooltip: 'SpriteFrame Mini (ps_85) — dùng tạm khi chưa có spine.',
+    })
+    frameJpMini: SpriteFrame | null = null;
+
+    @property({
+        type: SpriteFrame,
+        tooltip: 'SpriteFrame Minor (ps_84) — dùng tạm khi chưa có spine.',
+    })
+    frameJpMinor: SpriteFrame | null = null;
+
+    @property({
+        type: SpriteFrame,
+        tooltip: 'SpriteFrame Major (ps_83) — dùng tạm khi chưa có spine.',
+    })
+    frameJpMajor: SpriteFrame | null = null;
+
+    @property({
+        type: SpriteFrame,
+        tooltip: 'SpriteFrame Grand (ps_82) — dùng tạm khi chưa có spine.',
+    })
+    frameJpGrand: SpriteFrame | null = null;
+
+    @property({
+        tooltip: 'true = lật coin dùng hình symbol (tạm).\n'
+               + 'false = dùng spine khi đã gán SkeletonData.\n'
+               + 'Thiếu frame thì vẫn fallback spine.',
+    })
+    preferSymbolSprites: boolean = true;
+
+    @property({
+        type: Prefab,
+        tooltip: 'Prefab CoinFont (SpriteNumber) — demo / dùng sau khi hiện credit trên coin.',
+    })
+    coinFontPrefab: Prefab | null = null;
+
+    @property({
+        type: Node,
+        tooltip: 'Node CoinFont demo trong prefab (SpriteNumber).',
+    })
+    coinFontDemo: Node | null = null;
 
     @property({ tooltip: 'false → bỏ qua TopUpTransitionPopup, vào Pick Game ngay.\nMặc định false — dùng JackpotStartPopup (Press to Start) thay Transition.' })
     useTopUpTransition: boolean = false;
@@ -128,6 +172,21 @@ export class PickGamePopup extends Component {
         bus.on(GameEvents.PICK_GAME_OPEN,          this.openPickGame,     this);
         bus.on(GameEvents.JACKPOT_END,             this._onJackpotEnd,       this);
         bus.on(GameEvents.TOPUP_TRANSITION_DONE,   this._onTransitionDone,   this);
+        this._initCoinFontDemo();
+    }
+
+    /** CoinFont demo trên prefab — set số mẫu để xem font trong Editor / runtime. */
+    private _initCoinFontDemo(): void {
+        const node = this.coinFontDemo
+            ?? this.gameContentNode?.getChildByName('CoinFont')
+            ?? this.node.getChildByName('CoinFont');
+        if (!node?.isValid) return;
+        this.coinFontDemo = node;
+        const sn = node.getComponent(SpriteNumber)
+            ?? node.getComponentInChildren(SpriteNumber);
+        if (!sn) return;
+        sn.joltEnabled = false;
+        sn.setData(1234567);
     }
 
     onDestroy(): void {
@@ -260,6 +319,8 @@ export class PickGamePopup extends Component {
         this._pickBlocked = false;
         this._serverPickWinAmount = 0;
         this._lastRevealedIndex = -1;
+
+        if (this.coinFontDemo?.isValid) this.coinFontDemo.active = false;
 
         this._ensureCoinGridLayout();
         this._wireCoinButtons();
@@ -394,7 +455,7 @@ export class PickGamePopup extends Component {
                 sk.clearTracks();
                 sk.color = Color.WHITE;
             }
-            this._setUpgradeSpriteChild(front, null);
+            this._setSymbolSpriteChild(front, null);
         }
     }
 
@@ -469,19 +530,63 @@ export class PickGamePopup extends Component {
     }
 
     private _applySymbolToFront(front: Node, symbolId: number): void {
+        const frame = this._resolveSymbolFrame(symbolId);
+        if (this.preferSymbolSprites && frame) {
+            this._applySpriteToFront(front, frame);
+            return;
+        }
         if (isPickUpgradeSymbol(symbolId)) {
             this._applyUpgradeToFront(front);
             return;
         }
         const jpType = clientSymToJackpotType(symbolId);
         this._applySpineToFront(front, jpType);
+        // Spine chưa gán → vẫn hiện hình symbol nếu có
+        if (frame && !this._hasSpineFor(jpType, symbolId)) {
+            this._applySpriteToFront(front, frame);
+        }
+    }
+
+    private _resolveSymbolFrame(symbolId: number): SpriteFrame | null {
+        if (isPickUpgradeSymbol(symbolId)) return this.frameJpUpgrade;
+        switch (clientSymToJackpotType(symbolId)) {
+            case JackpotType.MINI:  return this.frameJpMini;
+            case JackpotType.MINOR: return this.frameJpMinor;
+            case JackpotType.MAJOR: return this.frameJpMajor;
+            case JackpotType.GRAND: return this.frameJpGrand;
+            default: return null;
+        }
+    }
+
+    private _hasSpineFor(jpType: JackpotType, symbolId: number): boolean {
+        if (isPickUpgradeSymbol(symbolId)) return !!this.spineJpUpgrade;
+        const dataMap: Partial<Record<JackpotType, sp.SkeletonData | null>> = {
+            [JackpotType.MINI]:  this.spineJpMini,
+            [JackpotType.MINOR]: this.spineJpMinor,
+            [JackpotType.MAJOR]: this.spineJpMajor,
+            [JackpotType.GRAND]: this.spineJpGrand,
+        };
+        return !!dataMap[jpType];
+    }
+
+    private _applySpriteToFront(front: Node, frame: SpriteFrame): void {
+        const sk = front.getComponent(sp.Skeleton);
+        if (sk) {
+            sk.clearTracks();
+            sk.enabled = false;
+        }
+        this._setSymbolSpriteChild(front, frame);
     }
 
     private _applyUpgradeToFront(front: Node): void {
-        // Ẩn sprite con (nếu lần trước dùng frame fallback)
-        this._setUpgradeSpriteChild(front, null);
-
         const sk = front.getComponent(sp.Skeleton);
+        if (this.frameJpUpgrade) {
+            this._applySpriteToFront(front, this.frameJpUpgrade);
+            return;
+        }
+
+        this._setSymbolSpriteChild(front, null);
+
         if (this.spineJpUpgrade && sk) {
             sk.enabled = true;
             sk.skeletonData = this.spineJpUpgrade;
@@ -493,18 +598,7 @@ export class PickGamePopup extends Component {
             return;
         }
 
-        // CoinFront đã có sp.Skeleton → KHÔNG add cc.Sprite lên cùng node.
-        // Fallback 1: sprite trên child "UpgradeIcon"
-        if (this.frameJpUpgrade) {
-            if (sk) {
-                sk.clearTracks();
-                sk.enabled = false;
-            }
-            this._setUpgradeSpriteChild(front, this.frameJpUpgrade);
-            return;
-        }
-
-        // Fallback 2: reuse spine Major + tint vàng
+        // Fallback: reuse spine Major + tint vàng
         if (sk && this.spineJpMajor) {
             sk.enabled = true;
             sk.skeletonData = this.spineJpMajor;
@@ -521,11 +615,11 @@ export class PickGamePopup extends Component {
     }
 
     /**
-     * Sprite Upgrade trên child node — tránh conflict Skeleton + Sprite cùng CoinFront.
+     * Sprite symbol trên child — tránh conflict Skeleton + Sprite cùng CoinFront.
      */
-    private _setUpgradeSpriteChild(front: Node, frame: SpriteFrame | null): void {
-        const CHILD = 'UpgradeIcon';
-        let child = front.getChildByName(CHILD);
+    private _setSymbolSpriteChild(front: Node, frame: SpriteFrame | null): void {
+        const CHILD = 'SymbolIcon';
+        let child = front.getChildByName(CHILD) ?? front.getChildByName('UpgradeIcon');
         if (!frame) {
             if (child) child.active = false;
             return;
@@ -535,17 +629,20 @@ export class PickGamePopup extends Component {
             front.addChild(child);
             child.layer = front.layer;
             child.addComponent(Sprite);
+            const ut = child.getComponent(UITransform) ?? child.addComponent(UITransform);
+            ut.setContentSize(130, 130);
         }
+        child.name = CHILD;
         child.active = true;
         const spr = child.getComponent(Sprite)!;
+        spr.sizeMode = Sprite.SizeMode.TRIMMED;
         spr.spriteFrame = frame;
-        spr.color = new Color(255, 210, 60, 255);
+        spr.color = Color.WHITE;
         child.setScale(1, 1, 1);
     }
 
     private _applySpineToFront(front: Node, jpType: JackpotType): void {
-        // Ẩn UpgradeIcon nếu coin này là JP thường
-        this._setUpgradeSpriteChild(front, null);
+        this._setSymbolSpriteChild(front, null);
 
         const dataMap: Partial<Record<JackpotType, sp.SkeletonData | null>> = {
             [JackpotType.MINI]:  this.spineJpMini,

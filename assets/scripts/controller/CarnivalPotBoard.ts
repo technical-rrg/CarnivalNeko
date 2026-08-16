@@ -3,8 +3,8 @@
  *
  * Events:
  *   CARNIVAL_POT_LEVELS_CHANGED → sync labels (visual tạm = LV3)
- *   CARNIVAL_TRAIL_ONE_HIT      → LV{n}_Impact rồi Idle_LV{n}
- *   CARNIVAL_POT_BURST          → scale burst → CARNIVAL_POT_BURST_DONE
+ *   CARNIVAL_TRAIL_ONE_HIT      → nhún nhẹ + LV{n}_Impact rồi Idle_LV{n}
+ *   CARNIVAL_POT_BURST          → nhún nhẹ → CARNIVAL_POT_BURST_DONE
  *
  * Tạm thời force visual level = 3 cho idle + impact (cùng Anim-Pot skeleton như Pot cũ).
  */
@@ -110,10 +110,10 @@ export class CarnivalPotBoard extends Component {
         if (color === undefined || this._bursting) return;
         const node = this._nodeFor(color);
         if (!node) return;
-        // Chỉ đổi Spine anim — không scale bằng code
+        this._playSoftBounce(node, 1.07, 0.92);
         const spine = this._resolveSpine(node);
         if (!spine) {
-            Log.w(`[CarnivalPot] trail hit ${TrailColor[color]} — no Spine, skip`);
+            Log.w(`[CarnivalPot] trail hit ${TrailColor[color]} — no Spine, bounce only`);
             return;
         }
         void this._playImpactAsync(node, spine);
@@ -133,14 +133,7 @@ export class CarnivalPotBoard extends Component {
 
         for (const node of pots) {
             this._cancelImpact(node, true);
-            Tween.stopAllByTarget(node);
-            const base = this._baseScaleOf(node);
-            tween(node)
-                .to(0.15, { scale: new Vec3(base.x * 1.55, base.y * 1.55, base.z) }, { easing: 'backOut' })
-                .to(0.2, { scale: new Vec3(base.x * 0.85, base.y * 0.85, base.z) }, { easing: 'sineIn' })
-                .to(0.25, { scale: new Vec3(base.x * 1.35, base.y * 1.35, base.z) }, { easing: 'backOut' })
-                .to(0.2, { scale: base.clone() }, { easing: 'sineOut' })
-                .start();
+            this._playSoftBounce(node, 1.08, 0.94);
         }
 
         resetBurstPotState(feature.burstPots);
@@ -170,6 +163,19 @@ export class CarnivalPotBoard extends Component {
 
     private _baseScaleOf(node: Node): Vec3 {
         return this._baseScaleByNode.get(node)?.clone() ?? node.scale.clone();
+    }
+
+    /** Nhún squash nhẹ 1 nhịp rồi về scale editor — không zoom to. */
+    private _playSoftBounce(node: Node, peak = 1.07, squash = 0.93): void {
+        if (!node?.isValid) return;
+        Tween.stopAllByTarget(node);
+        const base = this._baseScaleOf(node);
+        node.setScale(base);
+        tween(node)
+            .to(0.08, { scale: new Vec3(base.x * peak, base.y * squash, base.z) }, { easing: 'sineOut' })
+            .to(0.12, { scale: new Vec3(base.x * 0.98, base.y * 1.03, base.z) }, { easing: 'sineInOut' })
+            .to(0.14, { scale: base.clone() }, { easing: 'sineOut' })
+            .start();
     }
 
     private _cacheSpines(): void {

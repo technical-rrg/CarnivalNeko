@@ -86,6 +86,8 @@ export const CURRENCY_SYMBOL_MAP: Record<string, string> = {
     'HKD': 'HK$',
     'AUD': 'A$',
     'CAD': 'C$',
+    'C$': 'C$',
+    'USDT': 'USDT',
     'INR': '₹',
 };
 

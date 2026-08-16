@@ -1,7 +1,7 @@
 [
   {
     "__type__": "cc.Prefab",
-    "_name": "AmountDisplay",
+    "_name": "CoinFont",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_native": "",
@@ -13,7 +13,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "AmountDisplay",
+    "_name": "CoinFont",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": null,
@@ -39,9 +39,9 @@
     "_lrot": {
       "__type__": "cc.Quat",
       "x": 0,
-      "y": 1,
+      "y": 0,
       "z": 0,
-      "w": 6.123233995736766e-17
+      "w": 1
     },
     "_lscale": {
       "__type__": "cc.Vec3",
@@ -54,7 +54,7 @@
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": 180,
+      "y": 0,
       "z": 0
     },
     "_id": ""
@@ -73,8 +73,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 600,
-      "height": 100
+      "width": 190,
+      "height": 80
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -85,7 +85,7 @@
   },
   {
     "__type__": "cc.CompPrefabInfo",
-    "fileId": "67fLWxzD5LtpTeZCVuScfa"
+    "fileId": "cfCoinFontUITFileId002"
   },
   {
     "__type__": "bedb1B7ZkpOD68F31p11Sug",
@@ -226,16 +226,16 @@
       }
     ],
     "currencyPosition": 0,
-    "enableLangCurrency": true,
-    "enableCountSound": true,
-    "spacing": -30,
+    "enableLangCurrency": false,
+    "enableCountSound": false,
+    "spacing": -18,
     "kmbtSpacing": 0,
     "punctuationSpacingOffset": -5,
-    "currencySpacing": -25,
+    "currencySpacing": -20,
     "currencySpacingRatio": 0,
-    "maxWidth": 600,
+    "maxWidth": 190,
     "shrinkToFit": true,
-    "joltEnabled": true,
+    "joltEnabled": false,
     "joltIntervalMin": 0.3,
     "joltIntervalMax": 1,
     "joltDuration": 0.3,
@@ -245,7 +245,7 @@
   },
   {
     "__type__": "cc.CompPrefabInfo",
-    "fileId": "5bOl1G/z5EpbYk4pOsJ44W"
+    "fileId": "cfCoinFontSNCompId0003"
   },
   {
     "__type__": "cc.PrefabInfo",
@@ -255,7 +255,7 @@
     "asset": {
       "__id__": 0
     },
-    "fileId": "d5nJbttuxPtq88oiKxc0fB",
+    "fileId": "cfCoinFontRootFileId01",
     "targetOverrides": null
   }
 ]

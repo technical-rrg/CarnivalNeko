@@ -25,10 +25,8 @@ import { GameData } from './GameData';
 /** Set các symbol KHÔNG được là Target (Feature symbols + Wild bản thân) */
 const FEATURE_SYMBOLS = new Set([
     SymbolId.WILD,
-    SymbolId.STICKY_RED,
     SymbolId.STICKY_YELLOW,
     SymbolId.STICKY_GREEN,
-    SymbolId.PLUS_ONE_SPIN,
     SymbolId.JP_IDLE,
     SymbolId.JP_MINI,
     SymbolId.JP_MINOR,

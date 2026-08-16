@@ -26,7 +26,7 @@ export const ENABLE_DEBUG_TOOLS: boolean = true;
 
 /**
  * ★ Carnival Neko mock: mỗi Normal Spin luôn land ≥1 Trail (Normal → flip màu → bay Pot).
- * Tắt khi muốn mock feature cũ (Sticky Red / Wild Trail GoF).
+ * Tắt khi muốn mock feature cũ (Wild Trail GoF).
  * Real API: bỏ qua flag này — trails đến từ server grid (PS 41/42/43).
  */
 export const MOCK_FORCE_CARNIVAL_TRAILS: boolean = false;
@@ -228,7 +228,7 @@ export const MOCK_SPIN_SCENARIO: MockScenario = 'random';
  *   2  = OneBar (BAR)       3  = DoubleBar (BARBAR)
  *   21 = BlueWild           22 = RedWild              23 = TripleWild
  *   98 = Scatter/Bonus      99 = Empty
- *   MiniJackpotID=81  MinorJackpotID=82  MajorJackpotID=83  GrandJackpotID=84
+ *   PickGame: BasePick=81 Mini=85 Minor=84 Major=83 Grand=82 Upgrade=86
  *   (Lưu ý: 81-84 KHÔNG xuất hiện trên reel strip — là ID ảo trong payout table)
  *
  * ─── Trạng thái xác nhận ─────────────────────────────────────────

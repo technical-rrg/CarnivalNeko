@@ -271,7 +271,6 @@ export class SoundManager extends Component {
         bus.on(GameEvents.PICK_GAME_CLOSE,          this._onPickGameClose,  this);
         bus.on(GameEvents.TOPUP_TRANSITION_SHOW, this._onTransitionShow,  this);
         bus.on(GameEvents.TOPUP_TRANSITION_DONE,  this._onTransitionDone,  this);
-        bus.on(GameEvents.RED_CREDIT_UPDATED, this._onRedCreditUpdated, this);
         bus.on(GameEvents.TOPUP_ABSORB_START, this._onTopUpAbsorbStart, this);
 
         bus.on(GameEvents.BUY_BONUS_REQUEST, this._onBuyBonusRequest, this);
@@ -838,20 +837,7 @@ export class SoundManager extends Component {
         this._transitionSoundPlayed = false;
     }
 
-    private _onRedCreditUpdated(payload?: { totalRedCredit?: number; redCount?: number; reelIndex?: number }): void {
-        const redCount = payload?.redCount ?? 0;
-        this.playStickyLandSfx();
-
-        // Big red-coin win sound: play once per spin when normal-reel red coins exceed 6
-        if (GameData.instance.currentMode === 'normal' && redCount > 6 && !this._stickyWinSoundPlayedThisSpin) {
-            this._stickyWinSoundPlayedThisSpin = true;
-            // Log.d(`[coinloop][SM._onRedCreditUpdated] redCount=${redCount} > 6 → play sxBonusStickyWin`);
-            this._playSfxProp('sxBonusStickyWin');
-        }
-    }
-
-    private _onTopUpAbsorbStart(_payload?: { newCells?: StickyCellLike[]; plusOneSpinCount?: number }): void {
-        // +1 spin sound is now handled by TopUpAbsorbEffect when the +1 symbol is actually shown on StickyOverlay.
+    private _onTopUpAbsorbStart(_payload?: { newCells?: StickyCellLike[] }): void {
         // Yellow/Green coin absorb sound is handled by StickyOverlayController when they appear on overlay.
     }
 

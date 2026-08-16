@@ -139,16 +139,21 @@ export class SlotMachineController extends Component {
 
     @property({
         type: Prefab,
-        tooltip: 'Prefab SpriteNumber cho Sticky Red symbol.\n'
+        tooltip: 'Prefab SpriteNumber cho sticky coin (Gold/Green).\n'
                + 'Tạo 1 Prefab chứa Node có SpriteNumber component.\n'
                + 'SlotMachineController tự instantiate và inject vào mọi SymbolView.\n'
-               + 'Để null → SpriteNumber disabled (không hiện giá trị trên sticky red).',
+               + 'Để null → SpriteNumber disabled (không hiện giá trị credit trên sticky coin).',
     })
     creditLabelPrefab: Prefab | null = null;
 
     @property({
         type: [SpriteFrame],
-        tooltip: 'SpriteFrame cho từng Symbol — kéo 1 lần, áp dụng cho mọi SymbolView.\n[0]=minor_9 [1]=minor_10 [2]=minor_j [3]=minor_q [4]=minor_k [5]=minor_a [6]=major_horus [7]=major_anubis [8]=major_sobek [9]=major_ramses [10]=major_cleopatra [11]=wild_trail [12]=sticky_red [13]=sticky_yellow [14]=sticky_green [15]=plus_one_spin',
+        tooltip: 'SpriteFrame cho từng Symbol — kéo 1 lần, áp dụng cho mọi SymbolView.\n'
+               + '[0]=ps_01(8) [1]=ps_02(9) [2]=ps_03(J) [3]=ps_04(Q) [4]=ps_05(K) [5]=ps_06(A)\n'
+               + '[6]=ps_11(Raccoon) [7]=ps_12(Fish) [8]=ps_13(Crane) [9]=ps_14(Fox) [10]=ps_15(Neko)\n'
+               + '[11]=ps_21(Wild) [13]=ps_45(Gold) [14]=ps_44(Green)\n'
+               + '[16]=ps_81(Idle) [17]=ps_85(Mini) [18]=ps_84(Minor) [19]=ps_83(Major) [20]=ps_82(Grand)\n'
+               + '[21]=trail_normal [22]=ps_41 [23]=ps_43 [24]=ps_42 [25]=ps_86(Upgrade)',
     })
     symbolFrames: SpriteFrame[] = [];
 
@@ -217,7 +222,7 @@ export class SlotMachineController extends Component {
     @property({ tooltip: 'Delay (giây) giữa khi một longspin reel dừng và khi reel longspin tiếp theo bắt đầu quay' })
     longSpinNextReelDelay: number = 0.5;
 
-    @property({ tooltip: 'Nếu true mới diễn longSpin khi đủ 3 symbol đỏ; false thì bỏ qua.' })
+    @property({ tooltip: 'Nếu true mới diễn longSpin khi đủ 3 sticky coin trên các reel trước; false thì bỏ qua.' })
     isLongSpin: boolean = true;
 
     @property({
@@ -914,15 +919,13 @@ export class SlotMachineController extends Component {
                 const slot = linkReel[i];
                 const type = typeof slot === 'number' ? slot : (slot?.Type ?? slot?.type ?? 0);
                 const win  = typeof slot === 'object' && slot !== null ? (slot.Win ?? slot.win ?? 0) : 0;
-                if (type === 0) continue;
+                if (type === 0 || type === 1) continue; // 0=empty, 1=legacy red
 
                 const apiRow = Math.floor(i / 5); // 0=top-of-API 1=mid 2=bot
                 const reel   = i % 5;
-                // NoramlSpinLinkReel: slot 0-4=top row(apiRow=0), 5-9=mid(apiRow=1), 10-14=bot(apiRow=2)
                 const row    = apiRow; // row 0=top, 1=mid, 2=bot (client convention)
-                let symbolId = SymbolId.STICKY_RED;
-                if (type === 2) symbolId = SymbolId.STICKY_YELLOW;
-                else if (type === 3) symbolId = SymbolId.STICKY_GREEN;
+                let symbolId = SymbolId.STICKY_YELLOW;
+                if (type === 3) symbolId = SymbolId.STICKY_GREEN;
 
                 const cell: any = { reel, row, symbolId, credit: win };
                 data.stickyCells.set(`${reel}-${row}`, cell);
@@ -947,13 +950,12 @@ export class SlotMachineController extends Component {
                         const sIdx = ((center + offset) % len + len) % len;
                         const psId = rawStrip[sIdx];
                         const clientId = data.psToClientMap[psId] ?? -1;
-                        const isSticky = clientId === SymbolId.STICKY_RED
-                            || clientId === SymbolId.STICKY_YELLOW
+                        const isSticky = clientId === SymbolId.STICKY_YELLOW
                             || clientId === SymbolId.STICKY_GREEN;
                         const rate = payouts[psId] ?? 0;
                         if (!isSticky && rate <= 0) continue;
                         const row = offset + 1; // -1→0(top), 0→1(mid), +1→2(bot)
-                        const finalId = isSticky ? clientId : (data.psToClientMap[psId] ?? SymbolId.STICKY_RED);
+                        const finalId = isSticky ? clientId : SymbolId.STICKY_YELLOW;
                         const credit = this._toStickyCreditFromRate(rate);
                         const cell: any = { reel: i, row, symbolId: finalId, credit, _rate: rate };
                         data.stickyCells.set(`${i}-${row}`, cell);
@@ -1082,29 +1084,27 @@ export class SlotMachineController extends Component {
 
         this._logSpinState(`[SPIN-HANG][SlotMC] SPIN_RESPONSE received | rands=${response.rands?.join(',')} reelIndex=${response.reelIndex}`);
 
-        // ★ Progressive Long Spin: tính toán reel nào cần long spin dựa trên tổng red SYMBOLS
+        // ★ Progressive Long Spin: tính toán reel nào cần long spin dựa trên sticky coins
         if (this._isLongSpinActive) {
-            // Force Feature Entry: chỉ đếm existingCells — fillCells chưa nằm trên grid
             const stickyCells = response.stickyCells ?? [];
-            const redCountPerReel: number[] = new Array(this.reels.length).fill(0);
+            const stickyCountPerReel: number[] = new Array(this.reels.length).fill(0);
             for (const cell of stickyCells) {
-                if (cell.symbolId === SymbolId.STICKY_RED && cell.reel >= 0 && cell.reel < this.reels.length) {
-                    redCountPerReel[cell.reel]++;
+                if ((cell.symbolId === SymbolId.STICKY_YELLOW || cell.symbolId === SymbolId.STICKY_GREEN)
+                    && cell.reel >= 0 && cell.reel < this.reels.length) {
+                    stickyCountPerReel[cell.reel]++;
                 }
             }
 
             this._longSpinReelSet.clear();
             for (let ri = 2; ri < this.reels.length; ri++) {
-                // Đếm TỔNG SỐ red symbols trên các reel [0..ri-1]
-                let totalRedsBefore = 0;
+                let totalStickiesBefore = 0;
                 for (let r = 0; r < ri; r++) {
-                    totalRedsBefore += redCountPerReel[r];
+                    totalStickiesBefore += stickyCountPerReel[r];
                 }
-                if (totalRedsBefore >= 3) {
+                if (totalStickiesBefore >= 3) {
                     this._longSpinReelSet.add(ri);
                 }
             }
-            // Log removed for performance
         }
 
         // ─── Sequential longspin: reels sau boundary tiếp tục quay, stopAt() trì hoãn ──
@@ -1269,7 +1269,7 @@ export class SlotMachineController extends Component {
             }
         }
 
-        // ★ Hiện credit label ngay khi reel dừng (per-reel) — chỉ cho STICKY_RED
+        // ★ Hiện credit label ngay khi reel dừng (per-reel) — sticky Gold/Green
         this._showCreditsForReel(reelIndex);
 
         // ★ Sequential longspin: khi reel dừng, báo cho reel đang-quay-chờ tiếp theo dừng.
@@ -1328,17 +1328,8 @@ export class SlotMachineController extends Component {
     }
 
     /**
-     * #1 Sticky Red Credit Display (per-reel):
-     * Khi một reel dừng, tìm các ô STICKY_RED trên reel đó trong stickyCells
-     * và gọi showCredit() NGAY LẬP TỨC — không chờ tất cả reel dừng.
-     *
-     * CHỈ hiện credit trên symbol thực sự là STICKY_RED (kiểm tra symbolId trên SymbolView).
-     *
-     * Mapping GameData row → ReelController symbolNode index:
-     *   row 0 → symbolNodes[3] (visual Bot)
-     *   row 1 → symbolNodes[2] (visual Mid)
-     *   row 2 → symbolNodes[1] (visual Top)
-     * Formula: nodeIndex = 3 - row
+     * Khi một reel dừng, tìm các ô sticky coin trên reel đó trong stickyCells
+     * và gọi showCredit() ngay — không chờ tất cả reel dừng.
      */
     private _showCreditsForReel(reelIndex: number): void {
         // TopUp mode: credit label chỉ hiện trên StickyOverlay, không hiện trên background reel
@@ -1349,12 +1340,9 @@ export class SlotMachineController extends Component {
         const reel = this.reels[reelIndex];
         if (!reel) return;
 
-        let hasNewRed = false;
-        for (const [key, cell] of cells) {
+        for (const [, cell] of cells) {
             if (cell.reel !== reelIndex) continue;
-            // ★ Hiện credit cho STICKY_RED, STICKY_YELLOW và STICKY_GREEN
-            const isStickyCoin = cell.symbolId === SymbolId.STICKY_RED
-                || cell.symbolId === SymbolId.STICKY_YELLOW
+            const isStickyCoin = cell.symbolId === SymbolId.STICKY_YELLOW
                 || cell.symbolId === SymbolId.STICKY_GREEN;
             if (!isStickyCoin) continue;
 
@@ -1365,45 +1353,27 @@ export class SlotMachineController extends Component {
             const view = node.getComponent(SymbolView);
             if (!view) continue;
 
-            // Double-check: symbol visual hiện tại PHẢI là cùng loại sticky coin
             if (view.symbolId !== cell.symbolId) continue;
 
             view.showCredit(cell.credit);
-            if (cell.symbolId === SymbolId.STICKY_RED) hasNewRed = true;
-        }
-
-        // Emit tổng Red credit hiện tại (running total) cho EachWin display
-        if (hasNewRed) {
-            let totalRedCredit = 0;
-            let redCount = 0;
-            for (const [, c] of cells) {
-                if (c.symbolId === SymbolId.STICKY_RED) {
-                    totalRedCredit += c.credit;
-                    redCount++;
-                }
-            }
-            EventBus.instance.emit(GameEvents.RED_CREDIT_UPDATED, { totalRedCredit, redCount, reelIndex });
         }
     }
 
     /**
      * Khi mức cược thay đổi: cập nhật lại credit trong stickyCells và refresh label trên reel.
-     * Credit = _rate × newTotalBet.
      */
     private _onBetChanged(): void {
         const data = GameData.instance;
         const cells = data.stickyCells;
         if (cells.size === 0) return;
 
-        // Recalculate credit dựa trên _rate đã lưu sẵn
         for (const [, cell] of cells) {
-            if (cell.symbolId !== SymbolId.STICKY_RED) continue;
+            if (cell.symbolId !== SymbolId.STICKY_YELLOW && cell.symbolId !== SymbolId.STICKY_GREEN) continue;
             if ((cell as any)._rate != null) {
                 cell.credit = this._toStickyCreditFromRate((cell as any)._rate);
             }
         }
 
-        // Refresh visible credit labels trên mọi reel
         for (let i = 0; i < this.reels.length; i++) {
             this._showCreditsForReel(i);
         }

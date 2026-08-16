@@ -131,7 +131,7 @@ export function isFreeSpinTierReelIndex(reelIndex: number): reelIndex is FreeSpi
  * Carnival Neko API V1.0.1 PS IDs:
  *   Low 1–6 → MINOR_* | High 11–15 → MAJOR_* | Wild 21 → WILD
  *   Trail 41/42/43 → TRAIL_BLUE/GREEN/RED | Sticky 44/45 → STICKY_GREEN / STICKY_YELLOW(Gold)
- *   Pick: 81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade
+ *   Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
  */
 export enum SymbolId {
     // ── Pay symbols (PS Low01–06 = 1–6; art tạm giữ tên cũ) ──
@@ -149,10 +149,9 @@ export enum SymbolId {
     MAJOR_CLEOPATRA = 10,
     // ── Special ──
     WILD = 11,             // PS 21
-    STICKY_RED = 12,       // legacy (không dùng CN primary)
-    STICKY_YELLOW = 13,    // CN Sticky_02 Gold — PS 45 (reuse art vàng tạm)
+    STICKY_YELLOW = 13,    // CN Sticky_02 Gold — PS 45
     STICKY_GREEN = 14,     // CN Sticky_01 Green — PS 44
-    PLUS_ONE_SPIN = 15,    // legacy TopUp +1
+    // (12, 15 reserved — legacy STICKY_RED / PLUS_ONE_SPIN removed)
     // ── Jackpot Pick (PS remapped) ──
     JP_IDLE = 16,          // PS 81
     JP_MINI = 17,          // PS 85
@@ -341,7 +340,9 @@ export function isMajor(s: number): boolean { return s >= SymbolId.MAJOR_HORUS &
 /** Helper: kiểm tra symbol là Minor (0–5) */
 export function isMinor(s: number): boolean { return s >= SymbolId.MINOR_9 && s <= SymbolId.MINOR_A; }
 /** Helper: kiểm tra symbol là Sticky (Red/Yellow/Green) */
-export function isSticky(s: number): boolean { return s === SymbolId.STICKY_RED || s === SymbolId.STICKY_YELLOW || s === SymbolId.STICKY_GREEN; }
+export function isSticky(s: number): boolean {
+    return s === SymbolId.STICKY_YELLOW || s === SymbolId.STICKY_GREEN;
+}
 /** Helper: Wild có thay thế được cho symbol s không?
  * Wild thay tất cả Minor + Major. KHÔNG thay Sticky, +1 Spin, Jackpot.
  */
@@ -357,7 +358,7 @@ export function wildSubstitutes(s: number): boolean { return isMinor(s) || isMaj
  * Low: 1–6 | High: 11–15 | Wild: 21
  * Trail: 41 Blue, 42 Green, 43 Red
  * Sticky: 44 Green (detect), 45 Gold (overlay)
- * Pick: 81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade
+ * Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
  *
  * Legacy 46–50: không dùng CN primary (giữ map nhẹ cho mock cũ nếu còn).
  */
@@ -383,18 +384,18 @@ export const PS_TO_CLIENT: Record<number, number> = {
     // ─── Sticky feature ───
     44: SymbolId.STICKY_GREEN,   // Sticky_01 Green
     45: SymbolId.STICKY_YELLOW,  // Sticky_02 Gold
-    // ─── Legacy unused on CN primary ───
-    46: SymbolId.STICKY_RED,
+    // ─── Legacy unused on CN primary (ignored) ───
+    46: SymbolId.STICKY_YELLOW,
     47: SymbolId.STICKY_YELLOW,
     48: SymbolId.STICKY_YELLOW,
     49: SymbolId.STICKY_GREEN,
-    50: SymbolId.PLUS_ONE_SPIN,
-    // ─── Pick Game: 82 Mini, 83 Minor, 84 Major, 85 Grand ───
+    50: SymbolId.STICKY_GREEN,
+    // ─── Pick Game: 82 Grand, 83 Major, 84 Minor, 85 Mini ───
     81: SymbolId.JP_IDLE,
-    82: SymbolId.JP_MINI,
-    83: SymbolId.JP_MINOR,
-    84: SymbolId.JP_MAJOR,
-    85: SymbolId.JP_GRAND,
+    82: SymbolId.JP_GRAND,
+    83: SymbolId.JP_MAJOR,
+    84: SymbolId.JP_MINOR,
+    85: SymbolId.JP_MINI,
     86: SymbolId.JP_UPGRADE,
     99: -1,
 };
@@ -418,13 +419,11 @@ export const CLIENT_TO_PS: Record<number, number> = {
     [SymbolId.TRAIL_RED]:       43,
     [SymbolId.STICKY_GREEN]:    44,
     [SymbolId.STICKY_YELLOW]:   45,
-    [SymbolId.STICKY_RED]:      46, // legacy
-    [SymbolId.PLUS_ONE_SPIN]:   50, // legacy
     [SymbolId.JP_IDLE]:         81,
-    [SymbolId.JP_MINI]:         82,
-    [SymbolId.JP_MINOR]:        83,
-    [SymbolId.JP_MAJOR]:        84,
-    [SymbolId.JP_GRAND]:        85,
+    [SymbolId.JP_MINI]:         85,
+    [SymbolId.JP_MINOR]:        84,
+    [SymbolId.JP_MAJOR]:        83,
+    [SymbolId.JP_GRAND]:        82,
     [SymbolId.JP_UPGRADE]:      86,
 };
 
@@ -448,7 +447,6 @@ export enum JackpotType {
 
 export enum TopupReelType {
     NONE = 0,
-    RED = 1,
     YELLOW = 2,
     GREEN = 3,
     GRAND = 4,
@@ -818,7 +816,7 @@ export interface ServerMatchedLinePay {
  * Field optional (Upgrade*) — mock gửi; real API bỏ qua nếu server chưa có.
  */
 export interface ServerPickResponse {
-    /** Grid state (15 items) — PS: 81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade; -1=unselected */
+    /** Grid state (15 items) — PS: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade; -1=unselected */
     PickGame: number[];
     PickResults?: number;
     PickStage?: number;

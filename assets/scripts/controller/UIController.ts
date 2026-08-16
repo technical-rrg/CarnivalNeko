@@ -831,7 +831,7 @@ export class UIController extends Component {
 
         let line1: string;
         if (totalWin > 0) {
-            line1 = "<color=#F5FF00>" + L('UI_CONTROL_PANEL_TEXT_PAY_WIN') + "</color>: " + currencySymbol + formatCurrencyFixed(totalWin);
+            line1 = "<color=#ff8cc1>" + L('UI_CONTROL_PANEL_TEXT_PAY_WIN') + "</color>: " + currencySymbol + formatCurrencyFixed(totalWin);
         } else {
             line1 = isAutoSpinActive ? L('UI_CONTROL_PANEL_GUIDE_1') : L('UI_CONTROL_PANEL_GUIDE_3');
         }
@@ -851,7 +851,7 @@ export class UIController extends Component {
         let line1: string;
         if (this._showFreeSpinRoundWinLine) {
             const roundWinStr = this._currentRoundWin === 0 ? '0' : formatCurrencyFixed(this._currentRoundWin);
-            line1 = "<color=#F5FF00>" + L('UI_CONTROL_PANEL_TEXT_PAY_WIN') + "</color>: " + currencySymbol + roundWinStr;
+            line1 = "<color=#ff8cc1>" + L('UI_CONTROL_PANEL_TEXT_PAY_WIN') + "</color>: " + currencySymbol + roundWinStr;
         } else {
             line1 = this._getFeatureSpinRemainLine();
         }
@@ -864,7 +864,7 @@ export class UIController extends Component {
         if (!this.winLabel) return;
         const currencySymbol = L('CLIENT_CURRENENCY_SYMBOL');
         const line1 = totalWin > 0
-            ? "<color=#F5FF00>" + L('UI_CONTROL_PANEL_TEXT_PAY_WIN') + "</color>: " + currencySymbol + formatCurrencyFixed(totalWin)
+            ? "<color=#ff8cc1>" + L('UI_CONTROL_PANEL_TEXT_PAY_WIN') + "</color>: " + currencySymbol + formatCurrencyFixed(totalWin)
             : L('UI_CONTROL_PANEL_GUIDE_1');
         this.winLabel.string = line1 + "\n" + this._getFeatureSpinRemainLine();
     }

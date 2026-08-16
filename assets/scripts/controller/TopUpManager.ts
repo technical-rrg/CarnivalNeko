@@ -365,9 +365,8 @@ export class TopUpManager extends Component {
         );
     }
 
-    /** Map SymbolId (STICKY_RED/YELLOW/GREEN/JP_GRAND) → TopupReelType */
+    /** Map SymbolId (STICKY_YELLOW/GREEN/JP_GRAND) → TopupReelType */
     private _symbolIdToTopupType(symbolId: number): number {
-        if (symbolId === SymbolId.STICKY_RED) return TopupReelType.RED;
         if (symbolId === SymbolId.STICKY_YELLOW) return TopupReelType.YELLOW;
         if (symbolId === SymbolId.STICKY_GREEN) return TopupReelType.GREEN;
         if (symbolId === SymbolId.JP_GRAND) return TopupReelType.GRAND;
@@ -378,12 +377,6 @@ export class TopUpManager extends Component {
         const idx = reel * this._rowCount + row;
         const topUpReel = this.reels[idx];
         if (!topUpReel) return;
-
-        // ★ PLUS_ONE_SPIN KHÔNG lock reel — chỉ hiển thị tạm thời trên overlay
-        //    Reel vẫn phải quay được ở lượt tiếp theo
-        if (symbolId === SymbolId.PLUS_ONE_SPIN) {
-            return;
-        }
 
         // Matsuri: chỉ lock + ẩn reel — coin hiện trên StickyOverlay (tránh vàng/xanh dưới overlay)
         if (GameData.instance.currentMode === 'matsuri') {
@@ -461,28 +454,9 @@ export class TopUpManager extends Component {
         this._stoppedCount = 0;
         this._pendingResults = new Array(this.cellCount);
 
-        // ★ Xóa PLUS_ONE_SPIN khỏi stickyCells — chúng đã tiêu thụ ở spin trước
-        //    và unlock các reel bị lock bởi PLUS_ONE_SPIN
-        const cells = GameData.instance.stickyCells;
-        for (const [key, cell] of cells) {
-            if (cell.symbolId === SymbolId.PLUS_ONE_SPIN) {
-                cells.delete(key);
-                // Unlock reel tại vị trí này để nó có thể quay ở lượt tiếp theo
-                const [reelStr, rowStr] = key.split('-');
-                const reel = parseInt(reelStr);
-                const row = parseInt(rowStr);
-                const idx = reel * this._rowCount + row;
-                const topUpReel = this.reels[idx];
-                if (topUpReel) {
-                    topUpReel.isLocked = false;
-                    Log.d(`[TopUpManager] spinAll — unlock reel ${idx} tại ${key} (PLUS_ONE_SPIN đã xóa)`);
-                }
-                Log.d(`[TopUpManager] spinAll — xóa PLUS_ONE_SPIN tại ${key}`);
-            }
-        }
-
         Log.d(`[TopUpManager] spinAll — bắt đầu sequence spin stagger.`);
         this._setMaskEnabled(true);
+        const cells = GameData.instance.stickyCells;
         for (let i = 0; i < this.cellCount; i++) {
             const col = Math.floor(i / this._rowCount);
             const row = i % this._rowCount;
@@ -490,7 +464,7 @@ export class TopUpManager extends Component {
             const cell = cells.get(key);
             const reel = this.reels[i];
             if (!reel) continue;
-            if (!cell || cell.symbolId === SymbolId.PLUS_ONE_SPIN) {
+            if (!cell) {
                 const wasLocked = reel.isLocked;
                 reel.prepareFreeCellForSpin();
                 if (i < 3 || wasLocked) {
@@ -510,15 +484,13 @@ export class TopUpManager extends Component {
             const reel = this.reels[reelIdx];
             if (reel && !reel.isLocked) {
                 // ★ Check stickyCells: nếu vừa có coin mới (per-reel land) → lock ngay, skip
-                //    BUT: PLUS_ONE_SPIN KHÔNG lock — đã bị xóa trong spinAll()
                 const col = Math.floor(reelIdx / this._rowCount);
                 const row = reelIdx % this._rowCount;
                 const key = `${col}-${row}`;
                 const cell = GameData.instance.stickyCells.get(key);
                 if (cell) {
                     const type = this._symbolIdToTopupType(cell.symbolId);
-                    // ★ Bỏ qua PLUS_ONE_SPIN — không lock reel
-                    if (cell.symbolId !== SymbolId.PLUS_ONE_SPIN && type !== TopupReelType.NONE) {
+                    if (type !== TopupReelType.NONE) {
                         Log.d(`[TopUp-SPIN] reelIdx=${reelIdx} auto-locked from stickyCells ${key} ${SymbolId[cell.symbolId]}`);
                         reel.applyStickyResult(type, cell.credit ?? 0);
                         this._seqIndex++;
@@ -598,34 +570,10 @@ export class TopUpManager extends Component {
 
         // Remap server row-major → TopUp column-major indices
         this._pendingResults = new Array(this.cellCount);
-        const serverRemain = GFSpinResponse?.remainRespinCount ?? GFSpinResponse?.RemainFeatureSpinCount ?? GFSpinResponse?.RemainReSpinCount;
-        const afterLocalConsume = GameData.instance.respinRemaining;
-        const plusOneCount = serverRemain != null ? Math.max(0, serverRemain - afterLocalConsume) : 0;
-        let plusOneUsed = 0;
         for (let i = 0; i < this.cellCount; i++) {
             const serverIdx = this._topUpIdxToServerIdx(i);
             const slot = resultSlots[serverIdx];
-            const index = slot?.Index ?? slot?.index ?? 0;
-            const stripSymbolId = this.reels[i]?.getSymbolAtIndex(index);
-            const slotType = slot?.Type ?? slot?.type ?? TopupReelType.NONE;
-            const isPlusOneResult = slotType === TopupReelType.NONE
-                && stripSymbolId === SymbolId.PLUS_ONE_SPIN;
-            const allowPlusOne = isPlusOneResult && plusOneUsed < plusOneCount;
-            if (allowPlusOne) plusOneUsed++;
-            this._pendingResults[i] = this._enrichResultForTopUpIndex(slot, i, serverIdx, allowPlusOne);
-        }
-        Log.e(`[TOPUP-PLUS] TopUpManager stopReels serverRemain=${serverRemain ?? 'n/a'} afterLocalConsume=${afterLocalConsume} plusOneCount=${plusOneCount} visualAllowed=${plusOneUsed}`);
-        if (plusOneCount > 0 && plusOneUsed < plusOneCount) {
-            const dump = [];
-            for (let i = 0; i < this.cellCount; i++) {
-                const serverIdx = this._topUpIdxToServerIdx(i);
-                const slot = resultSlots[serverIdx];
-                const index = slot?.Index ?? slot?.index ?? 0;
-                const type = slot?.Type ?? slot?.type ?? TopupReelType.NONE;
-                const symbol = this.reels[i]?.getSymbolAtIndex(index);
-                dump.push(`${i}>${serverIdx}:t${type}:idx${index}:${symbol == null ? 'none' : (SymbolId[symbol] ?? symbol)}`);
-            }
-            Log.e(`[TOPUP-PLUS] visual miss detail ${dump.join('|')}`);
+            this._pendingResults[i] = this._enrichResultForTopUpIndex(slot, i, serverIdx);
         }
 
         // Dừng TẤT CẢ reel đang quay (parallel spin: nhiều reel quay cùng lúc)
@@ -666,8 +614,7 @@ export class TopUpManager extends Component {
             // Ô đã có Gold/sticky từ trước → không override
             const existing = GameData.instance.stickyCells.get(`${reel}-${row}`);
             if (existing
-                && existing.symbolId !== SymbolId.STICKY_GREEN
-                && existing.symbolId !== SymbolId.PLUS_ONE_SPIN) {
+                && existing.symbolId !== SymbolId.STICKY_GREEN) {
                 continue;
             }
             greenMap.set(`${reel}-${row}`, Number(cell.credit ?? cell.Credit ?? 0) || 0);
@@ -734,7 +681,7 @@ export class TopUpManager extends Component {
         return grid;
     }
 
-    private _enrichResultForTopUpIndex(resultData: any, topUpIdx: number, serverIdx: number = -1, allowPlusOne: boolean = false): any {
+    private _enrichResultForTopUpIndex(resultData: any, topUpIdx: number, serverIdx: number = -1): any {
         const source = resultData ?? {};
         const index = resultData?.Index ?? resultData?.index ?? 0;
         const win = resultData?.Win ?? resultData?.win ?? 0;
@@ -746,12 +693,8 @@ export class TopUpManager extends Component {
 
         // Only trust server Type for coins. Do NOT promote strip specials into coins.
         if (symbolId == null) {
-            if (stripSymbolId === SymbolId.PLUS_ONE_SPIN) {
-                // PLUS_ONE visual only if allowed, otherwise replace with non-bonus
-                type = TopupReelType.NONE;
-                symbolId = allowPlusOne ? SymbolId.PLUS_ONE_SPIN : this._fallbackNonBonusSymbol(reel);
-            } else if (this._isTopUpSpecialSymbol(stripSymbolId)) {
-                // Strip shows a special (RED/YELLOW/GREEN/GRAND) but server Type says NONE → force non-bonus visual
+            if (this._isTopUpSpecialSymbol(stripSymbolId)) {
+                // Strip shows a special (YELLOW/GREEN/GRAND) but server Type says NONE → force non-bonus visual
                 type = TopupReelType.NONE;
                 symbolId = this._fallbackNonBonusSymbol(reel);
             } else {
@@ -764,8 +707,7 @@ export class TopUpManager extends Component {
             `[TOPUP-PLUS] stopData topUpIdx=${topUpIdx} serverIdx=${serverIdx}` +
             ` type=${type} index=${index} win=${win}` +
             ` forced=${symbolId == null ? 'none' : (SymbolId[symbolId] ?? symbolId)}` +
-            ` strip=${stripSymbolId == null ? 'none' : (SymbolId[stripSymbolId] ?? stripSymbolId)}` +
-            ` allowPlusOne=${allowPlusOne ? 1 : 0}`
+            ` strip=${stripSymbolId == null ? 'none' : (SymbolId[stripSymbolId] ?? stripSymbolId)}`
         );
 
         return {
@@ -778,13 +720,11 @@ export class TopUpManager extends Component {
             index,
             _symbolId: symbolId,
             _stripSymbolId: stripSymbolId,
-            _allowPlusOneVisual: allowPlusOne,
             _topUpIdx: topUpIdx,
         };
     }
 
     private _topupTypeToSymbolId(type: number): number | null {
-        if (type === TopupReelType.RED) return SymbolId.STICKY_RED;
         if (type === TopupReelType.YELLOW) return SymbolId.STICKY_YELLOW;
         if (type === TopupReelType.GREEN) return SymbolId.STICKY_GREEN;
         if (type === TopupReelType.GRAND) return SymbolId.JP_GRAND;
@@ -792,11 +732,9 @@ export class TopUpManager extends Component {
     }
 
     private _isTopUpSpecialSymbol(symbolId: number | undefined): boolean {
-        return symbolId === SymbolId.STICKY_RED ||
-            symbolId === SymbolId.STICKY_YELLOW ||
+        return symbolId === SymbolId.STICKY_YELLOW ||
             symbolId === SymbolId.STICKY_GREEN ||
-            symbolId === SymbolId.JP_GRAND ||
-            symbolId === SymbolId.PLUS_ONE_SPIN;
+            symbolId === SymbolId.JP_GRAND;
     }
 
     private _fallbackNonBonusSymbol(reel: TopUpReelController | undefined): number | undefined {
@@ -805,11 +743,9 @@ export class TopUpManager extends Component {
             const symbolId = reel.getSymbolAtIndex(i);
             if (
                 symbolId != null &&
-                symbolId !== SymbolId.STICKY_RED &&
                 symbolId !== SymbolId.STICKY_YELLOW &&
                 symbolId !== SymbolId.STICKY_GREEN &&
-                symbolId !== SymbolId.JP_GRAND &&
-                symbolId !== SymbolId.PLUS_ONE_SPIN
+                symbolId !== SymbolId.JP_GRAND
             ) {
                 return symbolId;
             }

@@ -152,10 +152,6 @@ export class SlotDebugPanel extends Component {
 
     @property(Button) btnTopupAllGreen: Button = null!;
 
-    @property(Button) btnTopupAllPlusOne: Button = null!;
-
-
-
     @property(Button) btnSendCustom: Button = null!;
 
 
@@ -214,7 +210,7 @@ export class SlotDebugPanel extends Component {
 
             this.btnTopupZeros, this.btnTopupAllYellow,
 
-            this.btnTopupAllGreen, this.btnTopupAllPlusOne,
+            this.btnTopupAllGreen,
 
         ];
 

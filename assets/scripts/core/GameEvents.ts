@@ -318,19 +318,6 @@ export const GameEvents = {
     /** Hiển thị system popup thông báo lỗi — payload: SystemPopupPayload */
     SHOW_SYSTEM_POPUP: 'ui:system:popup',
 
-    /** Tất cả STICKY_RED symbol trên màn hình nhún nhẹ cùng lúc. No payload. */
-    RED_SYMBOL_BOUNCE: 'feature:red:bounce',
-    /** Tất cả Sticky đỏ vừa land đã zoom/bounce xong — GameManager mới được highlight win. No payload. */
-    STICKY_RED_LAND_BOUNCE_DONE: 'feature:red:land:bounce:done',
-
-    // ─── RED CREDIT (Đồng xu Đỏ) ───
-    /**
-     * Mỗi khi 1 reel dừng có Red coin → emit tổng credit Red hiện tại.
-     * payload: { totalRedCredit: number, redCount: number }
-     * UI component (EachWinDisplay) listen event này để hiện running total.
-     */
-    RED_CREDIT_UPDATED: 'feature:red:credit:updated',
-
     // ─── TOPUP GAME ───
     /** Hiện transition popup. Payload: TransitionMode (FreeSpin | TopUp | PickGame). */
     TOPUP_TRANSITION_SHOW: 'topup:transition:show',
@@ -348,7 +335,7 @@ export const GameEvents = {
     TOPUP_TOTAL_UPDATED: 'topup:total:updated',
     /** Bắt đầu chuỗi absorb effect sau khi reels dừng (payload: TopUpAbsorbPayload) */
     TOPUP_ABSORB_START: 'topup:absorb:start',
-    /** Toàn bộ absorb effect (plusOne + yellow + green) xong → GameManager tiếp tục transition */
+    /** Toàn bộ absorb effect (yellow + green) xong → GameManager tiếp tục transition */
     TOPUP_ABSORB_DONE: 'topup:absorb:done',
     /** Một đồng Vàng hoặc Xanh vừa hút xong → cộng credit của nó vào tổng (payload: { credit: number }) */
     TOPUP_ABSORB_CREDIT: 'topup:absorb:credit',

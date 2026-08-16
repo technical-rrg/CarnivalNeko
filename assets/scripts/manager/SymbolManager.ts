@@ -1,17 +1,27 @@
 /**
- * SymbolManager — ★ Secret Treasure mapping (5×3, Ways Pay).
+ * SymbolManager — Carnival Neko mapping (5×3, Ways Pay).
  *
  * Hỗ trợ 2 hệ thống ID:
- *   - Client SymbolId (0–20): dùng bởi SymbolView, GameData mock strips
- *   - PS Symbol ID:           dùng bởi server API
+ *   - Client SymbolId (0–25): dùng bởi SymbolView, GameData mock strips
+ *   - PS Symbol ID:            dùng bởi server API
  *
- * Quy ước đặt tên file hình (đặt trong `assets/bundle/textures/symbol/`):
- *   minor_9, minor_10, minor_j, minor_q, minor_k, minor_a   (id 0..5)
- *   major_horus, major_anubis, major_sobek, major_ramses, major_cleopatra  (id 6..10)
- *   wild_trail                                                (id 11)
- *   sticky_red, sticky_yellow, sticky_green                   (id 12/13/14)
- *   plus_one_spin                                             (id 15)
- *   jp_idle, jp_mini, jp_minor, jp_major, jp_grand           (id 16..20, Pick Game)
+ * Quy ước đặt tên file hình riêng lẻ (trước khi pack atlas):
+ *
+ *   assets/bundle/newTextures/symbols/reel/
+ *     ps_01.png  (Low 8)    ps_02.png  (Low 9)    ps_03.png  (Low J)
+ *     ps_04.png  (Low Q)    ps_05.png  (Low K)    ps_06.png  (Low A)
+ *     ps_11.png  (Raccoon)  ps_12.png  (Fish)     ps_13.png  (Crane)
+ *     ps_14.png  (Fox)     ps_15.png  (Golden Neko)
+ *     ps_21.png  (Wild)
+ *     ps_41.png  (Trail Blue)  ps_42.png  (Trail Green)  ps_43.png  (Trail Red)
+ *     ps_44.png  (Sticky Green) ps_45.png (Sticky Gold)
+ *
+ *   assets/bundle/newTextures/symbols/pickgame/
+ *     ps_81.png  (Base Pick / Idle)
+ *     ps_82.png  (Grand)  ps_83.png  (Major)  ps_84.png  (Minor)
+ *     ps_85.png  (Mini)   ps_86.png  (Upgrade Coin)
+ *
+ * Trong Editor: kéo SpriteFrame vào SlotMachineController.symbolFrames theo Client SymbolId (index 0..24).
  */
 
 import { SpriteFrame, resources } from 'cc';
@@ -24,37 +34,36 @@ import { GameData } from '../data/GameData';
 // ═══════════════════════════════════════════════════════════
 
 export const CLIENT_SPRITE_MAP: Record<number, string> = {
-    // ─── Minor (low pay) ───
-    [SymbolId.MINOR_9]:        'minor_9',
-    [SymbolId.MINOR_10]:       'minor_10',
-    [SymbolId.MINOR_J]:        'minor_j',
-    [SymbolId.MINOR_Q]:        'minor_q',
-    [SymbolId.MINOR_K]:        'minor_k',
-    [SymbolId.MINOR_A]:        'minor_a',
-    // ─── Major (high pay) ───
-    [SymbolId.MAJOR_HORUS]:     'major_horus',
-    [SymbolId.MAJOR_ANUBIS]:    'major_anubis',
-    [SymbolId.MAJOR_SOBEK]:     'major_sobek',
-    [SymbolId.MAJOR_RAMSES]:    'major_ramses',
-    [SymbolId.MAJOR_CLEOPATRA]: 'major_cleopatra',
-    // ─── Wild Trail (reel 1/2/3) ───
-    [SymbolId.WILD]:           'wild_trail',
-    // ─── Sticky symbols (Feature) ───
-    [SymbolId.STICKY_RED]:     'sticky_red',
-    [SymbolId.STICKY_YELLOW]:  'sticky_yellow',
-    [SymbolId.STICKY_GREEN]:   'sticky_green',
-    [SymbolId.PLUS_ONE_SPIN]:  'plus_one_spin',
-    // ─── Carnival Neko Trail (temp: reuse sticky art until trail_* assets ready) ───
+    // ─── Low (PS 1–6) ───
+    [SymbolId.MINOR_9]:        'ps_01',
+    [SymbolId.MINOR_10]:       'ps_02',
+    [SymbolId.MINOR_J]:        'ps_03',
+    [SymbolId.MINOR_Q]:        'ps_04',
+    [SymbolId.MINOR_K]:        'ps_05',
+    [SymbolId.MINOR_A]:        'ps_06',
+    // ─── High (PS 11–15) ───
+    [SymbolId.MAJOR_HORUS]:     'ps_11',
+    [SymbolId.MAJOR_ANUBIS]:    'ps_12',
+    [SymbolId.MAJOR_SOBEK]:     'ps_13',
+    [SymbolId.MAJOR_RAMSES]:    'ps_14',
+    [SymbolId.MAJOR_CLEOPATRA]: 'ps_15',
+    // ─── Wild (PS 21) ───
+    [SymbolId.WILD]:           'ps_21',
+    // ─── Sticky feature (PS 44/45) ───
+    [SymbolId.STICKY_YELLOW]:  'ps_45',
+    [SymbolId.STICKY_GREEN]:   'ps_44',
+    // ─── Trail (PS 41/42/43) ───
     [SymbolId.TRAIL_NORMAL]:   'trail_normal',
-    [SymbolId.TRAIL_BLUE]:     'trail_blue',
-    [SymbolId.TRAIL_RED]:      'trail_red',
-    [SymbolId.TRAIL_GREEN]:    'trail_green',
-    // ─── Jackpot icons (Pick Game) ───
-    [SymbolId.JP_IDLE]:        'jp_idle',
-    [SymbolId.JP_MINI]:        'jp_mini',
-    [SymbolId.JP_MINOR]:       'jp_minor',
-    [SymbolId.JP_MAJOR]:       'jp_major',
-    [SymbolId.JP_GRAND]:       'jp_grand',
+    [SymbolId.TRAIL_BLUE]:     'ps_41',
+    [SymbolId.TRAIL_RED]:      'ps_43',
+    [SymbolId.TRAIL_GREEN]:    'ps_42',
+    // ─── Pick Game (PS 81–86) ───
+    [SymbolId.JP_IDLE]:        'ps_81',
+    [SymbolId.JP_MINI]:        'ps_85',
+    [SymbolId.JP_MINOR]:       'ps_84',
+    [SymbolId.JP_MAJOR]:       'ps_83',
+    [SymbolId.JP_GRAND]:       'ps_82',
+    [SymbolId.JP_UPGRADE]:     'ps_86',
 };
 /**
  * PS Symbol ID → tên file sprite (dùng psToClientMap từ GameData).

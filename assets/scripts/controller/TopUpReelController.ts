@@ -118,7 +118,7 @@ export class TopUpReelController extends Component {
     private _restY: number[] = [];
     private _logPrefix: string = '';
     private _spinStartTime: number = 0;
-    private _pendingStop: { type: number, win: number, index: number, forcedMidSymbol?: number, allowPlusOneVisual?: boolean, debugTopUpIdx?: number, token: number } | null = null;
+    private _pendingStop: { type: number, win: number, index: number, forcedMidSymbol?: number, debugTopUpIdx?: number, token: number } | null = null;
     private _spinToken: number = 0;
     private _debugMidSymbolId: number = -1;
 
@@ -219,13 +219,13 @@ export class TopUpReelController extends Component {
                             this._state = ReelState.SPINNING;
                             // Nếu có pending stop (gọi stop() trong lúc bounce)
                             if (this._pendingStop) {
-                                const { type, win, index, forcedMidSymbol, allowPlusOneVisual, debugTopUpIdx, token } = this._pendingStop;
+                                const { type, win, index, forcedMidSymbol, debugTopUpIdx, token } = this._pendingStop;
                                 this._pendingStop = null;
                                 if (token !== this._spinToken) {
                                     Log.e(`[TOPUP-PLUS] ignore stale TopUpReel pending token=${token} current=${this._spinToken} topUpIdx=${debugTopUpIdx ?? 'n/a'}`);
                                     return;
                                 }
-                                this.stop({ type, win, index, _symbolId: forcedMidSymbol, _allowPlusOneVisual: allowPlusOneVisual, _topUpIdx: debugTopUpIdx });
+                                this.stop({ type, win, index, _symbolId: forcedMidSymbol, _topUpIdx: debugTopUpIdx });
                             }
                         }
                     }
@@ -235,15 +235,15 @@ export class TopUpReelController extends Component {
     }
 
     /** Set symbols tĩnh tại centerIndex (dùng cho init khi vào TopUp) */
-    setSymbols(centerIndex: number, forcedMidSymbol?: number, allowPlusOneVisual: boolean = false): void {
+    setSymbols(centerIndex: number, forcedMidSymbol?: number): void {
         this._showSymbolNodes();
         // Top/Bot luôn bỏ sticky; Mid chỉ cho Sticky xanh khi forced (land).
         const syms = this._getSymbolsAt(centerIndex).map(sym =>
-            this._sanitizeTopUpSymbol(sym, allowPlusOneVisual, false),
+            this._sanitizeTopUpSymbol(sym, false),
         );
         if (forcedMidSymbol != null) {
             const allowSticky = forcedMidSymbol === SymbolId.STICKY_GREEN;
-            syms[1] = this._sanitizeTopUpSymbol(forcedMidSymbol, allowPlusOneVisual, allowSticky);
+            syms[1] = this._sanitizeTopUpSymbol(forcedMidSymbol, allowSticky);
         }
         this._debugMidSymbolId = syms[1] ?? -1;
         for (let i = 0; i < this.symbolNodes.length; i++) {
@@ -321,20 +321,19 @@ export class TopUpReelController extends Component {
         const win = resultData?.Win ?? resultData?.win ?? 0;
         const index = resultData?.Index ?? resultData?.index ?? 0;
         const forcedMidSymbol = resultData?._symbolId ?? resultData?.symbolId;
-        const allowPlusOneVisual = !!resultData?._allowPlusOneVisual;
         const debugTopUpIdx = resultData?._topUpIdx;
         const token = this._spinToken;
         // Log.d(`${this._logPrefix} stop — Type=${type}...`);
 
         if (this._state === ReelState.LAUNCHING) {
             // Đang bounce → lưu pending, bounce xong sẽ tự gọi
-            this._pendingStop = { type, win, index, forcedMidSymbol, allowPlusOneVisual, debugTopUpIdx, token };
+            this._pendingStop = { type, win, index, forcedMidSymbol, debugTopUpIdx, token };
             return;
         }
 
         if (this._state !== ReelState.SPINNING) {
             this._snapToRestPositions();
-            this.setSymbols(index, forcedMidSymbol, allowPlusOneVisual);
+            this.setSymbols(index, forcedMidSymbol);
             this._applyResult(type, win, index);
             this.onStopComplete?.(this);
             return;
@@ -350,15 +349,15 @@ export class TopUpReelController extends Component {
                     Log.e(`[TOPUP-PLUS] ignore stale TopUpReel stop token=${token} current=${this._spinToken}`);
                     return;
                 }
-                this._doStop(type, win, index, forcedMidSymbol, allowPlusOneVisual, token, debugTopUpIdx);
+                this._doStop(type, win, index, forcedMidSymbol, token, debugTopUpIdx);
             }, remaining);
             return;
         }
 
-        this._doStop(type, win, index, forcedMidSymbol, allowPlusOneVisual, token, debugTopUpIdx);
+        this._doStop(type, win, index, forcedMidSymbol, token, debugTopUpIdx);
     }
 
-    private _doStop(type: number, win: number, index: number, forcedMidSymbol?: number, allowPlusOneVisual: boolean = false, token: number = this._spinToken, debugTopUpIdx?: number): void {
+    private _doStop(type: number, win: number, index: number, forcedMidSymbol?: number, token: number = this._spinToken, debugTopUpIdx?: number): void {
         if (token !== this._spinToken) {
             Log.e(`[TOPUP-PLUS] ignore stale TopUpReel _doStop token=${token} current=${this._spinToken}`);
             return;
@@ -368,7 +367,7 @@ export class TopUpReelController extends Component {
 
         // Build a deterministic landing: final symbols are assigned before the slow-down,
         // then the whole set starts one row above and eases down into its rest positions.
-        this._prepareLandingToRest(index, forcedMidSymbol, allowPlusOneVisual, debugTopUpIdx);
+        this._prepareLandingToRest(index, forcedMidSymbol, debugTopUpIdx);
 
         // Tween tất cả nodes xuống đúng 1 symbol: Mid node already holds the target result.
         const overshoot = this.symbolHeight * this.stopBounceOvershootRatio;
@@ -428,7 +427,7 @@ export class TopUpReelController extends Component {
     private _randomizeSymbol(nodeIdx: number): void {
         if (this._strip.length === 0) return;
         const randIdx = Math.floor(Math.random() * this._strip.length);
-        const symId = this._sanitizeTopUpSymbol(this._strip[randIdx], false);
+        const symId = this._sanitizeTopUpSymbol(this._strip[randIdx]);
         this._setSymbol(nodeIdx, symId);
     }
 
@@ -477,17 +476,16 @@ export class TopUpReelController extends Component {
         this.onStopComplete?.(this);
     }
 
-    private _prepareLandingToRest(centerIndex: number, forcedMidSymbol?: number, allowPlusOneVisual: boolean = false, debugTopUpIdx?: number): void {
-        this.setSymbols(centerIndex, forcedMidSymbol, allowPlusOneVisual);
+    private _prepareLandingToRest(centerIndex: number, forcedMidSymbol?: number, debugTopUpIdx?: number): void {
+        this.setSymbols(centerIndex, forcedMidSymbol);
         if (debugTopUpIdx != null) {
-            const syms = this._getSymbolsAt(centerIndex).map(sym => this._sanitizeTopUpSymbol(sym, allowPlusOneVisual));
-            if (forcedMidSymbol != null) syms[1] = this._sanitizeTopUpSymbol(forcedMidSymbol, allowPlusOneVisual);
+            const syms = this._getSymbolsAt(centerIndex).map(sym => this._sanitizeTopUpSymbol(sym));
+            if (forcedMidSymbol != null) syms[1] = this._sanitizeTopUpSymbol(forcedMidSymbol);
             Log.e(
                 `[TOPUP-PLUS] renderLanding topUpIdx=${debugTopUpIdx}` +
                 ` centerIndex=${centerIndex} top=${SymbolId[syms[0]] ?? syms[0]}` +
                 ` mid=${SymbolId[syms[1]] ?? syms[1]}` +
-                ` bot=${SymbolId[syms[2]] ?? syms[2]}` +
-                ` allowPlusOne=${allowPlusOneVisual ? 1 : 0}`
+                ` bot=${SymbolId[syms[2]] ?? syms[2]}`
             );
         }
         for (let i = 0; i < this.symbolNodes.length; i++) {
@@ -529,17 +527,12 @@ export class TopUpReelController extends Component {
      */
     private _sanitizeTopUpSymbol(
         symId: number,
-        allowPlusOneVisual: boolean,
         allowStickyVisual: boolean = false,
     ): number {
         if (!allowStickyVisual
             && (symId === SymbolId.STICKY_YELLOW
                 || symId === SymbolId.STICKY_GREEN
-                || symId === SymbolId.STICKY_RED
                 || symId === SymbolId.JP_GRAND)) {
-            return this._fallbackNonBonusSymbol() ?? SymbolId.MAJOR_CLEOPATRA;
-        }
-        if (symId === SymbolId.PLUS_ONE_SPIN && !allowPlusOneVisual) {
             return this._fallbackNonBonusSymbol() ?? SymbolId.MAJOR_CLEOPATRA;
         }
         return symId;
@@ -548,11 +541,9 @@ export class TopUpReelController extends Component {
     private _fallbackNonBonusSymbol(): number | undefined {
         for (const symbolId of this._strip) {
             if (
-                symbolId !== SymbolId.STICKY_RED &&
                 symbolId !== SymbolId.STICKY_YELLOW &&
                 symbolId !== SymbolId.STICKY_GREEN &&
-                symbolId !== SymbolId.JP_GRAND &&
-                symbolId !== SymbolId.PLUS_ONE_SPIN
+                symbolId !== SymbolId.JP_GRAND
             ) {
                 return symbolId;
             }

@@ -2093,7 +2093,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             })))}`
         );
 
-        // ─── GoF STICKY DEBUG: dump toàn bộ các field liên quan STICKY_RED ───
+        // ─── CN Sticky debug (Green/Gold Matsuri) ───
         // Log này luôn in (qua SV-ERR whitelist) để xác định field name thực tế server trả về.
         {
             const anyRes = res as any;
@@ -2576,8 +2576,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             let symbolId: number | null = null;
             let stripIdx = -1;
             let stripSymbol: number | null = null;
-            if (slot.type === TopupReelType.RED) symbolId = SymbolId.STICKY_RED;
-            else if (slot.type === TopupReelType.YELLOW) symbolId = SymbolId.STICKY_YELLOW;
+            if (slot.type === TopupReelType.YELLOW) symbolId = SymbolId.STICKY_YELLOW;
             else if (slot.type === TopupReelType.GREEN) symbolId = SymbolId.STICKY_GREEN;
             else if (slot.type === TopupReelType.GRAND) symbolId = SymbolId.JP_GRAND;
 
@@ -2754,8 +2753,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             for (let row = 0; row < reelGrid.length; row++) {
                 const clientSymId = reelGrid[row];
                 // Chỉ xử lý sticky coins
-                if (clientSymId !== SymbolId.STICKY_RED
-                    && clientSymId !== SymbolId.STICKY_YELLOW
+                if (clientSymId !== SymbolId.STICKY_YELLOW
                     && clientSymId !== SymbolId.STICKY_GREEN) continue;
 
                 // row 0=top=center-1, row 1=mid=center, row 2=bot=center+1
@@ -2815,7 +2813,7 @@ class RealNetworkAdapter implements INetworkAdapter {
                 // Object format (PascalCase or mixed)
                 reel = item.Reel ?? item.Col ?? item.reel ?? item.col ?? 0;
                 row = item.Row ?? item.row ?? 0;
-                const rawSym = item.SymbolId ?? item.Sym ?? item.symbolId ?? item.sym ?? SymbolId.STICKY_RED;
+                const rawSym = item.SymbolId ?? item.Sym ?? item.symbolId ?? item.sym ?? SymbolId.STICKY_YELLOW;
                 symbolId = dynMap[rawSym] ?? rawSym;
                 credit = item.Credit ?? item.Val ?? item.credit ?? item.val ?? item.Value ?? 0;
             } else {
@@ -2950,8 +2948,6 @@ class RealNetworkAdapter implements INetworkAdapter {
             [['WildTrailSymbolID', 'WildSymbolID', 'WildsymbolID'], SymbolId.WILD],
             [['Sticky_01symbolID', 'Sticky01symbolID', 'StickyGreenSymbolID', 'StickyGreen'], SymbolId.STICKY_GREEN],
             [['Sticky_02symbolID', 'Sticky02symbolID', 'StickyYellowSymbolID', 'StickyYellow'], SymbolId.STICKY_YELLOW],
-            [['StickyRedSymbolID', 'StickyRed'], SymbolId.STICKY_RED],
-            [['PlusOneSpinSymbolID', 'PlusOneSpin', 'TopupSpinAddsymbolID'], SymbolId.PLUS_ONE_SPIN],
             // Jackpots — CN: Mini/Minor/Major/Grand/Upgrade/Idle
             [['MinijackpotSymbolID', 'MiniJackpotID', 'MiniJackpotSymbolID'], SymbolId.JP_MINI],
             [['MinorjackpotSymbolID', 'MinorJackpotID', 'MinorJackpotSymbolID'], SymbolId.JP_MINOR],
@@ -3036,15 +3032,15 @@ class RealNetworkAdapter implements INetworkAdapter {
             Log.e('[PS:NormalMap] CN 1–6 Low, 11–15 High, 21 Wild');
         }
 
-        // ═══ Pick Game — 81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade ═══
+        // ═══ Pick Game — 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade ═══
         // Named MiniJackpotID… đã map ở trên; block này chỉ fill khi PS thiếu field.
         {
             const _pickSymbols: Record<number, number> = {
                 81: SymbolId.JP_IDLE,
-                82: SymbolId.JP_MINI,
-                83: SymbolId.JP_MINOR,
-                84: SymbolId.JP_MAJOR,
-                85: SymbolId.JP_GRAND,
+                82: SymbolId.JP_GRAND,
+                83: SymbolId.JP_MAJOR,
+                84: SymbolId.JP_MINOR,
+                85: SymbolId.JP_MINI,
                 86: SymbolId.JP_UPGRADE,
             };
             for (const [psId, clientId] of Object.entries(_pickSymbols)) {
@@ -3052,7 +3048,7 @@ class RealNetworkAdapter implements INetworkAdapter {
                 if (!(id in dynMap)) dynMap[id] = clientId as number;
             }
             Log.e(
-                `[PS:PickMap] Idle=81 Mini=82 Minor=83 Major=84 Grand=85 Upgrade=86` +
+                `[PS:PickMap] Idle=81 Grand=82 Major=83 Minor=84 Mini=85 Upgrade=86` +
                 ` | dyn Mini=${Object.entries(dynMap).find(([, v]) => v === SymbolId.JP_MINI)?.[0] ?? '?'}` +
                 ` Grand=${Object.entries(dynMap).find(([, v]) => v === SymbolId.JP_GRAND)?.[0] ?? '?'}`,
             );
@@ -3073,8 +3069,7 @@ class RealNetworkAdapter implements INetworkAdapter {
                 SymbolId.MINOR_Q, SymbolId.MINOR_K, SymbolId.MINOR_A,
                 SymbolId.MAJOR_HORUS, SymbolId.MAJOR_ANUBIS, SymbolId.MAJOR_SOBEK,
                 SymbolId.MAJOR_RAMSES, SymbolId.MAJOR_CLEOPATRA, SymbolId.WILD,
-                SymbolId.STICKY_RED, SymbolId.STICKY_YELLOW, SymbolId.STICKY_GREEN,
-                SymbolId.PLUS_ONE_SPIN,
+                SymbolId.STICKY_YELLOW, SymbolId.STICKY_GREEN,
             ];
             for (let i = 0; i < sortedIds.length; i++) {
                 const psId = sortedIds[i];

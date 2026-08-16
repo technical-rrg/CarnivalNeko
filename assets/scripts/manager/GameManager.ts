@@ -38,7 +38,6 @@ import { TopUpManager } from '../controller/TopUpManager';
 import { SlotMachineController } from '../controller/SlotMachineController';
 import { StickyOverlayController } from '../controller/StickyOverlayController';
 import { StickyOverlayLoader } from '../controller/StickyOverlayLoader';
-import { SymbolView } from '../controller/SymbolView';
 import { TransitionMode } from '../controller/TopUpTransitionPopup';
 import {
     MATSURI_GOLD_SYMBOL,
@@ -937,13 +936,6 @@ export class GameManager extends Component {
         }
 
         if (isTopUp || isMatsuri) {
-            // ★ Xóa PLUS_ONE_SPIN khỏi stickyCells trước khi quay lượt mới
-            //    +1 Spin chỉ hiển thị trong lượt rơi xuống, không sticky qua lượt
-            for (const [key, cell] of data.stickyCells.entries()) {
-                if (cell.symbolId === SymbolId.PLUS_ONE_SPIN) {
-                    data.stickyCells.delete(key);
-                }
-            }
             this._topUpRemainBeforeSpin = data.respinRemaining;
             data.respinRemaining = Math.max(0, data.respinRemaining - 1);
             EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
@@ -1009,18 +1001,6 @@ export class GameManager extends Component {
                 }
             }
 
-            const debugGrid = data.getBaseGrid(response.rands, isFreeSpin, response.reelIndex);
-            const debugGridRedCells: string[] = [];
-            for (let reel = 0; reel < debugGrid.length; reel++) {
-                for (let row = 0; row < debugGrid[reel].length; row++) {
-                    if (debugGrid[reel][row] === SymbolId.STICKY_RED) {
-                        debugGridRedCells.push(`r${reel}row${row}`);
-                    }
-                }
-            }
-            const debugStickyReds = (response.stickyCells ?? [])
-                .filter(c => c.symbolId === SymbolId.STICKY_RED)
-                .map(c => `r${c.reel}row${c.row}`);
             // ★ PHASE 2: Ra lệnh dừng reel với kết quả
             EventBus.instance.emit(GameEvents.SPIN_RESPONSE, response);
 
@@ -1054,12 +1034,10 @@ export class GameManager extends Component {
         if (this._pendingWinPresentRespCarnival) {
             const resp = this._pendingWinPresentRespCarnival;
             this._pendingWinPresentRespCarnival = null;
-            const hasRedSticky = !this._isFreeSpin()
-                && (resp.stickyCells?.some((c: StickyCell) => c.symbolId === SymbolId.STICKY_RED) ?? false);
             this._logSpinState(
                 `CARNIVAL_TRAIL_FLY_DONE → emit WIN_PRESENT_START | totalWin=${resp.totalWin}`
             );
-            this._emitWinPresentAfterRedLandBounce(resp, hasRedSticky);
+            EventBus.instance.emit(GameEvents.WIN_PRESENT_START, resp);
         } else {
             this._logSpinState('CARNIVAL_TRAIL_FLY_DONE — no pending WIN_PRESENT');
         }
@@ -1356,10 +1334,9 @@ export class GameManager extends Component {
                 const key = `${cell.reel}-${cell.row}`;
                 const credit = cell.credit ?? 0;
                 const existing = data.stickyCells.get(key);
-                // Ô đã là Gold/Red từ trước → không phải Green mới
+                // Ô đã là Gold từ trước → không phải Green mới
                 if (existing
-                    && existing.symbolId !== SymbolId.STICKY_GREEN
-                    && existing.symbolId !== SymbolId.PLUS_ONE_SPIN) {
+                    && existing.symbolId !== SymbolId.STICKY_GREEN) {
                     continue;
                 }
                 greenCount++;
@@ -1396,8 +1373,7 @@ export class GameManager extends Component {
                 const key = `${reel}-${row}`;
                 const existing = data.stickyCells.get(key);
                 if (existing
-                    && existing.symbolId !== SymbolId.STICKY_GREEN
-                    && existing.symbolId !== SymbolId.PLUS_ONE_SPIN) {
+                    && existing.symbolId !== SymbolId.STICKY_GREEN) {
                     continue;
                 }
                 const credit = slot.win ?? 0;
@@ -1607,7 +1583,6 @@ export class GameManager extends Component {
             const result = (reelIndex as any).result;
             if (result) {
                 if (
-                    result.type === TopupReelType.RED ||
                     result.type === TopupReelType.YELLOW ||
                     result.type === TopupReelType.GREEN ||
                     result.type === TopupReelType.GRAND
@@ -1615,9 +1590,6 @@ export class GameManager extends Component {
                     const landedSymbolId = result._symbolId ?? result.symbolId;
                     Log.d(`[TopUp-REEL-STOP] idx=${idx} YELLOW/GREEN sym=${SymbolId[landedSymbolId] ?? landedSymbolId} win=${result.win}`);
                     this._onTopUpReelCoinLanded(idx, result);
-                } else if (result.type === TopupReelType.NONE) {
-                    // ★ Check nếu strip tại index có PLUS_ONE_SPIN → hiện trên overlay
-                    // PLUS_ONE_SPIN is resolved only after REELS_STOPPED from server remain delta.
                 }
             }
             return;
@@ -1667,25 +1639,17 @@ export class GameManager extends Component {
         const row  = reelIdx % rows;
         const key  = `${reel}-${row}`;
 
-        // Nếu ô đã có sticky (RED/...) thì bỏ qua
+        // Nếu ô đã có sticky thì bỏ qua
         if (data.stickyCells.has(key)) {
             Log.d(`[TopUp-COIN-LAND] SKIP: ${key} already has ${SymbolId[data.stickyCells.get(key)!.symbolId]}`);
             return;
         }
 
         let symbolId: number | null = null;
-        if (result.type === TopupReelType.RED) symbolId = SymbolId.STICKY_RED;
-        else if (result.type === TopupReelType.YELLOW) symbolId = SymbolId.STICKY_YELLOW;
+        if (result.type === TopupReelType.YELLOW) symbolId = SymbolId.STICKY_YELLOW;
         else if (result.type === TopupReelType.GREEN) symbolId = SymbolId.STICKY_GREEN;
         else if (result.type === TopupReelType.GRAND) symbolId = SymbolId.JP_GRAND;
         else return;
-
-        // ★ PLUS_ONE_SPIN không phải sticky coin — không thêm vào stickyCells.
-        //    Effect +1 sẽ do TopUpAbsorbEffect._stepPlusOneSpin xử lý qua newCells.
-        if (symbolId === SymbolId.PLUS_ONE_SPIN) {
-            Log.e(`[TOPUP-PLUS] ignored per-reel +1 at ${key}; wait for server remain delta`);
-            return;
-        }
 
         // Matsuri: giữ Green trên stickyCells — StickyOverlay hiện xanh rồi flip sang Gold
         const isMatsuri = data.currentMode === 'matsuri';
@@ -1742,8 +1706,7 @@ export class GameManager extends Component {
     private _lockTopUpCell(cell: StickyCell): void {
         if (
             cell.symbolId !== SymbolId.STICKY_YELLOW &&
-            cell.symbolId !== SymbolId.STICKY_GREEN &&
-            cell.symbolId !== SymbolId.PLUS_ONE_SPIN
+            cell.symbolId !== SymbolId.STICKY_GREEN
         ) {
             return;
         }
@@ -1809,8 +1772,8 @@ export class GameManager extends Component {
             [SymbolId.MAJOR_HORUS]:'Horus', [SymbolId.MAJOR_ANUBIS]:'Anubis',
             [SymbolId.MAJOR_SOBEK]:'Sobek', [SymbolId.MAJOR_RAMSES]:'Ramses',
             [SymbolId.MAJOR_CLEOPATRA]:'Cleo', [SymbolId.WILD]:'Wild',
-            [SymbolId.STICKY_RED]:'Red', [SymbolId.STICKY_YELLOW]:'Yel',
-            [SymbolId.STICKY_GREEN]:'Grn', [SymbolId.PLUS_ONE_SPIN]:'+1',
+            [SymbolId.STICKY_YELLOW]:'Yel',
+            [SymbolId.STICKY_GREEN]:'Grn',
         };
         const isFS = this._isFreeSpin();
         // g[col][0]=top / [1]=mid / [2]=bot — logical order (server)
@@ -1987,29 +1950,23 @@ export class GameManager extends Component {
         // Nếu có carnival trail: trì hoãn WIN_PRESENT_START đến khi FLY_DONE
         const _hasCarnivalTrail = hasCarnivalTrails;
 
-        // Normal mode: nếu có red sticky symbols → đợi TẤT CẢ land zoom/bounce xong mới highlight
-        const hasRedSticky = !this._isFreeSpin() && (resp.stickyCells?.some((c: StickyCell) => c.symbolId === SymbolId.STICKY_RED) ?? false);
-
         this.unschedule(this._spinCycleFallback);
         const _fallbackDelay = _hasCarnivalTrail ? 4.5 : 2.0;
         this.scheduleOnce(this._spinCycleFallback, _fallbackDelay);
         this._logSpinState(
             `post-REELS_STOPPED schedule spinCycleFallback=${_fallbackDelay}s` +
-            ` carnivalTrail=${_hasCarnivalTrail} redSticky=${hasRedSticky}` +
+            ` carnivalTrail=${_hasCarnivalTrail}` +
             ` totalWin=${resp.totalWin} ways=${resp.waysPayWins?.length ?? 0} lines=${resp.matchedLinePays?.length ?? 0}`
         );
 
         if (_hasCarnivalTrail) {
             if (this._carnivalTrailFlyDoneReceivedThisSpin) {
                 this._logSpinState('emit WIN_PRESENT_START via carnivalTrail already done');
-                this._emitWinPresentAfterRedLandBounce(resp, hasRedSticky);
+                EventBus.instance.emit(GameEvents.WIN_PRESENT_START, resp);
             } else {
                 this._pendingWinPresentRespCarnival = resp;
                 this._logSpinState('DEFER WIN_PRESENT_START — wait CARNIVAL_TRAIL_FLY_DONE');
             }
-        } else if (hasRedSticky) {
-            this._logSpinState('emit WIN_PRESENT_START after red land bounce');
-            this._emitWinPresentAfterRedLandBounce(resp, true);
         } else {
             // Luôn emit WIN_PRESENT_START để UI cập nhật label (cả win lẫn no-win)
             this._logSpinState('EMIT WIN_PRESENT_START immediate');
@@ -2138,63 +2095,6 @@ export class GameManager extends Component {
     }
 
     // ─── SAU KHI WIN PRESENTATION XONG ───
-
-    /**
-     * Đợi tất cả Sticky đỏ land-bounce (zoom) xong rồi mới emit WIN_PRESENT_START.
-     * Tránh highlight chạy song song với zoom của coin đỏ vừa land.
-     */
-    private _emitWinPresentAfterRedLandBounce(resp: SpinResponse, waitForRed: boolean): void {
-        const emitHighlight = () => {
-            if (!this._isSpinning) {
-                this._logSpinState('redBounce emitHighlight SKIP — not spinning');
-                return;
-            }
-            SymbolView.logLandBounceParentState('pre-highlight');
-            SymbolView.ensureRedLandBouncesRestored();
-            SymbolView.restoreAllLandBounces();
-            SymbolView.logLandBounceParentState('pre-WIN_PRESENT_START');
-            this._logSpinState(`EMIT WIN_PRESENT_START (after redBounce wait=${waitForRed})`);
-            EventBus.instance.emit(GameEvents.WIN_PRESENT_START, resp);
-        };
-
-        if (!waitForRed) {
-            emitHighlight();
-            return;
-        }
-
-        // Đánh dấu toàn bộ reel đã dừng — từ đây mới check bounce đỏ settled
-        SymbolView.markRedLandBounceSessionReady();
-        Log.e(`[LB-DEBUG] wait-highlight ${SymbolView.getRedLandBounceDebugSummary()}`);
-
-        let done = false;
-        const finish = (force = false) => {
-            if (done || !this._isSpinning) return;
-            if (!force && !SymbolView.areAllRedLandBouncesSettled()) return;
-            done = true;
-            this.unschedule(fallback);
-            this.unschedule(poll);
-            EventBus.instance.off(GameEvents.STICKY_RED_LAND_BOUNCE_DONE, onBounceDone, this);
-            emitHighlight();
-        };
-        const onBounceDone = () => finish(false);
-        const poll = () => finish(false);
-        const fallback = () => {
-            Log.e('[LB-DEBUG] wait-highlight FALLBACK — force cleanup + emit');
-            SymbolView.ensureRedLandBouncesRestored();
-            SymbolView.restoreAllLandBounces();
-            finish(true);
-        };
-
-        // Chờ reel cuối settle + kick land-bounce trước khi kiểm tra counter/clone
-        this.scheduleOnce(() => {
-            if (!this._isSpinning) return;
-            EventBus.instance.on(GameEvents.STICKY_RED_LAND_BOUNCE_DONE, onBounceDone, this);
-            this.schedule(poll, 0.05);
-            this.scheduleOnce(fallback, SymbolView.getLandBounceDuration() + 0.5);
-            finish(false);
-        }, 0.08);
-    }
-
 
     private _onWinPresentEnd(): void {
         this._logSpinState('WIN_PRESENT_END received → check progressive then _afterWinProcessed');
@@ -3385,10 +3285,11 @@ export class GameManager extends Component {
             const apiRow = Math.floor(i / 5);
             const reel = i % 5;
             const row = 2 - apiRow;
-            let symbolId = SymbolId.STICKY_RED;
+            let symbolId: number | null = null;
             if (slot.type === TopupReelType.YELLOW) symbolId = SymbolId.STICKY_YELLOW;
             else if (slot.type === TopupReelType.GREEN) symbolId = SymbolId.STICKY_GREEN;
             else if (slot.type === TopupReelType.GRAND) symbolId = SymbolId.JP_GRAND;
+            if (symbolId == null) continue;
             cells.push({ reel, row, symbolId, credit: slot.win });
         }
         Log.e(`[RESUME-STICKY] Parsed ${cells.length} cells: ${cells.map(c => `${c.reel}-${c.row}:${SymbolId[c.symbolId]??c.symbolId}($${c.credit})`).join(', ')}`);
@@ -3396,7 +3297,12 @@ export class GameManager extends Component {
     }
 
     private _sumTopUpBaseCredit(cells: StickyCell[]): number {
-        return cells.reduce((sum, cell) => cell.symbolId === SymbolId.STICKY_RED ? sum + (cell.credit ?? 0) : sum, 0);
+        return cells.reduce((sum, cell) => {
+            if (cell.symbolId === SymbolId.STICKY_YELLOW || cell.symbolId === SymbolId.STICKY_GREEN) {
+                return sum + (cell.credit ?? 0);
+            }
+            return sum;
+        }, 0);
     }
 
     private _isTopUpStage(stage: number): boolean {
@@ -4027,14 +3933,17 @@ export class GameManager extends Component {
                 const apiRow = Math.floor(i / 5);
                 const reel = i % 5;
                 const row = 2 - apiRow; // Server row order is inverted against StickyOverlay/TopUp visual slots.
-                if (slot.type !== TopupReelType.RED) {
+                let symbolId: number | null = null;
+                if (slot.type === TopupReelType.YELLOW) symbolId = SymbolId.STICKY_YELLOW;
+                else if (slot.type === TopupReelType.GREEN) symbolId = SymbolId.STICKY_GREEN;
+                else if (slot.type === TopupReelType.GRAND) symbolId = SymbolId.JP_GRAND;
+                if (symbolId == null) {
                     Log.e(
-                        `[TOPUP-ENTER-CHECK] skip non-red initial cell slot=${i} visual=${reel}-${row}` +
+                        `[TOPUP-ENTER-CHECK] skip unsupported initial cell slot=${i} visual=${reel}-${row}` +
                         ` type=${slot.type} win=${slot.win} index=${slot.index}`
                     );
                     continue;
                 }
-                const symbolId = SymbolId.STICKY_RED;
                 const key = `${reel}-${row}`;
                 const credit = (slot.win > 0 ? slot.win : prevCredits.get(key)) ?? slot.win ?? 0;
                 data.stickyCells.set(key, { reel, row, symbolId, credit });
@@ -4042,13 +3951,6 @@ export class GameManager extends Component {
             Log.e(`[TopUp] _prepareTopUpUI: rebuilt stickyCells from topupReel → ${data.stickyCells.size} cells (5-col coords)`);
         } else {
             Log.e(`[TopUp] _prepareTopUpUI: no topupReel in lastSpinResponse — keeping existing stickyCells (${data.stickyCells.size})`);
-        }
-
-        for (const [key, cell] of Array.from(data.stickyCells.entries())) {
-            if (cell.symbolId !== SymbolId.STICKY_RED) {
-                data.stickyCells.delete(key);
-                Log.e(`[TOPUP-ENTER-CHECK] drop stale non-red sticky key=${key} symbol=${SymbolId[cell.symbolId] ?? cell.symbolId} credit=${cell.credit ?? 0}`);
-            }
         }
 
         const enterIdx0 = data.stickyCells.get('0-0');
@@ -4105,9 +4007,9 @@ export class GameManager extends Component {
     }
 
     /** Chờ overlay fade + coin bounce stagger xong trước spin đầu TopUp. */
-    private _topUpEnterAnimWait(redCount: number): number {
+    private _topUpEnterAnimWait(stickyCount: number): number {
         const fade = 0.4;
-        const stagger = Math.max(0, redCount - 1) * 0.07;
+        const stagger = Math.max(0, stickyCount - 1) * 0.07;
         const bounce = 0.22 + 0.32;
         return fade + stagger + bounce + 0.15;
     }
@@ -4116,22 +4018,7 @@ export class GameManager extends Component {
         const data = GameData.instance;
         this.unschedule(this._spinCycleFallback);
 
-        // ── Detect +1 Spin: compare remainRespinCount trước và sau ──
-        // prevRemain = data.respinRemaining đã bị giảm 1 trong performSpin() trước khi request.
-        // newRemain = số lần quay còn lại server trả về sau spin này.
-        // Bình thường: newRemain == prevRemain (server confirm đúng).
-        // Có +1 Spin: newRemain = prevRemain + N → plusOneSpinCount = N.
-        const prevRemain = data.respinRemaining;
-        const remainBeforeSpin = this._topUpRemainBeforeSpin || prevRemain;
-        const newRemain = resp.remainRespinCount ?? prevRemain;
-        const plusOneSpinCount = Math.max(0, newRemain - prevRemain);
-        Log.e(`[TOPUP-PLUS] remain beforeSpin=${remainBeforeSpin} afterLocalConsume=${prevRemain} server=${newRemain} plusOneCount=${plusOneSpinCount}`);
-        if (plusOneSpinCount === 0) {
-            const overlays = this.node.scene?.getComponentsInChildren(StickyOverlayController) ?? [];
-            for (const overlay of overlays) {
-                overlay.clearTempPlusOne('server-no-plus');
-            }
-        }
+        const remainBeforeSpin = this._topUpRemainBeforeSpin || data.respinRemaining;
         Log.e(
             `[TOPUP-CREDIT][GM] reelsStopped rawTotals spinTotal=${resp.totalWin ?? 'n/a'}` +
             ` featureTotal=${resp.featureSpinTotalWin ?? 'n/a'} beforeClientTotal=${data.respinTotalWin}` +
@@ -4164,21 +4051,8 @@ export class GameManager extends Component {
                 }
 
                 Log.e(`[TopUp-DEBUG]   ${key}: NEW ${SymbolId[cell.symbolId] ?? cell.symbolId} credit=${cell.credit}`);
-                if (cell.symbolId === SymbolId.PLUS_ONE_SPIN && plusOneSpinCount <= 0) {
-                    Log.e(`[TOPUP-PLUS] DROP stale parsed +1 cell key=${key} because plusOneCount=0`);
-                    continue;
-                }
                 if (cell.symbolId === SymbolId.STICKY_YELLOW || cell.symbolId === SymbolId.STICKY_GREEN) {
                     Log.e(`[TOPUP-CREDIT][GM] serverNewCoin key=${key} symbol=${SymbolId[cell.symbolId]} credit=${cell.credit} snapshotHad=${wasExistingBeforeSpin}`);
-                }
-
-                // Cell MỚI spin này
-                if (cell.symbolId === SymbolId.PLUS_ONE_SPIN) {
-                    // +1 Spin — track vị trí cho effect và lock reel lần sau
-                    newCells.push(cell);
-                    data.stickyCells.set(key, cell);
-                    this._lockTopUpCell(cell);
-                    continue;
                 }
 
                 // Yellow/Green MỚI → absorb effect
@@ -4191,7 +4065,7 @@ export class GameManager extends Component {
                     continue;
                 }
 
-                // Thêm vào stickyCells map (Red/Yellow/Green đều sticky)
+                // JP Grand / các sticky khác
                 data.stickyCells.set(key, cell);
                 this._lockTopUpCell(cell);
             }
@@ -4206,77 +4080,6 @@ export class GameManager extends Component {
             Log.e(`[TopUp-DEBUG] ⚠ Nếu Yellow/Green đã tồn tại trong stickyCells trước spin, chúng bị coi là EXISTING → không vào newCells`);
         }
 
-        // ── Synthesize PLUS_ONE_SPIN cell khi server tăng remainRespinCount nhưng TopupReel
-        //    không chứa ô PLUS_ONE_SPIN (real API không map Type → PLUS_ONE_SPIN).
-        //    Cần cell này để _stepPlusOneSpin biết vị trí coin trên grid → highlight + fly animation.
-        //    Tìm vị trí trong respinReelStrips + rands mà symbol là PLUS_ONE_SPIN và slot còn trống.
-        if (plusOneSpinCount > 0 && !newCells.some(c => c.symbolId === SymbolId.PLUS_ONE_SPIN)) {
-            const strips = data.config.respinReelStrips;
-            const rands  = resp.rands ?? [];
-            const plusOneKeys = new Set<string>();
-            const topupSlots = resp.topupReel ?? [];
-            for (let topUpIdx = 0; topUpIdx < 15; topUpIdx++) {
-                const reel = Math.floor(topUpIdx / 3);
-                const row = topUpIdx % 3;
-                const apiRow = 2 - row;
-                const serverIdx = apiRow * 5 + reel;
-                const slot = topupSlots[serverIdx];
-                if (!slot) continue;
-                const strip = strips[reel] ?? [];
-                if (strip.length === 0) continue;
-                const stripIdx = ((slot.index % strip.length) + strip.length) % strip.length;
-                if (strip[stripIdx] !== SymbolId.PLUS_ONE_SPIN) continue;
-                const key = `${reel}-${row}`;
-                if (!data.stickyCells.has(key) && !plusOneKeys.has(key) && plusOneKeys.size < plusOneSpinCount) {
-                    const synthCell: StickyCell = { reel, row, symbolId: SymbolId.PLUS_ONE_SPIN, credit: 0 };
-                    newCells.push(synthCell);
-                    plusOneKeys.add(key);
-                    Log.e(`[TOPUP-PLUS] synth ${key} from TopupReel topUpIdx=${topUpIdx} serverIdx=${serverIdx} index=${slot.index} count=${plusOneKeys.size}/${plusOneSpinCount}`);
-                }
-            }
-            outer:
-            for (let reel = 0; false && plusOneKeys.size < plusOneSpinCount && reel < strips.length; reel++) {
-                const strip = strips[reel] ?? [];
-                const len   = strip.length || 1;
-                const rand  = rands[reel] ?? 0;
-                const center = ((rand % len) + len) % len;
-                // row0=top=center+1, row1=mid=center, row2=bottom=center-1
-                for (let row = 0; row < (data.config.rowCount ?? 3); row++) {
-                    const stripIdx = ((center + (1 - row)) % len + len) % len;
-                    if (strip[stripIdx] === SymbolId.PLUS_ONE_SPIN) {
-                        const key = `${reel}-${row}`;
-                        if (!data.stickyCells.has(key) && !plusOneKeys.has(key)) {
-                            const synthCell: StickyCell = { reel, row, symbolId: SymbolId.PLUS_ONE_SPIN, credit: 0 };
-                            newCells.push(synthCell);
-                            plusOneKeys.add(key);
-                            Log.e(`[TOPUP-PLUS] synth ${key} from respinStrip count=${plusOneKeys.size}/${plusOneSpinCount}`);
-                            if (plusOneKeys.size >= plusOneSpinCount) break outer;
-                        }
-                    }
-                }
-            }
-            if (plusOneKeys.size < plusOneSpinCount) {
-                Log.e(`[TOPUP-PLUS] WARNING expected=${plusOneSpinCount} found=${plusOneKeys.size}; no fallback cell used to avoid wrong +1 position`);
-                const detail = [];
-                for (let topUpIdx = 0; topUpIdx < 15; topUpIdx++) {
-                    const reel = Math.floor(topUpIdx / 3);
-                    const row = topUpIdx % 3;
-                    const apiRow = 2 - row;
-                    const serverIdx = apiRow * 5 + reel;
-                    const slot = topupSlots[serverIdx];
-                    const strip = strips[reel] ?? [];
-                    const stripIdx = slot && strip.length > 0 ? ((slot.index % strip.length) + strip.length) % strip.length : -1;
-                    const symbolId = stripIdx >= 0 ? strip[stripIdx] : undefined;
-                    const key = `${reel}-${row}`;
-                    const sticky = data.stickyCells.get(key);
-                    detail.push(`${topUpIdx}>${serverIdx}:${key} t=${slot?.type ?? 'n/a'} idx=${slot?.index ?? 'n/a'} stripIdx=${stripIdx} sym=${symbolId == null ? 'none' : (SymbolId[symbolId] ?? symbolId)} sticky=${sticky ? (SymbolId[sticky.symbolId] ?? sticky.symbolId) : 'empty'}`);
-                }
-                Log.e(`[TOPUP-PLUS] noVisualPlus candidates ${detail.join('|')}`);
-                // Không tìm thấy vị trí cụ thể → dùng cell giả reel=0 row=1 (mid) để effect vẫn chạy
-                Log.e(`[TopUp-DEBUG] +1Spin: không tìm được vị trí trong strip → dùng fallback cell (0-1)`);
-            }
-        }
-
         this._logTopupSpinResultGrid(resp, 'STOPPED', newCells);
 
         const beforeTotalUpdate = data.respinTotalWin;
@@ -4284,40 +4087,35 @@ export class GameManager extends Component {
         const serverDeltaWin = Math.max(0, data.respinTotalWin - beforeTotalUpdate);
         const hasMoneyAbsorb = newCells.some(c => c.symbolId === SymbolId.STICKY_YELLOW || c.symbolId === SymbolId.STICKY_GREEN);
         const stickyValues = Array.from(data.stickyCells.values());
-        const redCreditSum = stickyValues
-            .filter(c => c.symbolId === SymbolId.STICKY_RED)
-            .reduce((sum, c) => sum + (c.credit ?? 0), 0);
         const yellowCreditSum = stickyValues
             .filter(c => c.symbolId === SymbolId.STICKY_YELLOW)
             .reduce((sum, c) => sum + (c.credit ?? 0), 0);
         const greenCreditSum = stickyValues
             .filter(c => c.symbolId === SymbolId.STICKY_GREEN)
             .reduce((sum, c) => sum + (c.credit ?? 0), 0);
+        const stickyCreditSum = yellowCreditSum + greenCreditSum;
         const topUpSpinOrdinal = Math.max(1, 7 - remainBeforeSpin);
         Log.e(
             `[TOPUP-CREDIT][GM] totalUpdate before=${beforeTotalUpdate}` +
             ` resp.FeatureSpinTotalWin=${resp.featureSpinTotalWin ?? 'n/a'} resp.TotalWin=${resp.totalWin ?? 'n/a'}` +
             ` after=${data.respinTotalWin} serverDelta=${serverDeltaWin} hasMoneyAbsorb=${hasMoneyAbsorb ? 1 : 0}` +
             ` spinOrdinal=${topUpSpinOrdinal} baseCredit=${data.featureBaseCredit}` +
-            ` redSum=${redCreditSum} yellowSum=${yellowCreditSum} greenSum=${greenCreditSum}`
+            ` yellowSum=${yellowCreditSum} greenSum=${greenCreditSum}`
         );
         if (serverDeltaWin > 0 && !hasMoneyAbsorb) {
-            const looksLikeImplicitBase = redCreditSum > 0 && (serverDeltaWin === redCreditSum || serverDeltaWin === redCreditSum * 2 || serverDeltaWin === data.featureBaseCredit || serverDeltaWin === data.featureBaseCredit * 2);
+            const looksLikeImplicitBase = stickyCreditSum > 0 && (serverDeltaWin === stickyCreditSum || serverDeltaWin === stickyCreditSum * 2 || serverDeltaWin === data.featureBaseCredit || serverDeltaWin === data.featureBaseCredit * 2);
             Log.e(
                 `[TOPUP-CREDIT][GM] WARNING serverDeltaNoNewCoin delta=${serverDeltaWin}` +
                 ` before=${beforeTotalUpdate} after=${data.respinTotalWin}` +
                 ` spinOrdinal=${topUpSpinOrdinal} baseCredit=${data.featureBaseCredit}` +
-                ` redSum=${redCreditSum} looksLikeImplicitBase=${looksLikeImplicitBase ? 1 : 0}` +
+                ` stickySum=${stickyCreditSum} looksLikeImplicitBase=${looksLikeImplicitBase ? 1 : 0}` +
                 ` parsedCells=${resp.stickyCells?.map(c => `${c.reel}-${c.row}:${SymbolId[c.symbolId] ?? c.symbolId}=${c.credit ?? 0}`).join('|') || 'none'}`
             );
         }
         if (resp.remainRespinCount != null) {
             data.respinRemaining = Math.max(0, resp.remainRespinCount);
         }
-        // If +1 landed, TopUpAbsorbEffect emits the server count in sync with the +1 visual.
-        if (plusOneSpinCount === 0) {
-            EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
-        }
+        EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
         EventBus.instance.emit(GameEvents.TOPUP_TOTAL_UPDATED, {
             baseCredit: data.featureBaseCredit,
             totalWin: data.respinTotalWin,
@@ -4328,13 +4126,13 @@ export class GameManager extends Component {
 
         const topupSlots = resp.topupReel ?? [];
         const filled = topupSlots.slice(0, 15).filter(s => s.type !== 0).length;
-        Log.d(`[TopUp] reels stopped — filled=${filled}/15 remain=${data.respinRemaining} total=${data.respinTotalWin} nextStage=${resp.nextStage} newAbsorb=${newCells.length} +1spin=${plusOneSpinCount}`);
+        Log.d(`[TopUp] reels stopped — filled=${filled}/15 remain=${data.respinRemaining} total=${data.respinTotalWin} nextStage=${resp.nextStage} newAbsorb=${newCells.length}`);
 
         this._isSpinning = false;
 
-        // Safety guard: nếu remain=0 và không có +1 Spin nhưng nextStage không phải END → ép END
+        // Safety guard: nếu remain=0 nhưng nextStage không phải END → ép END
         let effectiveNextStage = resp.nextStage as SlotStageType;
-        if (data.respinRemaining <= 0 && plusOneSpinCount <= 0) {
+        if (data.respinRemaining <= 0) {
             const isEndStage = effectiveNextStage === SlotStageType.TOPUP_SPIN_END || effectiveNextStage === SlotStageType.RESPIN_END;
             if (!isEndStage) {
                 Log.e(`[TopUp] ⚠️ remain=0 nhưng nextStage=${effectiveNextStage} không phải END → ép TOPUP_SPIN_END`);
@@ -4352,8 +4150,8 @@ export class GameManager extends Component {
             return;
         }
 
-        // Nếu có cells mới hoặc +1 Spin → chạy absorb effect trước khi transition
-        if (newCells.length > 0 || plusOneSpinCount > 0) {
+        // Nếu có cells mới → chạy absorb effect trước khi transition
+        if (newCells.length > 0) {
             let absorbDone = false;
             const onAbsorbDone = () => {
                 if (absorbDone) return;
@@ -4375,7 +4173,6 @@ export class GameManager extends Component {
             EventBus.instance.on(GameEvents.TOPUP_ABSORB_DONE, onAbsorbDone, this);
             EventBus.instance.emit(GameEvents.TOPUP_ABSORB_START, {
                 newCells,
-                plusOneSpinCount,
                 allStickyCells: data.stickyCells,
                 newSpinCount: data.respinRemaining,
                 serverDeltaWin,
@@ -4404,7 +4201,6 @@ export class GameManager extends Component {
             if (!slot) return -1;
             const type = slot.type ?? (slot as any).Type ?? TopupReelType.NONE;
             const index = slot.index ?? (slot as any).Index ?? 0;
-            if (type === TopupReelType.RED) return SymbolId.STICKY_RED;
             if (type === TopupReelType.YELLOW) return SymbolId.STICKY_YELLOW;
             if (type === TopupReelType.GREEN) return SymbolId.STICKY_GREEN;
             if (type === TopupReelType.GRAND) return SymbolId.JP_GRAND;
@@ -4413,17 +4209,10 @@ export class GameManager extends Component {
             const stripIdx = strip.length > 0 ? ((index % strip.length) + strip.length) % strip.length : -1;
             return stripIdx >= 0 ? strip[stripIdx] : -1;
         };
-        const transientPlusKeys = new Set(
-            transientCells
-                .filter(c => c.symbolId === SymbolId.PLUS_ONE_SPIN)
-                .map(c => `${c.reel}-${c.row}`)
-        );
         const isTopUpSpecial = (symbolId: number): boolean => {
-            return symbolId === SymbolId.STICKY_RED ||
-                symbolId === SymbolId.STICKY_YELLOW ||
+            return symbolId === SymbolId.STICKY_YELLOW ||
                 symbolId === SymbolId.STICKY_GREEN ||
-                symbolId === SymbolId.JP_GRAND ||
-                symbolId === SymbolId.PLUS_ONE_SPIN;
+                symbolId === SymbolId.JP_GRAND;
         };
         const fallbackNonBonus = (reel: number): number => {
             const strip = strips[reel] ?? [];
@@ -4450,21 +4239,11 @@ export class GameManager extends Component {
                 const rawSymbolId = getSymbolId(serverIdx);
                 let visualSymbolId = rawSymbolId;
                 if (type === TopupReelType.NONE && isTopUpSpecial(rawSymbolId)) {
-                    const key = `${col}-${row}`;
-                    visualSymbolId = rawSymbolId === SymbolId.PLUS_ONE_SPIN && transientPlusKeys.has(key)
-                        ? SymbolId.PLUS_ONE_SPIN
-                        : fallbackNonBonus(col);
+                    visualSymbolId = fallbackNonBonus(col);
                 }
                 cells.push(rawSymbolId);
                 visualCells.push(visualSymbolId);
-                const key = `${col}-${row}`;
-                if (type === TopupReelType.NONE && transientPlusKeys.has(key)) {
-                    stickyCells.push(SymbolId.PLUS_ONE_SPIN);
-                    creditCells.push(0);
-                } else if (type === TopupReelType.RED) {
-                    stickyCells.push(SymbolId.STICKY_RED);
-                    creditCells.push(credit);
-                } else if (type === TopupReelType.YELLOW) {
+                if (type === TopupReelType.YELLOW) {
                     stickyCells.push(SymbolId.STICKY_YELLOW);
                     creditCells.push(credit);
                 } else if (type === TopupReelType.GREEN) {
@@ -5041,19 +4820,21 @@ export class GameManager extends Component {
     }
 
     /**
-     * Long Spin trigger khi tổng Red symbols >= 3.
+     * Long Spin trigger khi tổng sticky Yellow/Green symbols >= 3.
      * Tính từ stickyCells (luôn có sẵn) thay vì phụ thuộc resp.redCount (có thể undefined).
      */
     private _getLongSpinHints(resp: SpinResponse): { reelIndex: number; rowIndex: number }[] {
         const cells = resp.stickyCells ?? [];
-        const redCells = cells.filter(c => c.symbolId === SymbolId.STICKY_RED);
-        if (redCells.length < 3) return [];
-        // Lấy danh sách reel unique chứa red, dùng row thực tế của red đầu tiên trên mỗi reel
+        const stickyCells = cells.filter(c =>
+            c.symbolId === SymbolId.STICKY_YELLOW || c.symbolId === SymbolId.STICKY_GREEN
+        );
+        if (stickyCells.length < 3) return [];
+        // Lấy danh sách reel unique chứa sticky, dùng row thực tế của sticky đầu tiên trên mỗi reel
         const reelSet = new Set<number>();
-        for (const c of redCells) reelSet.add(c.reel);
+        for (const c of stickyCells) reelSet.add(c.reel);
         return Array.from(reelSet).sort().map(r => {
-            const red = redCells.find(c => c.reel === r);
-            return { reelIndex: r, rowIndex: red?.row ?? 1 };
+            const sticky = stickyCells.find(c => c.reel === r);
+            return { reelIndex: r, rowIndex: sticky?.row ?? 1 };
         });
     }
 

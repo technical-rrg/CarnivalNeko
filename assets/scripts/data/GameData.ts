@@ -1,6 +1,6 @@
 /**
  * GameData - Singleton chứa toàn bộ data runtime của game.
- * ★ Secret Treasure (5×3 Ways Pay).
+ * ★ Carnival Neko (5×3 Ways Pay).
  */
 
 import { Log } from '../core/Logger';
@@ -21,15 +21,10 @@ import {
 //  DEFAULT REEL STRIPS — 5 reels × 30 ô
 // ═══════════════════════════════════════════════════════════
 //
-// Quy ước:
-//   - Wild Trail chỉ xuất hiện trên reel 1, 2, 3 (theo design Jin Ji Bao Xi).
-//   - Sticky Red xuất hiện đều ở mọi reel (mật độ thấp).
-//   - Sticky Yellow/Green KHÔNG xuất hiện trên Normal strip (chỉ Free Spin / Re-Spin strips).
-//   - +1 Spin chỉ xuất hiện trên Re-Spin strip.
-//
-// Tỉ lệ symbol (Normal Spin):
-//   Minor (9/10/J/Q/K/A) chiếm ~40%, Major chiếm ~45%, Wild ~5% (reel 1/2/3 only),
-//   Sticky Red ~7%, còn lại blank/no-special.
+// Carnival Neko:
+//   - Wild (PS 21) chỉ reel 2, 3, 4.
+//   - TRAIL_NORMAL trên base strip → flip màu Trail.
+//   - Sticky Green/Gold (PS 44/45) chỉ Matsuri / respin strips.
 //
 const N9 = SymbolId.MINOR_9;
 const N10 = SymbolId.MINOR_10;
@@ -43,19 +38,17 @@ const Sb = SymbolId.MAJOR_SOBEK;
 const Rm = SymbolId.MAJOR_RAMSES;
 const Cl = SymbolId.MAJOR_CLEOPATRA;
 const W = SymbolId.WILD;
-const R = SymbolId.STICKY_RED;
 const Y = SymbolId.STICKY_YELLOW;
 const G = SymbolId.STICKY_GREEN;
-const X = SymbolId.PLUS_ONE_SPIN;
 /** Carnival Neko — Trail Normal (úp, chưa biết màu) trên Base strip. */
 const TN = SymbolId.TRAIL_NORMAL;
 
 /** Normal Spin: 5 reels × 30 ô. Có TRAIL_NORMAL để mock luôn land được Trail. */
 const DEFAULT_REEL_STRIPS: number[][] = [
-    [N9, N10, NJ, Q, K, A, H, TN, R, Q, Rm, Sb, K, A, TN, H, Cl, Q, An, Rm, K, A, Sb, Q, H, Cl, TN, K, An, A],
-    [A, Cl, An, H, K, W, Rm, TN, R, H, A, K, Cl, TN, Q, Rm, Sb, N10, K, A, Cl, H, TN, An, K, Q, Rm, NJ, Sb, A],
-    [Cl, Rm, H, TN, R, Sb, An, K, W, Cl, H, K, TN, A, R, Sb, An, Cl, K, H, TN, K, A, Rm, H, Sb, Cl, An, K, Q],
-    [Rm, A, Cl, TN, R, K, An, K, H, W, Cl, K, H, A, TN, R, Sb, Cl, K, H, A, K, Q, Rm, H, TN, Cl, Sb, K, A],
+    [N9, N10, NJ, Q, K, A, H, TN, Q, Rm, Sb, K, A, TN, H, Cl, Q, An, Rm, K, A, Sb, Q, H, Cl, TN, K, An, A, N10],
+    [A, Cl, An, H, K, W, Rm, TN, H, A, K, Cl, TN, Q, Rm, Sb, N10, K, A, Cl, H, TN, An, K, Q, Rm, NJ, Sb, A, H],
+    [Cl, Rm, H, TN, Sb, An, K, W, Cl, H, K, TN, A, Sb, An, Cl, K, H, TN, K, A, Rm, H, Sb, Cl, An, K, Q, Rm, N9],
+    [Rm, A, Cl, TN, K, An, K, H, W, Cl, K, H, A, TN, Sb, Cl, K, H, A, K, Q, Rm, H, TN, Cl, Sb, K, A, An, Q],
     [K, Cl, A, Rm, H, An, Sb, TN, Cl, K, A, Q, Rm, Sb, An, Cl, TN, K, A, Q, Rm, Sb, H, Cl, An, K, TN, Rm, Sb, Cl],
 ];
 
@@ -64,28 +57,22 @@ const DEFAULT_REEL_STRIPS: number[][] = [
  * Khi spin, server (mock) sẽ random nhét Yellow vào để accumulator hoạt động.
  */
 const DEFAULT_FREE_SPIN_REEL_STRIPS: number[][] = [
-    // Reel 0 (giống Normal)
-    [Q, K, A, H, An, Cl, Q, Rm, Sb, K, A, R, H, Cl, Q, An, Rm, K, A, Sb, Q, H, Cl, R, K, An, A, Rm, Sb, Q],
-    // Reel 1 (Wild → Yellow)
-    [A, Cl, An, Y, K, Q, Rm, R, Sb, H, A, K, Cl, Y, An, Q, Rm, Sb, K, A, Cl, H, R, An, K, Q, Rm, Y, Sb, A],
-    // Reel 2 (Wild → Yellow)
-    [Cl, Rm, Y, A, K, Sb, An, R, Q, Cl, H, Y, K, A, Rm, Sb, An, Cl, K, Y, Q, R, A, Rm, H, Sb, Cl, An, K, Q],
-    // Reel 3 (Wild → Yellow)
-    [Rm, A, Cl, Y, Sb, K, An, R, H, Q, Cl, K, Y, A, Rm, An, Sb, Cl, K, Y, A, R, Q, Rm, H, An, Cl, Sb, K, A],
-    // Reel 4
-    [K, Cl, A, Rm, H, An, Sb, R, Cl, K, A, Q, Rm, Sb, An, Cl, R, K, A, Q, Rm, Sb, H, Cl, An, K, A, Rm, Sb, Cl],
+    [Q, K, A, H, An, Cl, Q, Rm, Sb, K, A, H, Cl, Q, An, Rm, K, A, Sb, Q, H, Cl, K, An, A, Rm, Sb, Q, N10, NJ],
+    [A, Cl, An, Y, K, Q, Rm, Sb, H, A, K, Cl, Y, An, Q, Rm, Sb, K, A, Cl, H, An, K, Q, Rm, Y, Sb, A, H, W],
+    [Cl, Rm, Y, A, K, Sb, An, Q, Cl, H, Y, K, A, Rm, Sb, An, Cl, K, Y, Q, A, Rm, H, Sb, Cl, An, K, Q, W, N9],
+    [Rm, A, Cl, Y, Sb, K, An, H, Q, Cl, K, Y, A, Rm, An, Sb, Cl, K, Y, A, Q, Rm, H, An, Cl, Sb, K, A, W, H],
+    [K, Cl, A, Rm, H, An, Sb, Cl, K, A, Q, Rm, Sb, An, Cl, K, A, Q, Rm, Sb, H, Cl, An, K, A, Rm, Sb, Cl, TN, Q],
 ];
 
 /**
- * Re-Spin strips: chỉ Sticky symbols + +1 Spin.
- * Chỉ áp dụng cho ô trống (ô có Red đã sticky thì giữ nguyên).
+ * Matsuri / respin strips: chỉ Sticky Green + Gold (PS 44/45).
  */
 const DEFAULT_RESPIN_REEL_STRIPS: number[][] = [
-    [R, R, R, R, R, R, R, Y, Y, G, X, R, R, R, R, R, R, Y, R, R, R, G, R, R, R, R, R, Y, R, R],
-    [R, R, Y, R, R, G, R, R, X, R, R, Y, R, R, R, R, G, R, R, Y, R, R, R, R, R, R, R, R, X, R],
-    [R, Y, R, R, R, R, G, R, R, R, R, R, R, R, Y, R, R, X, R, R, G, R, R, Y, R, R, R, R, R, R],
-    [R, R, R, X, R, Y, R, R, R, G, R, R, R, R, R, R, R, Y, R, R, R, R, G, R, R, R, X, R, Y, R],
-    [R, R, R, R, R, R, R, Y, R, R, R, R, R, R, G, R, R, R, R, R, X, Y, R, R, R, R, G, R, R, R],
+    [G, G, G, Y, Y, G, G, Y, G, G, G, Y, G, G, Y, G, G, G, Y, Y, G, G, G, Y, G, G, Y, G, G, G],
+    [G, Y, G, G, G, Y, G, G, Y, G, G, G, Y, G, G, G, Y, G, G, Y, G, G, G, Y, G, G, G, Y, G, G],
+    [Y, G, G, G, Y, G, G, G, G, Y, G, G, Y, G, G, G, Y, G, G, G, Y, G, G, Y, G, G, G, G, Y, G],
+    [G, G, Y, G, G, G, Y, G, G, Y, G, G, G, Y, G, G, Y, G, G, G, Y, G, G, G, Y, G, G, Y, G, G],
+    [G, Y, G, G, G, Y, G, G, G, Y, G, G, Y, G, G, G, Y, G, G, Y, G, G, G, Y, G, G, G, Y, G, G],
 ];
 
 // ═══════════════════════════════════════════════════════════

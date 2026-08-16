@@ -4,8 +4,8 @@
  * Doc: 5×3 = 15 ô; match 3 JP; 3 Upgrade → nâng tier (Grand → ×2).
  * Map PS ↔ client dùng chung cho MockAdapter + Real API parse.
  *
- * PS Pick IDs (API / ParSheet named fields — ascending):
- *   81 Idle, 82 Mini, 83 Minor, 84 Major, 85 Grand, 86 Upgrade
+ * PS Pick IDs (Carnival Neko — ID mới):
+ *   81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
  * Ưu tiên GameData.psToClientMap (từ MiniJackpotID… trên Enter) khi có.
  */
 
@@ -18,15 +18,15 @@ export const PICK_GAME_ROWS = 3;
 export const PICK_GAME_CELL_COUNT = PICK_GAME_COLS * PICK_GAME_ROWS; // 15
 
 /**
- * Default PS Pick IDs (khớp MiniJackpotID→GrandJackpotID ascending).
- * Trước đây bị invert (82=Grand…85=Mini) → visual Grand nhưng server trả Mini.
+ * Default PS Pick IDs — Carnival Neko (ID mới sau remap).
+ * 82=Grand, 83=Major, 84=Minor, 85=Mini (khác thứ tự ascending cũ).
  */
 export const PS_PICK = {
     IDLE: 81,
-    MINI: 82,
-    MINOR: 83,
-    MAJOR: 84,
-    GRAND: 85,
+    GRAND: 82,
+    MAJOR: 83,
+    MINOR: 84,
+    MINI: 85,
     UPGRADE: 86,
 } as const;
 

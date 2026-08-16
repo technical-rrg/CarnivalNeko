@@ -114,7 +114,7 @@ export class MockDataProvider {
         let totalWin = WaysPayCalculator.totalWin(waysPayWins);
 
         let stickyCells: StickyCell[] = redCount > 0
-            ? MockDataProvider._buildRedStickies(grid, totalBet)
+            ? MockDataProvider._buildStickyStickies(grid, totalBet)
             : [];
         let nextStage = SlotStageType.SPIN;
 
@@ -302,7 +302,6 @@ export class MockDataProvider {
         const rowCount = data.config.rowCount;
         const grid: number[][] = [];
 
-        let plusOneSpin = 0;
         let yellowSum = 0;
         let greenSum = 0;
         const baseCredit = data.featureBaseCredit;
@@ -320,52 +319,37 @@ export class MockDataProvider {
                     continue;
                 }
 
-                // Random spawn cho ô trống
-                // ★ TopUp KHÔNG sinh đồng đỏ mới — chỉ Yellow, Green, +1 Spin
+                // Random spawn cho ô trống — chỉ Yellow, Green
                 let s: number;
                 const roll = Math.random();
-                if (roll < 0.18) {
+                if (roll < 0.22) {
                     s = SymbolId.STICKY_YELLOW;
-                } else if (roll < 0.32) {
-                    s = SymbolId.STICKY_GREEN;
                 } else if (roll < 0.38) {
-                    s = SymbolId.PLUS_ONE_SPIN;
+                    s = SymbolId.STICKY_GREEN;
                 } else {
-                    // Empty filler — lấy từ strip (normal symbol, không phải coin)
                     s = strip[((center + row - 1) % len + len) % len];
                 }
                 col.push(s);
 
                 if (s === SymbolId.STICKY_YELLOW) {
-                    // Yellow hút TẤT CẢ đồng Đỏ hiện tại trên màn hình (copy, không trừ)
-                    const redSum = MockDataProvider._sumCreditBySymbol(stickyMap, SymbolId.STICKY_RED);
-                    const credit = redSum;
+                    const credit = MockDataProvider._randomCredit(totalBet);
                     yellowSum += credit;
                     newStickies.push({ reel: r, row, symbolId: s, credit });
                 } else if (s === SymbolId.STICKY_GREEN) {
-                    // Green hút TẤT CẢ: Red + Yellow (đã tính) + Green khác
-                    // Tính sum toàn bộ coin trên lưới (cũ + mới trước nó)
-                    const redSum = MockDataProvider._sumCreditBySymbol(stickyMap, SymbolId.STICKY_RED);
-                    const credit = redSum + yellowSum + greenSum;
+                    const credit = yellowSum + greenSum + MockDataProvider._randomCredit(totalBet);
                     greenSum += credit;
                     newStickies.push({ reel: r, row, symbolId: s, credit });
-                } else if (s === SymbolId.PLUS_ONE_SPIN) {
-                    plusOneSpin++;
-                    // +1 Spin cũng được thêm vào stickyCells để TopUpAbsorbEffect biết vị trí
-                    newStickies.push({ reel: r, row, symbolId: s, credit: 0 });
                 }
             }
             grid.push(col);
         }
 
-        // TopUp không spawn Red mới → totalWin = yellowSum + greenSum
+        // TopUp không spawn legacy red → totalWin = yellowSum + greenSum
         let totalWin = yellowSum + greenSum;
 
-        // GM đã −1 trước request → cộng +1 Spin (nếu có), không trừ thêm lần nữa
-        let remainRespinCount = Math.max(0, data.respinRemaining) + plusOneSpin;
+        let remainRespinCount = Math.max(0, data.respinRemaining);
 
-        // +1 Spin không sticky — chỉ đếm Yellow/Green mới cho fullGrid check
-        const newStickyCount = newStickies.filter(c => c.symbolId !== SymbolId.PLUS_ONE_SPIN).length;
+        const newStickyCount = newStickies.length;
         const allStickyCount = stickyMap.size + newStickyCount;
         const fullGrid = allStickyCount >= reelCount * rowCount;
         if (fullGrid) {
@@ -547,30 +531,31 @@ export class MockDataProvider {
     // ═══════════════════════════════════════════════════════════
 
     private static _countSpecials(grid: number[][]) {
-        let redCount = 0;
+        let stickyCount = 0;
         let wildTrailCount = 0;
-        const redReelsSet = new Set<number>();
+        const stickyReelsSet = new Set<number>();
         for (let r = 0; r < grid.length; r++) {
             for (let row = 0; row < grid[r].length; row++) {
                 const s = grid[r][row];
-                if (s === SymbolId.STICKY_RED) {
-                    redCount++;
-                    redReelsSet.add(r);
+                if (s === SymbolId.STICKY_YELLOW || s === SymbolId.STICKY_GREEN) {
+                    stickyCount++;
+                    stickyReelsSet.add(r);
                 } else if (s === SymbolId.WILD) {
                     wildTrailCount++;
                 }
             }
         }
-        return { redCount, redReels: Array.from(redReelsSet).sort(), wildTrailCount };
+        return { redCount: stickyCount, redReels: Array.from(stickyReelsSet).sort(), wildTrailCount };
     }
 
-    private static _buildRedStickies(grid: number[][], totalBet: number): StickyCell[] {
+    private static _buildStickyStickies(grid: number[][], totalBet: number): StickyCell[] {
         const out: StickyCell[] = [];
         for (let r = 0; r < grid.length; r++) {
             for (let row = 0; row < grid[r].length; row++) {
-                if (grid[r][row] === SymbolId.STICKY_RED) {
+                const sym = grid[r][row];
+                if (sym === SymbolId.STICKY_YELLOW || sym === SymbolId.STICKY_GREEN) {
                     out.push({
-                        reel: r, row, symbolId: SymbolId.STICKY_RED,
+                        reel: r, row, symbolId: sym,
                         credit: MockDataProvider._randomCredit(totalBet),
                     });
                 }
@@ -789,19 +774,18 @@ export class MockDataProvider {
             }
 
             case TestScenario.LONG_SPIN_TRIGGER: {
-                // 3 Red trên reel 0,1,2 (1 mỗi reel) → Long Spin reel cuối
-                // rands trỏ vào vị trí STICKY_RED trên Normal strips: Reel0=11, Reel1=14, Reel2=4
+                // 3 sticky trên reel 0,1,2 (1 mỗi reel) → Long Spin reel cuối
                 const strips = data.getReelStrips(false);
                 const longRands = [
-                    findMidRand(strips[0], SymbolId.STICKY_RED),   // Reel 0: Red ở index 11
-                    findMidRand(strips[1], SymbolId.STICKY_RED),   // Reel 1: Red ở index 14
-                    findMidRand(strips[2], SymbolId.STICKY_RED),   // Reel 2: Red ở index 4
-                    0,  // Reel 3: không Red
-                    0,  // Reel 4: không Red
+                    findMidRand(strips[0], SymbolId.STICKY_YELLOW),
+                    findMidRand(strips[1], SymbolId.STICKY_YELLOW),
+                    findMidRand(strips[2], SymbolId.STICKY_GREEN),
+                    0,
+                    0,
                 ];
                 const longGrid = data.getBaseGrid(longRands, false);
                 const { redCount: lrc, redReels: lrr } = MockDataProvider._countSpecials(longGrid);
-                const longStickies = MockDataProvider._buildRedStickies(longGrid, totalBet);
+                const longStickies = MockDataProvider._buildStickyStickies(longGrid, totalBet);
                 return enrich({
                     rands: longRands,
                     waysPayWins: [], matchedLinePays: [],

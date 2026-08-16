@@ -125,19 +125,19 @@ export const MOCK_RESUME_PICK_GAME = {
 
 const MOCK_TOPUP_REEL = [
     { Type: TopupReelType.NONE,   Win: 0,   Index: 0 },
-    { Type: TopupReelType.RED,    Win: 20,  Index: 1 },
+    { Type: TopupReelType.YELLOW, Win: 20,  Index: 1 },
     { Type: TopupReelType.NONE,   Win: 0,   Index: 2 },
-    { Type: TopupReelType.RED,    Win: 10,  Index: 3 },
+    { Type: TopupReelType.GREEN,  Win: 10,  Index: 3 },
     { Type: TopupReelType.NONE,   Win: 0,   Index: 4 },
     { Type: TopupReelType.YELLOW, Win: 30,  Index: 5 },
     { Type: TopupReelType.NONE,   Win: 0,   Index: 6 },
-    { Type: TopupReelType.RED,    Win: 15,  Index: 7 },
+    { Type: TopupReelType.GREEN,  Win: 15,  Index: 7 },
     { Type: TopupReelType.GREEN,  Win: 75,  Index: 8 },
     { Type: TopupReelType.NONE,   Win: 0,   Index: 9 },
     { Type: TopupReelType.NONE,   Win: 0,   Index: 10 },
-    { Type: TopupReelType.RED,    Win: 25,  Index: 11 },
+    { Type: TopupReelType.YELLOW, Win: 25,  Index: 11 },
     { Type: TopupReelType.NONE,   Win: 0,   Index: 12 },
-    { Type: TopupReelType.RED,    Win: 10,  Index: 13 },
+    { Type: TopupReelType.GREEN,  Win: 10,  Index: 13 },
     { Type: TopupReelType.NONE,   Win: 0,   Index: 14 },
 ];
 

@@ -78,7 +78,6 @@ const DEFAULT_SPINE_PREFAB_PATHS: Readonly<Record<number, string>> = {
     [SymbolId.MAJOR_RAMSES]:    'SymbolSpine/9',
     [SymbolId.MAJOR_CLEOPATRA]: 'SymbolSpine/10',
     [SymbolId.WILD]:            'SymbolSpine/11',
-    [SymbolId.STICKY_RED]:      'SymbolSpine/12',
 };
 
 /** Dữ liệu theo dõi 1 spine node đang active (instantiate từ prefab) */
@@ -269,7 +268,6 @@ export class SymbolHighlighter extends Component {
         bus.on(GameEvents.PICK_GAME_OPEN, this._onPickGameBoundary, this);
         bus.on(GameEvents.PICK_GAME_CLOSE, this._onPickGameBoundary, this);
         // Red symbol bounce (kept for sticky red land FX)
-        bus.on(GameEvents.RED_SYMBOL_BOUNCE, this._onRedSymbolBounce, this);
 
         // Chặn match SFX khi cycle line lẻ nếu đang có popup / feature flow
         bus.on(GameEvents.JACKPOT_TRIGGER, this._onMatchSfxBlockBegin, this);
@@ -582,7 +580,6 @@ export class SymbolHighlighter extends Component {
         this._resetHighlights();
         this._restoreReparentedSymbolNodes();
         this._restoreCreditLabels();
-        SymbolView.beginRedLandBounceSession();
         SymbolView.restoreAllLandBounces();
         //Log.e(`[HighlightDebug #${this._spinCount}] ═══ REELS_START_SPIN — kept ${this._pendingListeners.length} pending spine(s) for scroll-out cleanup ═══`);
     }
@@ -1167,21 +1164,10 @@ export class SymbolHighlighter extends Component {
     /**
      * Clone symbol lên WaysPayDisplay để bounce nằm trên fillBlack.
      * Symbol gốc trên reel được ẩn sprite trong lúc clone đang chạy.
-     *
-     * STICKY_RED: KHÔNG clone lên WaysPayDisplay — bounce tại reel.
-     * Lý do: land-bounce cũng dùng WaysPayDisplay; clone highlight đỏ dễ bị nhầm là
-     * land-bounce chưa restore. Sticky đỏ đã nổi sau land bounce, bounce tại chỗ đủ rõ.
      */
     private _ensureSpriteBounceClone(symbolNode: Node, view: SymbolView | null): Node {
         // Nếu symbol đang land-bounce trên WaysPayDisplay → kéo về reel / destroy clone trước
         SymbolView.restoreLandBounceIfNeeded(symbolNode);
-
-        const symId = view?.symbolId ?? -1;
-        if (symId === SymbolId.STICKY_RED) {
-            Log.e(`[LB-DEBUG] highlight bounce STICKY_RED on-reel (no WaysPayDisplay clone) r${view?.reelIndex}row${view?.rowIndex}`);
-            view?.setSpriteVisible(true);
-            return symbolNode;
-        }
 
         if (!this.paylineManagerNode?.isValid) return symbolNode;
 
@@ -1283,10 +1269,7 @@ export class SymbolHighlighter extends Component {
         const origPos = this._bounceOrigPos.get(bounceNode)!;
         bounceNode.setPosition(origPos);
 
-        // STICKY_RED: duration cố định — không phụ thuộc highlightDuration (tránh lúc nhanh lúc chậm giữa các spin)
-        const dur = entry.symId === SymbolId.STICKY_RED
-            ? 0.2
-            : Math.max(0.18, Math.min(0.32, highlightDuration * 0.12));
+        const dur = Math.max(0.18, Math.min(0.32, highlightDuration * 0.12));
         const liftY = 10;
         const bounceOnce = tween(bounceNode)
             .to(dur, {
@@ -1677,104 +1660,6 @@ export class SymbolHighlighter extends Component {
         this._clearAllWinHighlightRuntime();
     }
 
-    // ── RED SYMBOL BOUNCE (trước khi vào feature) ─────────────────────────────
-
-    /**
-     * Tất cả STICKY_RED symbol trên màn hình nhún nhẹ lên cùng lúc.
-     * Gọi khi đủ >= 6 Red → trước khi fly-in animation bắt đầu.
-     * Timing/easing giống land-bounce khi reel dừng (mượt, không backOut).
-     */
-    private _onRedSymbolBounce(): void {
-        // Bounce hint stop tween — restore từng Sticky Red đang land-bounce
-        // (không dùng restoreAllLandBounces để tránh fire sớm WIN_PRESENT waiters).
-        for (const reel of this.reels) {
-            for (let ni = 1; ni <= 3; ni++) {
-                const node = reel.symbolNodes[ni] as Node | undefined;
-                if (node) SymbolView.restoreLandBounceIfNeeded(node);
-            }
-        }
-
-        // Khớp SymbolView._playLandBounce: grow 0.08 + hold 0.12 + shrink 0.32
-        const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
-        const growDur = 0.08 * m;
-        const holdDur = 0.12 * m;
-        const shrinkDur = 0.32 * m;
-        const bounceScale = 1.12;
-        const jumpY = 16;
-        const topNode = SymbolView.landBounceParent;
-
-        // Dọn clone/tween feature-bounce cũ còn sót trên WaysPayDisplay
-        if (topNode?.isValid) {
-            for (const child of [...topNode.children]) {
-                if (!child?.isValid || !child.name.startsWith('__FSRedBounce_')) continue;
-                Tween.stopAllByTarget(child);
-                if (child.parent) child.removeFromParent();
-                child.destroy();
-            }
-        }
-
-        for (const reel of this.reels) {
-            // symbolNodes[1]=Top, [2]=Mid, [3]=Bot (visible rows)
-            for (let ni = 1; ni <= 3; ni++) {
-                const node = reel.symbolNodes[ni] as Node | undefined;
-                if (!node) continue;
-                const view = node.getComponent(SymbolView);
-                if (!view || view.symbolId !== SymbolId.STICKY_RED) continue;
-
-                const base = this._getDefaultScale(node);
-                Tween.stopAllByTarget(node);
-                node.setScale(base, base, 1);
-
-                // Clone lên layer trên (như land-bounce) để không bị mask reel cắt → mượt hơn
-                let bounceTarget: Node = node;
-                let clone: Node | null = null;
-                if (topNode?.isValid) {
-                    clone = instantiate(node);
-                    clone.name = `__FSRedBounce_r${view.reelIndex}_row${view.rowIndex}`;
-                    clone.setParent(topNode, true);
-                    clone.setWorldPosition(node.getWorldPosition());
-                    clone.setSiblingIndex(topNode.children.length - 1);
-                    clone.active = true;
-                    clone.getComponent(SymbolView)?.setSpriteVisible(true);
-                    bounceTarget = clone;
-                    // Ẩn sprite gốc trong lúc clone nhún
-                    view.setSpriteVisible(false);
-                }
-
-                Tween.stopAllByTarget(bounceTarget);
-                bounceTarget.setScale(base, base, 1);
-                const basePos = bounceTarget.position.clone();
-                const peakPos = new Vec3(basePos.x, basePos.y + jumpY, basePos.z);
-
-                tween(bounceTarget)
-                    .to(growDur, {
-                        scale: new Vec3(bounceScale * base, bounceScale * base, 1),
-                        position: peakPos,
-                    }, { easing: 'sineOut' })
-                    .delay(holdDur)
-                    .to(shrinkDur, {
-                        scale: new Vec3(base, base, 1),
-                        position: basePos.clone(),
-                    }, { easing: 'sineIn' })
-                    .call(() => {
-                        if (clone?.isValid) {
-                            Tween.stopAllByTarget(clone);
-                            if (clone.parent) clone.removeFromParent();
-                            clone.destroy();
-                        } else if (node?.isValid) {
-                            node.setScale(base, base, 1);
-                            node.setPosition(basePos);
-                        }
-                        if (node?.isValid) {
-                            node.getComponent(SymbolView)?.setSpriteVisible(true);
-                            node.setScale(base, base, 1);
-                        }
-                    })
-                    .start();
-            }
-        }
-    }
-
     // ── LONG SPIN HINT ────────────────────────────────────────────────────────
 
     /**
@@ -1946,7 +1831,6 @@ export class SymbolHighlighter extends Component {
                 symbolNode = symbolNode.parent;
             }
             const isSticky = symbolView && (
-                symbolView.symbolId === SymbolId.STICKY_RED ||
                 symbolView.symbolId === SymbolId.STICKY_YELLOW ||
                 symbolView.symbolId === SymbolId.STICKY_GREEN
             );

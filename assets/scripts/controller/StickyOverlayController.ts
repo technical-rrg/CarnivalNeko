@@ -133,9 +133,6 @@ export class StickyOverlayController extends Component {
     /** Track last applied credit per slotNode — to avoid redundant setData() calls causing flicker */
     private _slotCreditMap: Map<Node, number> = new Map();
 
-    /** Slots that are only a temporary +1 visual, not real stickyCells. */
-    private _tempPlusOneKeys: Set<string> = new Set();
-
     private _coinSlotOriginalParents: Map<Node, { parent: Node | null; siblingIndex: number; spinCounter: number }> = new Map();
 
     private _topUpSpinCounter: number = 0;
@@ -592,7 +589,6 @@ export class StickyOverlayController extends Component {
         this.node.active = true;
         this._topUpSpinCounter = 0;
         this._enterAnimPlayed = false;
-        this.clearTempPlusOne('topup-start');
         this.alignPositionsFromTopUpManager();
         this._previouslyActiveSlots.clear();
 
@@ -673,13 +669,10 @@ export class StickyOverlayController extends Component {
     }
 
     private _onReelsStartSpin(): void {
-        // ★ Khi bắt đầu spin tiếp theo: PLUS_ONE_SPIN đã bị xóa khỏi stickyCells
-        // Refresh overlay để ẩn ngay các slot +1 Spin (và giữ lại coin thật)
         if (!this.node.active) return;
 
         this._topUpSpinCounter++;
         this._restoreCoinSlotParents(this._topUpSpinCounter);
-        this.clearTempPlusOne('reels-start-spin');
 
         if (GameData.instance.currentMode === 'matsuri') {
             // Chỉ snap REST — không _refreshAll (tránh giật + lệch theo mid đang quay)
@@ -691,7 +684,6 @@ export class StickyOverlayController extends Component {
     }
 
     private _onTopUpEnd(): void {
-        this.clearTempPlusOne('topup-end');
         this._restoreCoinSlotParents();
         this._hideAll();
         this._previouslyActiveSlots.clear();
@@ -785,7 +777,7 @@ export class StickyOverlayController extends Component {
 
         // ═══ TOPUP OVERLAY DEBUG ═══
         Log.e(`[SOC-DEBUG] _refreshAll(fadeOnlyNew=${fadeOnlyNew}, animate=${animate}) — stickyCells.size=${cells.size} coinSlots.length=${this.coinSlots.length} node.active=${this.node.active}`);
-        Log.e(`[SOC-DEBUG] stickyCells: ${cells.size === 0 ? '(empty)' : Array.from(cells.entries()).map(([k, c]) => `${k}=${c.symbolId === SymbolId.STICKY_YELLOW ? 'YELLOW' : c.symbolId === SymbolId.STICKY_GREEN ? 'GREEN' : c.symbolId === SymbolId.STICKY_RED ? 'RED' : c.symbolId}($${c.credit})`).join(', ')}`);
+        Log.e(`[SOC-DEBUG] stickyCells: ${cells.size === 0 ? '(empty)' : Array.from(cells.entries()).map(([k, c]) => `${k}=${c.symbolId === SymbolId.STICKY_YELLOW ? 'YELLOW' : c.symbolId === SymbolId.STICKY_GREEN ? 'GREEN' : c.symbolId}($${c.credit})`).join(', ')}`);
         // ═══ END DEBUG ═══
 
         const isEnter = this._isEnteringTopUp;
@@ -817,14 +809,11 @@ export class StickyOverlayController extends Component {
                         emptyLabel.setScale(1, 1, 1);
                     }
                     this._slotCreditMap.delete(slotNode);
-                    this._tempPlusOneKeys.delete(key);
                     this._matsuriFlippingKeys.delete(key);
                     slotNode.setScale(1, 1, 1);
                     slotNode.active = false;
                     continue;
                 }
-
-                this._tempPlusOneKeys.delete(key);
 
                 // Track active slots
                 newActiveSlots.add(key);
@@ -861,7 +850,7 @@ export class StickyOverlayController extends Component {
                 const creditToShow = (isAbsorbTarget || isMatsuriGreenPending)
                     ? 0
                     : (cell.credit ?? 0);
-                if (idx < 3 || cell.symbolId !== SymbolId.STICKY_RED) {
+                if (idx < 3) {
                     Log.e(
                         `[TOPUP-ENTER-CHECK][OVERLAY] idx=${idx} node=${slotNode.name} key=${key}` +
                         ` sym=${SymbolId[cell.symbolId] ?? cell.symbolId} credit=${cell.credit ?? 0}` +
@@ -1047,121 +1036,10 @@ export class StickyOverlayController extends Component {
 
     private _stickySymbolLayerPriority(symbolId: number): number {
         switch (symbolId) {
-            case SymbolId.STICKY_RED: return 0;
-            case SymbolId.STICKY_YELLOW: return 1;
-            case SymbolId.STICKY_GREEN: return 2;
+            case SymbolId.STICKY_YELLOW: return 0;
+            case SymbolId.STICKY_GREEN: return 1;
             default: return -1;
         }
-    }
-
-    /**
-     * Hiển thị tạm một coin slot (dùng cho +1 Spin hoặc effect đặc biệt).
-     * Trả về node slot để caller dùng làm điểm xuất phát effect.
-     * Gọi hideTempCoin() sau khi xong.
-     */
-    showTempCoin(reel: number, row: number, symbolId: number, allowPlusOne: boolean = false): Node | null {
-        const idx      = this._cellIdx(reel, row);
-        const slotNode = this.coinSlots[idx];
-        if (!slotNode) return null;
-        const key = `${reel}-${row}`;
-        if (symbolId === SymbolId.PLUS_ONE_SPIN && !allowPlusOne) {
-            Log.e(`[TOPUP-PLUS] BLOCK showTempCoin +1 key=${key} idx=${idx} reason=missingAllowToken`);
-            return null;
-        }
-
-        const frameIdx = this._symbolToFrameIndex(symbolId);
-        const sprite   = slotNode.getComponent(Sprite);
-        if (sprite && frameIdx >= 0 && this.coinFrames[frameIdx]) {
-            sprite.spriteFrame = this.coinFrames[frameIdx];
-        }
-        Tween.stopAllByTarget(slotNode);
-        const op = slotNode.getComponent(UIOpacity);
-        if (op) {
-            Tween.stopAllByTarget(op);
-            op.opacity = 255;
-        }
-        slotNode.setScale(1, 1, 1);
-        slotNode.active = true;
-
-        // Ẩn CreditLabel cho slot tạm thời
-        const labelNode = slotNode.getChildByName('CreditLabel');
-        if (labelNode) {
-            Tween.stopAllByTarget(labelNode);
-            labelNode.active = false;
-            labelNode.setScale(1, 1, 1);
-        }
-        this._slotCreditMap.delete(slotNode);
-        if (symbolId === SymbolId.PLUS_ONE_SPIN) {
-            this._tempPlusOneKeys.add(key);
-            Log.e(`[TOPUP-PLUS] showTempCoin key=${key} idx=${idx} node=${slotNode.name}`);
-        }
-
-        return slotNode;
-    }
-
-    /** Ẩn slot tạm thời sau khi effect xong (nếu không có coin sticky thật tại vị trí đó). */
-    hideTempCoin(reel: number, row: number): void {
-        const key = `${reel}-${row}`;
-        this._tempPlusOneKeys.delete(key);
-        // Chỉ ẩn nếu không có sticky coin thật tại vị trí này
-        if (!GameData.instance.stickyCells.has(key)) {
-            const idx      = this._cellIdx(reel, row);
-            const slotNode = this.coinSlots[idx];
-            if (slotNode) this._hideTempSlot(slotNode);
-        }
-    }
-
-    /**
-     * Clear every temporary +1 visual that is not backed by a real sticky coin.
-     * This prevents a +1 from a previous spin from looking like a new server result.
-     */
-    public clearTempPlusOne(reason: string = 'manual'): void {
-        if (this._tempPlusOneKeys.size === 0) return;
-        const keys = Array.from(this._tempPlusOneKeys);
-        for (const key of keys) {
-            const realCell = GameData.instance.stickyCells.get(key);
-            if (realCell && realCell.symbolId !== SymbolId.PLUS_ONE_SPIN) {
-                const [reelStr, rowStr] = key.split('-');
-                const reel = Number(reelStr);
-                const row = Number(rowStr);
-                const idx = this._cellIdx(reel, row);
-                const slotNode = this.coinSlots[idx];
-                if (slotNode) {
-                    this._applyCoin(slotNode, realCell.symbolId, realCell.credit ?? 0);
-                    this._applyBaseScale(slotNode, realCell.symbolId);
-                    slotNode.active = true;
-                    Log.e(`[TOPUP-PLUS] restore real sticky after temp +1 key=${key} symbol=${SymbolId[realCell.symbolId] ?? realCell.symbolId}`);
-                }
-                this._tempPlusOneKeys.delete(key);
-                continue;
-            }
-            const [reelStr, rowStr] = key.split('-');
-            const reel = Number(reelStr);
-            const row = Number(rowStr);
-            const idx = this._cellIdx(reel, row);
-            const slotNode = this.coinSlots[idx];
-            if (slotNode) this._hideTempSlot(slotNode);
-            this._tempPlusOneKeys.delete(key);
-        }
-        Log.e(`[TOPUP-PLUS] clearTempPlusOne reason=${reason} keys=${keys.join('|') || 'none'}`);
-    }
-
-    private _hideTempSlot(slotNode: Node): void {
-        Tween.stopAllByTarget(slotNode);
-        const op = slotNode.getComponent(UIOpacity);
-        if (op) {
-            Tween.stopAllByTarget(op);
-            op.opacity = 255;
-        }
-        const labelNode = slotNode.getChildByName('CreditLabel');
-        if (labelNode) {
-            Tween.stopAllByTarget(labelNode);
-            labelNode.active = false;
-            labelNode.setScale(1, 1, 1);
-        }
-        this._slotCreditMap.delete(slotNode);
-        slotNode.setScale(1, 1, 1);
-        slotNode.active = false;
     }
 
     /** Tìm CreditLabel child — fallback typo CreaditLabel + SpriteNumber trong nested prefab. */
@@ -1177,12 +1055,10 @@ export class StickyOverlayController extends Component {
     }
 
     /**
-     * Red: luôn hiện label.
      * Matsuri Green (chưa flip): không hiện CreditLabel — chỉ hiện sau khi lật thành Gold.
      * Yellow / TopUp Green: hiện khi credit > 0.
      */
     private _shouldShowCreditLabel(symbolId: number, credit: number): boolean {
-        if (symbolId === SymbolId.STICKY_RED) return true;
         if (
             symbolId === SymbolId.STICKY_GREEN
             && GameData.instance.currentMode === 'matsuri'
@@ -1194,7 +1070,7 @@ export class StickyOverlayController extends Component {
 
     /**
      * Áp dụng loại coin + credit value lên 1 slotNode.
-     * @param symbolId  SymbolId.STICKY_RED / YELLOW / GREEN
+     * @param symbolId  SymbolId.STICKY_YELLOW / GREEN
      * @param credit    Giá trị credit (>= 0, luôn hiển thị CreditLabel)
      */
     private _applyCoin(slotNode: Node, symbolId: number, credit: number, quiet = false): void {
@@ -1212,7 +1088,7 @@ export class StickyOverlayController extends Component {
         // ★ Giữ nguyên scale cho coin đã có (existing) — new coin set base scale qua _playCoinBounce.
 
         // ── Credit label (SpriteNumber trên child "CreditLabel") ──
-        // Red: luôn hiện. Matsuri Green: ẩn đến khi flip Gold. Yellow: credit > 0.
+        // Matsuri Green: ẩn đến khi flip Gold. Yellow/Green TopUp: credit > 0.
         const displayCredit = credit > 0 ? credit : safeLastCredit;
         const shouldActive  = this._shouldShowCreditLabel(symbolId, displayCredit);
         const { labelNode, sn } = this._resolveCreditLabel(slotNode);
@@ -1238,14 +1114,12 @@ export class StickyOverlayController extends Component {
 
     /**
      * Map SymbolId → coinFrames index.
-     * RED=0, YELLOW=1, GREEN=2. Trả -1 nếu không map được.
+     * YELLOW=0, GREEN=1. Trả -1 nếu không map được.
      */
     private _symbolToFrameIndex(symbolId: number): number {
         switch (symbolId) {
-            case SymbolId.STICKY_RED:    return 0;
-            case SymbolId.STICKY_YELLOW: return 1;
-            case SymbolId.STICKY_GREEN:  return 2;
-            case SymbolId.PLUS_ONE_SPIN: return 3; // coinFrames[3] = +1 Spin sprite
+            case SymbolId.STICKY_YELLOW: return 0;
+            case SymbolId.STICKY_GREEN:  return 1;
             default:                     return -1;
         }
     }

@@ -6,63 +6,62 @@
  * Chỉ kéo 1 lần vào SlotMachineController → symbolFrames / blurFrames.
  * SlotMachineController.start() tự phân phối xuống tất cả SymbolView.
  *
- * ─── TÊN FILE ẢNH (đặt trong assets/bundle/textures/symbol/) ───
- *   minor_9, minor_10, minor_j, minor_q, minor_k, minor_a          (id 0..5)
- *   major_horus, major_anubis, major_sobek, major_ramses, major_cleopatra (id 6..10)
- *   wild_trail                                                       (id 11)
- *   sticky_red, sticky_yellow, sticky_green                         (id 12/13/14)
- *   plus_one_spin                                                    (id 15)
- *   jp_idle, jp_mini, jp_minor, jp_major, jp_grand                  (id 16..20 — Pick Game)
+ * ─── TÊN FILE ẢNH (riêng lẻ, theo PS ID) ───
+ *   assets/bundle/newTextures/symbols/reel/ps_01..ps_06, ps_11..ps_15, ps_21, ps_41..ps_43
+ *   assets/bundle/newTextures/symbols/pickgame/ps_81..ps_86
+ * Trong Editor: kéo vào SlotMachineController.symbolFrames theo Client SymbolId index.
  */
 
-import { _decorator, Component, Sprite, SpriteFrame, Label, LabelOutline, Color, Node, Tween, tween, Vec3, UIOpacity, instantiate } from 'cc';
+import { _decorator, Component, Sprite, SpriteFrame, Label, LabelOutline, Color, Node, Tween, tween, Vec3, instantiate } from 'cc';
 import { SymbolId } from '../data/SlotTypes';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { GameData } from '../data/GameData';
 import { Log } from '../core/Logger';
-import { EventBus } from '../core/EventBus';
-import { GameEvents } from '../core/GameEvents';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
 import { SoundManager } from '../manager/SoundManager';
 
 const { ccclass, property } = _decorator;
 
 const SYMBOL_FRAME_KEYS: Record<number, string> = {
-    [SymbolId.MINOR_9]: '0_minor_9',
-    [SymbolId.MINOR_10]: '1_minor_10',
-    [SymbolId.MINOR_J]: '2_minor_j',
-    [SymbolId.MINOR_Q]: '3_minor_q',
-    [SymbolId.MINOR_K]: '4_minor_k',
-    [SymbolId.MINOR_A]: '5_minor_a',
-    [SymbolId.MAJOR_HORUS]: '6_major_horus',
-    [SymbolId.MAJOR_ANUBIS]: '7_major_anubis',
-    [SymbolId.MAJOR_SOBEK]: '8_major_sobek',
-    [SymbolId.MAJOR_RAMSES]: '9_major_ramses',
-    [SymbolId.MAJOR_CLEOPATRA]: '10_major_cleopatra',
-    [SymbolId.WILD]: '11_wild_trail',
-    [SymbolId.STICKY_RED]: '12_sticky_red',
-    [SymbolId.STICKY_YELLOW]: '13_sticky_yellow',
-    [SymbolId.STICKY_GREEN]: '14_sticky_green',
-    [SymbolId.PLUS_ONE_SPIN]: '15_plus_one_spin',
-    // Carnival Trail — ưu tiên frame 21..24; fallback sticky trong _resolveSymbolFrame
+    [SymbolId.MINOR_9]: '0_ps_01',
+    [SymbolId.MINOR_10]: '1_ps_02',
+    [SymbolId.MINOR_J]: '2_ps_03',
+    [SymbolId.MINOR_Q]: '3_ps_04',
+    [SymbolId.MINOR_K]: '4_ps_05',
+    [SymbolId.MINOR_A]: '5_ps_06',
+    [SymbolId.MAJOR_HORUS]: '6_ps_11',
+    [SymbolId.MAJOR_ANUBIS]: '7_ps_12',
+    [SymbolId.MAJOR_SOBEK]: '8_ps_13',
+    [SymbolId.MAJOR_RAMSES]: '9_ps_14',
+    [SymbolId.MAJOR_CLEOPATRA]: '10_ps_15',
+    [SymbolId.WILD]: '11_ps_21',
+    [SymbolId.STICKY_YELLOW]: '13_ps_45',
+    [SymbolId.STICKY_GREEN]: '14_ps_44',
+    // Carnival Trail
     [SymbolId.TRAIL_NORMAL]: '21_trail_normal',
-    [SymbolId.TRAIL_BLUE]: '22_trail_blue',
-    [SymbolId.TRAIL_RED]: '23_trail_red',
-    [SymbolId.TRAIL_GREEN]: '24_trail_green',
+    [SymbolId.TRAIL_BLUE]: '22_ps_41',
+    [SymbolId.TRAIL_RED]: '23_ps_43',
+    [SymbolId.TRAIL_GREEN]: '24_ps_42',
+    // Pick Game
+    [SymbolId.JP_IDLE]: '16_ps_81',
+    [SymbolId.JP_MINI]: '17_ps_85',
+    [SymbolId.JP_MINOR]: '18_ps_84',
+    [SymbolId.JP_MAJOR]: '19_ps_83',
+    [SymbolId.JP_GRAND]: '20_ps_82',
+    [SymbolId.JP_UPGRADE]: '25_ps_86',
 };
 
-/** Fallback frame keys khi chưa gắn art Trail (dùng sticky hiện có để test). */
+/** Fallback frame keys khi chưa gắn art Trail. */
 const SYMBOL_FRAME_FALLBACKS: Record<number, string[]> = {
-    [SymbolId.TRAIL_NORMAL]: ['15_plus_one_spin', '12_sticky_red'],
-    [SymbolId.TRAIL_BLUE]: ['13_sticky_yellow', '12_sticky_red'],
-    [SymbolId.TRAIL_RED]: ['12_sticky_red'],
-    [SymbolId.TRAIL_GREEN]: ['14_sticky_green'],
+    [SymbolId.TRAIL_NORMAL]: ['21_trail_normal'],
+    [SymbolId.TRAIL_BLUE]: ['22_ps_41'],
+    [SymbolId.TRAIL_RED]: ['23_ps_43'],
+    [SymbolId.TRAIL_GREEN]: ['24_ps_42'],
 };
 
 /** Hoisted — tránh tạo mảng mới mỗi lần wrap symbol khi reel đang quay. */
 function isStickySymbol(symbolId: number): boolean {
-    return symbolId === SymbolId.STICKY_RED
-        || symbolId === SymbolId.STICKY_YELLOW
+    return symbolId === SymbolId.STICKY_YELLOW
         || symbolId === SymbolId.STICKY_GREEN;
 }
 
@@ -111,148 +110,14 @@ export class SymbolView extends Component {
     private static _pendingLandBounces: Map<Node, { origParent: Node | null; origLocalPos: Vec3 }> = new Map();
     /** Land bounce clone trên WaysPayDisplay (symbolNode gốc → clone) — symbol gốc không reparent */
     private static _landBounceClones: Map<Node, Node> = new Map();
-    /** Số Sticky đỏ đang zoom land-bounce — chờ về 0 mới highlight win. */
-    private static _activeRedLandBounces: number = 0;
-    private static _redLandBounceWaiters: Array<() => void> = [];
-    /** Session land-bounce đỏ trong 1 lượt quay (reset khi REELS_START_SPIN). */
-    private static _redLandBounceSessionReady: boolean = false;
-    private static _expectedRedLandBounces: number = 0;
-    private static _completedRedLandBounces: number = 0;
-    private static _redLandBounceNodesThisSpin: Set<Node> = new Set();
     /** Prefix tên node clone land-bounce — dùng để nhận diện orphan khi map bị lệch. */
     private static readonly LAND_BOUNCE_CLONE_PREFIX = '__LBClone_';
-
-    /** Reset session — gọi khi REELS_START_SPIN. */
-    static beginRedLandBounceSession(): void {
-        SymbolView._redLandBounceSessionReady = false;
-        SymbolView._expectedRedLandBounces = 0;
-        SymbolView._completedRedLandBounces = 0;
-        SymbolView._redLandBounceNodesThisSpin.clear();
-        SymbolView._activeRedLandBounces = 0;
-    }
-
-    /**
-     * Đánh dấu toàn bộ reel đã dừng — từ đây mới được coi bounce đỏ đã settle.
-     * Gọi khi REELS_STOPPED trước khi chờ highlight.
-     */
-    static markRedLandBounceSessionReady(): void {
-        SymbolView._redLandBounceSessionReady = true;
-        Log.e(
-            `[LB-DEBUG] SESSION_READY expected=${SymbolView._expectedRedLandBounces} ` +
-            `completed=${SymbolView._completedRedLandBounces} active=${SymbolView._activeRedLandBounces} ` +
-            `hasClones=${SymbolView._hasRedClonesOnWaysPayDisplay()}`
-        );
-        // Bounce có thể đã xong hết trước REELS_STOPPED → fire waiters ngay
-        SymbolView._notifyRedLandBounceIfDone();
-    }
-
-    /** Còn clone đỏ trên WaysPayDisplay (tracked / tagged orphan). */
-    private static _hasRedClonesOnWaysPayDisplay(): boolean {
-        for (const symNode of SymbolView._landBounceClones.keys()) {
-            const view = symNode?.isValid ? symNode.getComponent(SymbolView) : null;
-            if (view?.symbolId === SymbolId.STICKY_RED) return true;
-        }
-        const top = SymbolView.landBounceParent;
-        if (!top?.isValid) return false;
-        for (const child of top.children) {
-            if (!child?.isValid) continue;
-            if (!SymbolView._isOrphanLandBounceClone(child)) continue;
-            const view = child.getComponent(SymbolView);
-            if (view?.symbolId === SymbolId.STICKY_RED) return true;
-        }
-        return false;
-    }
 
     /** Thời lượng 1 lần land bounce (grow + hold + shrink), đã nhân speed mode. */
     static getLandBounceDuration(): number {
         const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
         // Khớp _playLandBounce: grow 0.08 + hold 0.12 + shrink 0.32
         return (0.08 + 0.12 + 0.32) * m;
-    }
-
-    static hasActiveRedLandBounces(): boolean {
-        if (!SymbolView._redLandBounceSessionReady) return true;
-        if (SymbolView._activeRedLandBounces > 0) return true;
-        if (SymbolView._completedRedLandBounces < SymbolView._expectedRedLandBounces) return true;
-        return SymbolView._hasRedClonesOnWaysPayDisplay();
-    }
-
-    /** Session ready + counter=0 + đủ completed + không còn clone đỏ. */
-    static areAllRedLandBouncesSettled(): boolean {
-        if (!SymbolView._redLandBounceSessionReady) return false;
-        if (SymbolView._activeRedLandBounces > 0) return false;
-        if (SymbolView._completedRedLandBounces < SymbolView._expectedRedLandBounces) return false;
-        return !SymbolView._hasRedClonesOnWaysPayDisplay();
-    }
-
-    /** Debug snapshot cho log chờ highlight. */
-    static getRedLandBounceDebugSummary(): string {
-        return `sessionReady=${SymbolView._redLandBounceSessionReady} ` +
-            `expected=${SymbolView._expectedRedLandBounces} completed=${SymbolView._completedRedLandBounces} ` +
-            `active=${SymbolView._activeRedLandBounces} hasClones=${SymbolView._hasRedClonesOnWaysPayDisplay()}`;
-    }
-
-    /** Dump children WaysPayDisplay để debug sticky red kẹt. */
-    static logLandBounceParentState(tag: string): void {
-        const top = SymbolView.landBounceParent;
-        if (!top?.isValid) {
-            Log.e(`[LB-DEBUG][${tag}] landBounceParent=null`);
-            return;
-        }
-        const parts: string[] = [];
-        for (const child of top.children) {
-            if (!child?.isValid) continue;
-            const view = child.getComponent(SymbolView);
-            const sid = view?.symbolId ?? -1;
-            const isClone = SymbolView._isOrphanLandBounceClone(child)
-                || SymbolView._isLandBounceCloneNode(child)
-                || SymbolView._isHighlightCloneNode(child);
-            parts.push(
-                `${child.name}(sid=${sid},r${view?.reelIndex ?? '?'}/row${view?.rowIndex ?? '?'},` +
-                `parent=${child.parent?.name ?? 'null'},clone=${isClone})`
-            );
-        }
-        Log.e(
-            `[LB-DEBUG][${tag}] sessionReady=${SymbolView._redLandBounceSessionReady} ` +
-            `expected=${SymbolView._expectedRedLandBounces} completed=${SymbolView._completedRedLandBounces} ` +
-            `activeRed=${SymbolView._activeRedLandBounces} ` +
-            `trackedClones=${SymbolView._landBounceClones.size} pending=${SymbolView._pendingLandBounces.size} ` +
-            `children=${top.children.length} | ${parts.join(' | ') || '(empty)'}`
-        );
-    }
-
-    /** Dọn clone/orphan đỏ còn sót trên WaysPayDisplay trước highlight. */
-    static ensureRedLandBouncesRestored(): void {
-        SymbolView.logLandBounceParentState('ensure-BEFORE');
-        for (const symNode of [...SymbolView._landBounceClones.keys()]) {
-            SymbolView._destroyLandBounceClone(symNode);
-        }
-        SymbolView.restoreAllOrphansOnLandBounceParent();
-
-        // Aggressive pre-highlight: destroy mọi sticky-red còn trên WaysPayDisplay
-        // mà reel vẫn còn symbol gốc (orphan clone không còn trong map / chưa có prefix).
-        const top = SymbolView.landBounceParent;
-        if (top?.isValid) {
-            for (const child of [...top.children]) {
-                if (!child?.isValid) continue;
-                const view = child.getComponent(SymbolView);
-                if (!view || view.symbolId !== SymbolId.STICKY_RED) continue;
-                if (SymbolView._isHighlightCloneNode(child) || SymbolView._isOrphanLandBounceClone(child)) {
-                    Log.e(`[LB-DEBUG] ensure DESTROY leftover red clone name=${child.name} r${view.reelIndex}row${view.rowIndex}`);
-                    SymbolView._destroyOrphanCloneNode(child);
-                    continue;
-                }
-                // Real sticky red bị reparent → kéo về reel
-                if (view._reelHomeParent?.isValid && child.parent !== view._reelHomeParent) {
-                    Log.e(`[LB-DEBUG] ensure RESTORE red r${view.reelIndex}row${view.rowIndex}`);
-                    SymbolView.restoreToReelHome(child, true);
-                }
-            }
-        }
-
-        SymbolView._activeRedLandBounces = 0;
-        SymbolView._notifyRedLandBounceIfDone();
-        SymbolView.logLandBounceParentState('ensure-AFTER');
     }
 
     private static _destroyLandBounceClone(symbolNode: Node): void {
@@ -287,51 +152,6 @@ export class SymbolView extends Component {
         if (origSymbol?.isValid) {
             origSymbol.getComponent(SymbolView)?.setSpriteVisible(true);
         }
-    }
-
-    /** Fire waiters + STICKY_RED_LAND_BOUNCE_DONE khi session ready và đủ completed. */
-    private static _notifyRedLandBounceIfDone(): void {
-        if (SymbolView._activeRedLandBounces > 0) return;
-        if (!SymbolView._redLandBounceSessionReady) return;
-        if (SymbolView._completedRedLandBounces < SymbolView._expectedRedLandBounces) return;
-        if (SymbolView._hasRedClonesOnWaysPayDisplay()) return;
-        SymbolView.restoreAllOrphansOnLandBounceParent();
-        const waiters = SymbolView._redLandBounceWaiters.splice(0);
-        for (const cb of waiters) cb();
-        Log.e(
-            `[LB-DEBUG] ALL_DONE expected=${SymbolView._expectedRedLandBounces} ` +
-            `completed=${SymbolView._completedRedLandBounces}`
-        );
-        EventBus.instance.emit(GameEvents.STICKY_RED_LAND_BOUNCE_DONE);
-    }
-
-    /** Gọi cb ngay nếu đã settle; ngược lại chờ bounce xong hết. */
-    static whenRedLandBouncesDone(cb: () => void): void {
-        if (SymbolView.areAllRedLandBouncesSettled()) {
-            cb();
-            return;
-        }
-        SymbolView._redLandBounceWaiters.push(cb);
-    }
-
-    private static _beginRedLandBounce(symbolNode: Node): void {
-        if (!SymbolView._redLandBounceNodesThisSpin.has(symbolNode)) {
-            SymbolView._redLandBounceNodesThisSpin.add(symbolNode);
-            SymbolView._expectedRedLandBounces++;
-        }
-        SymbolView._activeRedLandBounces++;
-    }
-
-    private static _endRedLandBounce(): void {
-        if (SymbolView._activeRedLandBounces <= 0) return;
-        SymbolView._activeRedLandBounces--;
-        SymbolView._completedRedLandBounces++;
-        Log.e(
-            `[LB-DEBUG] END red bounce active=${SymbolView._activeRedLandBounces} ` +
-            `completed=${SymbolView._completedRedLandBounces}/${SymbolView._expectedRedLandBounces} ` +
-            `sessionReady=${SymbolView._redLandBounceSessionReady}`
-        );
-        SymbolView._notifyRedLandBounceIfDone();
     }
 
     // ─── INTERNAL ───
@@ -391,26 +211,17 @@ export class SymbolView extends Component {
         }
         SymbolView._pendingLandBounces.clear();
         SymbolView._landBounceClones.clear();
-        SymbolView._activeRedLandBounces = 0;
-        SymbolView._notifyRedLandBounceIfDone();
     }
 
     /** Restore 1 node đang land-bounce (nếu có) — dừng clone hoặc kéo symbol về reel. */
     public static restoreLandBounceIfNeeded(node: Node): void {
         const view = node?.isValid ? node.getComponent(SymbolView) : null;
-        const wasRed = view?.symbolId === SymbolId.STICKY_RED;
         const hadLandClone = SymbolView._landBounceClones.has(node);
 
-        // Invalidate gen trước — scheduleOnce/finishBounce cũ không được đụng clone/counter mới
-        const wasInFlight = !!view?._landBounceInFlight;
         if (view) view._invalidateLandBounce();
 
         if (hadLandClone) {
             SymbolView._destroyLandBounceClone(node);
-        }
-        // End counter nếu đang mid-bounce (clone hoặc bounce trên node gốc)
-        if (wasRed && (hadLandClone || wasInFlight)) {
-            SymbolView._endRedLandBounce();
         }
 
         const data = SymbolView._pendingLandBounces.get(node);
@@ -432,7 +243,7 @@ export class SymbolView extends Component {
                 }
             }
         } else if (node?.isValid && SymbolView.landBounceParent && node.parent === SymbolView.landBounceParent) {
-            SymbolView.restoreToReelHome(node, true);
+            SymbolView.restoreToReelHome(node);
             return;
         }
 
@@ -485,7 +296,7 @@ export class SymbolView extends Component {
                     `[LB-DEBUG] RESTORE real symbol r${view.reelIndex}row${view.rowIndex} ` +
                     `sid=${view.symbolId} → parent=${view._reelHomeParent.name}`
                 );
-                SymbolView.restoreToReelHome(child, true);
+                SymbolView.restoreToReelHome(child);
             }
         }
     }
@@ -504,7 +315,7 @@ export class SymbolView extends Component {
     }
 
     /** Restore node về reel home đã cache. Trả false nếu skip (clone / đã ở reel). */
-    public static restoreToReelHome(node: Node, silentRedDecrement: boolean = false): boolean {
+    public static restoreToReelHome(node: Node): boolean {
         if (!node?.isValid) return false;
 
         // Land-bounce clone → destroy (không kéo về reel, tránh duplicate)
@@ -519,23 +330,11 @@ export class SymbolView extends Component {
         // Highlight clone: reel vẫn còn symbol gốc → bỏ qua
         if (SymbolView._isHighlightCloneNode(node)) return false;
 
-        const wasRed = view.symbolId === SymbolId.STICKY_RED;
         Tween.stopAllByTarget(node);
         SymbolView.restoreToReelParent(node, view._reelHomeParent, view._reelHomeLocalPos);
         const base = view.getBaseScale();
         node.setScale(base, base, 1);
         SymbolView._pendingLandBounces.delete(node);
-
-        if (wasRed) {
-            if (silentRedDecrement) {
-                if (SymbolView._activeRedLandBounces > 0) {
-                    SymbolView._activeRedLandBounces--;
-                    SymbolView._notifyRedLandBounceIfDone();
-                }
-            } else {
-                SymbolView._endRedLandBounce();
-            }
-        }
         return true;
     }
 
@@ -571,7 +370,6 @@ export class SymbolView extends Component {
         node.setPosition(0, origLocalPos.y, origLocalPos.z);
         SymbolView.placeOnTopInParent(node, parent);
     }
-    private _pendingPlusOneEffect: boolean = false;
 
     /** PS ID name helper — removed (GoF không dùng PS schema cũ) */
 
@@ -619,11 +417,10 @@ export class SymbolView extends Component {
         this._isSpinning = false;
         this._pendingLandBounce = false;
         this._landBouncePlayed = false;
-        this._pendingPlusOneEffect = false;
         // Reset scale về base (ngoài view ExtraTop/ExtraBot = 0.8) và dừng tween cũ — tránh scale dang dở khi đổi symbol
         Tween.stopAllByTarget(this.node);
         if (SymbolView.landBounceParent && this.node.parent === SymbolView.landBounceParent) {
-            SymbolView.restoreToReelHome(this.node, true);
+            SymbolView.restoreToReelHome(this.node);
         }
         const base = this.getBaseScale(symbolId);
         this.node.setScale(base, base, 1);
@@ -652,14 +449,7 @@ export class SymbolView extends Component {
             const creditValue = cell && cell.symbolId === symbolId ? cell.credit : 0;
             this.showCredit(creditValue);
             this._pendingLandBounce = !this._landBouncePlayed;
-        } else if (symbolId === SymbolId.PLUS_ONE_SPIN && this.reelIndex >= 0 && this.rowIndex >= 0
-            && GameData.instance.currentMode !== 'respin') {
-            // +1 Re-Spin symbol: đánh dấu pending để bounce khi reel settled
-            this._pendingLandBounce = true;
-            this._pendingPlusOneEffect = true;
-            if (this.SpriteNumber) this.SpriteNumber.node.active = false;
         } else {
-            // Không phải STICKY_RED → ẩn credit label
             if (this.SpriteNumber) this.SpriteNumber.node.active = false;
         }
 
@@ -787,10 +577,10 @@ export class SymbolView extends Component {
         }
     }
 
-    // ─── CREDIT LABEL (Sticky Red) ────────────────────────────────────────────
+    // ─── CREDIT LABEL (Sticky) ────────────────────────────────────────────
 
     /**
-     * #1 Hiển thị giá trị credit ở giữa symbol Sticky Red.
+     * Hiển thị giá trị credit ở giữa symbol sticky (green/gold).
      * Dùng format KMBT (1500 → "1.5K"). Label pop-in nhỏ.
      * Gọi sau khi reel dừng và sticky cell đã được xác nhận.
      */
@@ -806,11 +596,11 @@ export class SymbolView extends Component {
     }
 
     /**
-     * Force Feature Entry — đổi symbol reel hiện tại thành Sticky đỏ + nhún land
-     * (giống khi reel dừng trúng Red Coin).
+     * Force feature entry — đổi symbol reel thành sticky (green/gold) + nhún land.
      */
-    public applyStickyRedFill(credit: number): void {
-        this.setSymbol(SymbolId.STICKY_RED);
+    public applyStickyFill(symbolId: number, credit: number): void {
+        if (!isStickySymbol(symbolId)) return;
+        this.setSymbol(symbolId);
         if (credit > 0) {
             this.showCredit(credit);
         }
@@ -837,8 +627,6 @@ export class SymbolView extends Component {
             SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
         }
 
-        const isRedSticky = this._currentSymbolId === SymbolId.STICKY_RED;
-        if (isRedSticky) SymbolView._beginRedLandBounce(this.node);
         this._landBounceInFlight = true;
 
         this._ensureReelHomeCached();
@@ -863,14 +651,6 @@ export class SymbolView extends Component {
             bounceTarget = clone;
             usedClone = true;
             this.setSpriteVisible(false);
-            if (isRedSticky) {
-                Log.e(
-                    `[LB-DEBUG] CREATE red clone ${clone.name} ` +
-                    `active=${SymbolView._activeRedLandBounces} ` +
-                    `expected=${SymbolView._expectedRedLandBounces} ` +
-                    `sessionReady=${SymbolView._redLandBounceSessionReady}`
-                );
-            }
         }
 
         // Reset scale/pos + cắt mọi tween còn sót trên target (clone mới hoặc node gốc)
@@ -905,7 +685,6 @@ export class SymbolView extends Component {
             } else if (bounceTarget?.isValid && bounceTarget !== this.node) {
                 Tween.stopAllByTarget(bounceTarget);
             }
-            if (isRedSticky) SymbolView._endRedLandBounce();
         };
 
         tween(bounceTarget)
@@ -926,37 +705,6 @@ export class SymbolView extends Component {
             if (!this.node?.isValid || myGen !== this._landBounceGen || bounceFinished) return;
             finishBounce();
         }, bounceDuration + 0.08);
-    }
-
-    /**
-     * Effect khi symbol +1 Re-Spin land trên reel (chế độ TopUp).
-     * Symbol sẽ glow/pulse rồi fade out để cho thấy nó đã được "tiêu thụ"
-     * và +1 spin được cộng vào respinRemaining.
-     */
-    private _playPlusOneSpinEffect(): void {
-        if (!this._sprite) return;
-
-        // Lấy hoặc tạo UIOpacity component
-        let uiOpacity = this.node.getComponent(UIOpacity);
-        if (!uiOpacity) {
-            uiOpacity = this.node.addComponent(UIOpacity);
-        }
-
-        // Đảm bảo opacity đang là full
-        uiOpacity.opacity = 255;
-
-        // Pulse glow effect (tăng sáng lên rồi về lại) rồi fade out
-        // Delay trước khi fade để người chơi thấy symbol
-        tween(uiOpacity)
-            .delay(0.8)  // Chờ cho bounce hoàn thành + người chơi nhìn thấy
-            .to(0.3, { opacity: 0 })  // Fade out
-            .call(() => {
-                // Sau khi fade xong, reset opacity cho lần sau
-                uiOpacity!.opacity = 255;
-            })
-            .start();
-
-        // Log removed for performance
     }
 
     /**
@@ -1013,7 +761,7 @@ export class SymbolView extends Component {
         if (!keepRunningLandBounce) {
             Tween.stopAllByTarget(this.node);
             if (SymbolView.landBounceParent && this.node.parent === SymbolView.landBounceParent) {
-                SymbolView.restoreToReelHome(this.node, true);
+                SymbolView.restoreToReelHome(this.node);
             }
         }
         if (!sameSticky) {
@@ -1038,7 +786,7 @@ export class SymbolView extends Component {
         // (reel đang bounce lên, chưa vào tốc độ nhanh)
         this._isSpinning = true;
         this._landBouncePlayed = false;
-        // KHÔNG ẩn credit label ở đây — symbol đỏ vẫn còn visible trong giai đoạn launch bounce.
+        // KHÔNG ẩn credit label ở đây — sticky vẫn còn visible trong giai đoạn launch bounce.
         // Credit sẽ bị ẩn khi spin-fast fire (blur bắt đầu hiển, symbol đi ra khỏi view).
     }
 
@@ -1080,10 +828,6 @@ export class SymbolView extends Component {
             this._pendingLandBounce = false;
             this._landBouncePlayed = true;
             this._playLandBounce();
-        }
-        if (this._pendingPlusOneEffect && GameData.instance.currentMode !== 'respin') {
-            this._pendingPlusOneEffect = false;
-            this._playPlusOneSpinEffect();
         }
     }
 

@@ -193,7 +193,6 @@ export class TopUpUI extends Component {
         let count = 0;
         for (const cell of GameData.instance.stickyCells.values()) {
             if (
-                cell.symbolId === SymbolId.STICKY_RED ||
                 cell.symbolId === SymbolId.STICKY_YELLOW ||
                 cell.symbolId === SymbolId.STICKY_GREEN
             ) {

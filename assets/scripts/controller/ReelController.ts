@@ -734,8 +734,7 @@ export class ReelController extends Component {
         const rowIndex = this._getVisibleRowIndex(nodeIndex);
         if (rowIndex < 0) return;
 
-        const isSticky = symbolId === SymbolId.STICKY_RED
-            || symbolId === SymbolId.STICKY_YELLOW
+        const isSticky = symbolId === SymbolId.STICKY_YELLOW
             || symbolId === SymbolId.STICKY_GREEN;
         if (!isSticky) return;
 
@@ -746,8 +745,7 @@ export class ReelController extends Component {
         const rowIndex = this._getVisibleRowIndex(nodeIndex);
         if (rowIndex < 0) return;
 
-        const isSticky = symbolId === SymbolId.STICKY_RED
-            || symbolId === SymbolId.STICKY_YELLOW
+        const isSticky = symbolId === SymbolId.STICKY_YELLOW
             || symbolId === SymbolId.STICKY_GREEN;
         if (!isSticky) return;
 

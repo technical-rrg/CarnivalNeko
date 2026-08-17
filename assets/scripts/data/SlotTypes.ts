@@ -633,6 +633,9 @@ export interface SpinResponse {
     /** CollectWin / FeatureSpinWin của spin Matsuri (tổng hút Gold → gán Green nếu cell.Credit=0). */
     collectWin?: number;
     featureSpinWin?: number;
+    /** API: tổng credit sticky đang hold (AllStickies). */
+    accumulatedStickyCredit?: number;
+    stickyCount?: number;
     /** Reserved — luôn 0. JP Ultra/Supreme/Ultimate qua Pick sau FS. */
     featureEntryJackpotWin?: number;
     /** Reserved — luôn empty. Tier JP do Pick quyết định. */

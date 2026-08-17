@@ -414,11 +414,10 @@ export class MockDataProvider {
             }
         }
 
-        // Mỗi Green +1 remain (cap 3). GM đã −1 trước request.
+        // Mỗi Green xuất hiện → reset 3 Free Spin. GM đã −1 trước request.
         const remainBefore = Math.max(0, data.respinRemaining);
-        const greenAdds = newGreens.length;
         let remainRespinCount = landedGreen
-            ? Math.min(MATSURI_SPIN_COUNT, remainBefore + greenAdds)
+            ? MATSURI_SPIN_COUNT
             : remainBefore;
 
         // Mock API: Green.Credit = tổng Gold đang hold (+ Grand nếu full)
@@ -457,7 +456,7 @@ export class MockDataProvider {
         Log.e(
             `[Matsuri MOCK] rows=${rows} newGreen=${newGreens.length} filled=${filledAfter}/${cellCount}` +
             ` remain ${remainBefore}→${remainRespinCount}` +
-            `${landedGreen ? ` (GREEN +${greenAdds})` : ''}` +
+            `${landedGreen ? ' (GREEN reset 3)' : ''}` +
             ` collect=${spinWin} next=${nextStage}`
         );
 

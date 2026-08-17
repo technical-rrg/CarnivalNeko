@@ -103,7 +103,7 @@ export const GameEvents = {
     /** Seed Start Gold xong → GameManager lock + spin đầu. No payload. */
     MATSURI_SEED_DONE: 'matsuri:seed:done',
     /**
-     * Matsuri: Green vừa land → collect/fly toàn bộ Gold hiện có về Title/total UI.
+     * Matsuri: Green vừa land → Gold hút tiền về UI tổng; Green nhún rồi flip.
      * Payload: { goldCells: StickyCell[] }
      */
     MATSURI_COLLECT_START: 'matsuri:collect:start',

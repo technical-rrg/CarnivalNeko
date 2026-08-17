@@ -6,11 +6,13 @@
  *     bắn orb lần lượt xuống reel → sticky vàng hiện đủ
  *     → nhún highlight song song lệch pha (L→R, trên→dưới) → SEED_DONE → spin
  *  B) GREEN LAND (COLLECT)
- *     nhún highlight song song lệch pha các sticky vàng
- *     → clone bay về UI tổng tiền → flip Green→Gold (lúc đó mới hiện CreditLabel)
+ *     nhún sticky vàng → clone vàng hút tiền về UI tổng
+ *     → đồng thời nhún các Green (trước khi lật)
+ *     → flip Green→Gold + hiện CreditLabel
  *
  * INSPECTOR: seedSourceNode / seedOrbTemplate / collectTargetNode
- * TIMING: chỉnh const SEED_ORB_SPEED / FLY_SPEED (px/s) phía dưới.
+ * TIMING: const bên dưới là mốc Normal. Quick/Turbo nhân getTimingMultiplier()
+ * (0.8 / 0.6) — cùng hệ số TopUp reel / absorb, không đổi logic event.
  */
 
 import {
@@ -34,6 +36,7 @@ import { TopUpManager } from './TopUpManager';
 import { TOPUP_STICKY_SYMBOL_SCALE } from './TopUpReelController';
 import { SymbolView } from './SymbolView';
 import { SoundManager } from '../manager/SoundManager';
+import { AutoSpinManager } from '../manager/AutoSpinManager';
 
 const { ccclass, property } = _decorator;
 
@@ -51,13 +54,13 @@ const SEED_ORB_SCALE_IN_DURATION = 0.18;
 /** ★ Delay giữa LẦN BẮT ĐẦU bắn 2 quả cầu (bay song song, không chờ land). */
 const SEED_ORB_LAUNCH_INTERVAL = 0.4;
 /** ★ Vận tốc rơi quả cầu Pot → ô (px/s). Lớn = bay nhanh. Rebuild sau khi sửa. */
-const SEED_ORB_SPEED = 520;
-
-// ── B) HIGHLIGHT — nhún sticky vàng song song, lệch pha (sau seed / trước bay tiền)
+const SEED_ORB_SPEED = 620;
 
 // ── B) HIGHLIGHT — nhún sticky vàng song song, lệch pha (sau seed / trước bay tiền)
 /** ★ Hay chỉnh: cách bao lâu thì BẮT ĐẦU nhún sticky kế (song song, không chờ xong). */
 const HIGHLIGHT_STAGGER = 0.05;
+/** Trần thời điểm sticky CUỐI bắt đầu nhún — grid gần đầy thì nén stagger lại. */
+const HIGHLIGHT_LAUNCH_WINDOW = 0.5;
 /** Thời lượng 1 nhún của 1 sticky (scale+nhảy Y rồi settle). */
 const HIGHLIGHT_BOUNCE_DURATION = 0.5;
 /** Độ cao nhảy Y (pixel) khi nhún. */
@@ -70,6 +73,11 @@ const DELAY_BEFORE_FLY = 0.04;
 const FLY_SPEED = 800;
 /** ★ Hay chỉnh: cách bao lâu thì BẮT ĐẦU bay clone kế (song song, lệch pha). */
 const FLY_STAGGER = 0.2;
+/**
+ * Trần thời điểm clone CUỐI bắt đầu bay (s). 20 Gold × 0.2s = 3.4s chỉ để phóng hết
+ * → mỗi lượt có Green đứng ~6s. Nén stagger để tổng luôn nằm trong cửa sổ này.
+ */
+const FLY_LAUNCH_WINDOW = 1.0;
 /** Co scale ngắn lúc sắp chạm UI — giữ nguyên size suốt đường bay. */
 const FLY_SHRINK_DURATION = 0.12;
 /** Cooldown SFX khi clone tới đích — tránh playOneShot chồng theo số lượng Gold. */
@@ -130,6 +138,16 @@ export class MatsuriEffect extends Component {
     private _cachedTopUpMgr: TopUpManager | null = null;
     /** Thời điểm (Date.now) lần cuối play SFX tới đích — throttle theo FLY_ARRIVE_SFX_COOLDOWN. */
     private _lastFlyArriveSfxAt = 0;
+
+    /** NORMAL=1, QUICK=0.8, TURBO=0.6 — cùng TopUpManager / TopUpAbsorbEffect. */
+    private get _tm(): number {
+        return AutoSpinManager.instance?.getTimingMultiplier() ?? 1;
+    }
+
+    /** Duration không về 0 (tween 0s dễ skip callback / failsafe đua). */
+    private _dur(sec: number): number {
+        return Math.max(0.02, sec * this._tm);
+    }
 
     onLoad(): void {
         const bus = EventBus.instance;
@@ -244,12 +262,13 @@ export class MatsuriEffect extends Component {
         try {
             this.stickyOverlay?.alignPositionsFromTopUpManager();
             const fill = this._stickyFillRef();
-            const popDur = this.stickyOverlay?.matsuriSeedPopDuration ?? 0.22;
+            const popDur = this.stickyOverlay?.matsuriSeedPopDuration ?? this._dur(0.22);
 
             // Orb i bắt đầu sau i * interval — bay song song
             const jobs: Promise<void>[] = [];
+            const launchInterval = this._dur(SEED_ORB_LAUNCH_INTERVAL);
             for (let i = 0; i < cells.length; i++) {
-                const delay = i * SEED_ORB_LAUNCH_INTERVAL;
+                const delay = i * launchInterval;
                 const cell = cells[i];
                 jobs.push(
                     this._wait(delay).then(() => this._seedLaunchOneLikeFill(cell, fill)),
@@ -257,12 +276,12 @@ export class MatsuriEffect extends Component {
             }
             await Promise.all(jobs);
             // Chờ pop của quả cuối (land gần nhất) settle
-            await this._wait(popDur + 0.08);
+            await this._wait(popDur + this._dur(0.08));
 
             await this._phaseHighlightStaggered(cells);
 
             this.stickyOverlay?.snapActiveCoinsToReelRest();
-            await this._wait(0.2);
+            await this._wait(this._dur(0.2));
         } catch {
             // seed failsafe
         }
@@ -312,9 +331,9 @@ export class MatsuriEffect extends Component {
         }
 
         // Rơi theo vận tốc: xa thì lâu hơn. Không lấy orbFallDuration (0.55s) — chỉnh duration không ăn.
-        const hopDur = SEED_ORB_HOP_DURATION;
+        const hopDur = this._dur(SEED_ORB_HOP_DURATION);
         const hopY = SEED_ORB_HOP_Y;
-        const scaleIn = fill?.orbScaleInDuration ?? SEED_ORB_SCALE_IN_DURATION;
+        const scaleIn = this._dur(fill?.orbScaleInDuration ?? SEED_ORB_SCALE_IN_DURATION);
         const fit = this._reelFitScale();
 
         SoundManager.instance?.playSfxByName('sxPotHit');
@@ -355,14 +374,14 @@ export class MatsuriEffect extends Component {
         });
     }
 
-    /** Thời gian bay = quãng đường / vận tốc (px/s). */
+    /** Thời gian bay = quãng đường / vận tốc (px/s), rồi nhân speed mode. */
     private _durationFromSpeed(from: Vec3, to: Vec3, speed: number, minDur = 0.25, maxDur = 3): number {
         const dx = to.x - from.x;
         const dy = to.y - from.y;
         const dz = to.z - from.z;
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
         const v = Math.max(1, speed);
-        return Math.min(maxDur, Math.max(minDur, dist / v));
+        return this._dur(Math.min(maxDur, Math.max(minDur, dist / v)));
     }
 
     /** Tỉ lệ scale StickyOverlay / grid fit (đồng bộ reel thu nhỏ). */
@@ -511,16 +530,18 @@ export class MatsuriEffect extends Component {
     }
 
     /**
-     * Collect: vàng đã sẵn trên reel → nhún song song lệch pha → bay tiền.
+     * Collect: vàng nhún → hút tiền về UI; Green nhún trong lúc vàng bay; rồi flip.
      */
     private async _runCollectSequence(): Promise<void> {
         try {
             await this._phaseHighlightStaggered(this._collectCells);
-            if (DELAY_BEFORE_FLY > 0) await this._wait(DELAY_BEFORE_FLY);
-            await this._phaseFlyAll();
+            if (DELAY_BEFORE_FLY > 0) await this._wait(this._dur(DELAY_BEFORE_FLY));
+            const fly = this._phaseFlyAll();
+            await Promise.all([fly, this._phaseBounceGreensUntil(fly)]);
         } catch {
             // collect failsafe
         }
+        this._stopGreenCollectBounce();
         this._collectBusy = false;
         this._cleanupClones();
         try {
@@ -530,21 +551,55 @@ export class MatsuriEffect extends Component {
         }
     }
 
+    private _getGreenStickyCells(): StickyCell[] {
+        const greens: StickyCell[] = [];
+        for (const cell of GameData.instance.stickyCells.values()) {
+            if (cell.symbolId === SymbolId.STICKY_GREEN) greens.push(cell);
+        }
+        return this._sortLeftRightTopBottom(greens);
+    }
+
+    /** Green nhún liên tục khi vàng đang hút tiền — dừng khi fly xong. */
+    private async _phaseBounceGreensUntil(until: Promise<void>): Promise<void> {
+        const greens = this._getGreenStickyCells();
+        if (greens.length === 0) {
+            await until;
+            return;
+        }
+        let finished = false;
+        const mark = until.then(() => { finished = true; });
+        while (!finished && this._collectBusy) {
+            await this._phaseHighlightStaggered(greens);
+        }
+        await mark;
+        this._stopGreenCollectBounce(greens);
+    }
+
+    private _stopGreenCollectBounce(cells?: StickyCell[]): void {
+        const greens = cells ?? this._getGreenStickyCells();
+        for (const cell of greens) {
+            const node = this.stickyOverlay?.getCoinSlot(cell.reel, cell.row);
+            if (node?.isValid) Tween.stopAllByTarget(node);
+        }
+        this.stickyOverlay?.snapActiveCoinsToReelRest();
+    }
+
     /**
      * Nhún song song: sticky i bắt đầu sau i * HIGHLIGHT_STAGGER (không chờ bounce xong).
      * Thứ tự bắt đầu: L→R, trên→dưới.
      */
     private async _phaseHighlightStaggered(cells: StickyCell[]): Promise<void> {
         if (cells.length === 0) return;
+        const stagger = this._staggerFor(cells.length, HIGHLIGHT_STAGGER, HIGHLIGHT_LAUNCH_WINDOW);
         const jobs: Promise<void>[] = [];
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
-            const delay = i * HIGHLIGHT_STAGGER;
+            const delay = i * stagger;
             jobs.push(
                 this._wait(delay).then(async () => {
                     const src = this.stickyOverlay?.getCoinSlot(cell.reel, cell.row) ?? null;
                     if (src?.active && isValid(src)) await this._bounceStickyLikeTopUp(src);
-                    else await this._wait(HIGHLIGHT_BOUNCE_DURATION);
+                    else await this._wait(this._dur(HIGHLIGHT_BOUNCE_DURATION));
                 }),
             );
         }
@@ -561,7 +616,7 @@ export class MatsuriEffect extends Component {
                 resolve();
                 return;
             }
-            const total = HIGHLIGHT_BOUNCE_DURATION;
+            const total = this._dur(HIGHLIGHT_BOUNCE_DURATION);
             const growDur = total * (0.08 / 0.52);
             const holdDur = total * (0.12 / 0.52);
             const shrinkDur = total * (0.32 / 0.52);
@@ -602,13 +657,23 @@ export class MatsuriEffect extends Component {
         SoundManager.instance?.playBonusTrail();
         this._lastFlyArriveSfxAt = 0;
 
+        const stagger = this._staggerFor(this._collectCells.length, FLY_STAGGER, FLY_LAUNCH_WINDOW);
         const jobs: Promise<void>[] = [];
         for (let i = 0; i < this._collectCells.length; i++) {
             const cell = this._collectCells[i];
-            const delay = i * FLY_STAGGER;
+            const delay = i * stagger;
             jobs.push(this._wait(delay).then(() => this._flyCloneOne(cell)));
         }
         await Promise.all(jobs);
+    }
+
+    /**
+     * Stagger giữ nguyên khi ít sticky; grid gần đầy thì nén để tổng thời gian
+     * phóng không vượt `windowMax` (tránh mỗi lượt Green đứng nhiều giây).
+     */
+    private _staggerFor(count: number, base: number, windowMax: number): number {
+        if (count <= 1) return this._dur(base);
+        return this._dur(Math.min(base, windowMax / (count - 1)));
     }
 
     /** Trái → phải, trên → dưới (row 0 = top). */
@@ -666,14 +731,14 @@ export class MatsuriEffect extends Component {
             this._activeClones.push(clone);
 
             const flyDur = this._durationFromSpeed(start, end, FLY_SPEED);
-            const shrinkDur = Math.min(FLY_SHRINK_DURATION, flyDur * 0.35);
+            const shrinkDur = Math.min(this._dur(FLY_SHRINK_DURATION), flyDur * 0.35);
             const holdDur = Math.max(0, flyDur - shrinkDur);
 
             const failSafe = () => {
                 this._destroyClone(clone);
                 finish();
             };
-            this.scheduleOnce(failSafe, flyDur + 1.0);
+            this.scheduleOnce(failSafe, flyDur + this._dur(1.0));
 
             // Bay full size; chỉ co scale ở đoạn cuối sắp chạm UI
             tween(clone)
@@ -702,7 +767,7 @@ export class MatsuriEffect extends Component {
     /** Hit khi clone tới UI tổng — throttle để không chồng theo số Gold. */
     private _playFlyArriveSfx(): void {
         const now = Date.now();
-        if (now - this._lastFlyArriveSfxAt < FLY_ARRIVE_SFX_COOLDOWN * 1000) return;
+        if (now - this._lastFlyArriveSfxAt < this._dur(FLY_ARRIVE_SFX_COOLDOWN) * 1000) return;
         this._lastFlyArriveSfxAt = now;
         SoundManager.instance?.playSfxByName('sxBonusStickyGoldIncreaseHit');
     }
@@ -747,8 +812,8 @@ export class MatsuriEffect extends Component {
             const bs = this._totalBaseScale;
             Tween.stopAllByTarget(sn.node);
             tween(sn.node)
-                .to(0.07, { scale: new Vec3(bs.x * 1.28, bs.y * 1.28, bs.z) })
-                .to(0.1, { scale: new Vec3(bs.x, bs.y, bs.z) })
+                .to(this._dur(0.07), { scale: new Vec3(bs.x * 1.28, bs.y * 1.28, bs.z) })
+                .to(this._dur(0.1), { scale: new Vec3(bs.x, bs.y, bs.z) })
                 .start();
         } catch {
             // pulse failsafe

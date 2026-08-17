@@ -112,18 +112,15 @@ export class TopUpReelController extends Component {
         // Reset rotation/skew về 0 để tránh méo/ẩn do transform còn sót
         this.node.setRotationFromEuler(0, 0, 0);
         for (const node of this.symbolNodes) {
-            if (node) {
-                Tween.stopAllByTarget(node);
-                node.active = true;
-                node.setScale(GRID_MINI_SYMBOL_SCALE, GRID_MINI_SYMBOL_SCALE, 1);
-                node.setRotationFromEuler(0, 0, 0);
-                const credit = node.getChildByName('CreditLabel');
-                if (credit) {
-                    credit.setRotationFromEuler(0, 0, 0);
-                    credit.active = false;
-                }
-            }
+            if (!node?.isValid) continue;
+            Tween.stopAllByTarget(node);
+            SymbolView.restoreLandBounceIfNeeded(node);
+            node.getComponent(SymbolView)?.setSpriteVisible(true);
+            // Xóa state blur/spinning còn giữ trong SymbolView từ feature trước.
+            node.emit('spin-stop');
         }
+        // Một nguồn reset duy nhất cho active/scale/rotation/UIOpacity/CreditLabel.
+        this._showSymbolNodes();
         this._snapToRestPositions();
     }
 
@@ -226,18 +223,23 @@ export class TopUpReelController extends Component {
         const bounceH = this.symbolHeight * this.launchBounceHeightRatio;
         const upDur = this.launchBounceUpDuration * this._tm;
         const downDur = this.launchBounceDownDuration * this._tm;
+        const launchNodes = this.symbolNodes.filter((n) => !!n);
+        if (launchNodes.length === 0) {
+            this._state = ReelState.SPINNING;
+            return;
+        }
         let done = 0;
         for (let i = 0; i < this.symbolNodes.length; i++) {
             const node = this.symbolNodes[i];
-            const restY = this._restY[i];
+            if (!node) continue;
+            const restY = this._restY[i] ?? node.position.y;
             tween(node)
                 .to(upDur, { position: new Vec3(node.position.x, restY + bounceH, node.position.z) }, { easing: 'sineOut' })
                 .to(downDur, { position: new Vec3(node.position.x, restY, node.position.z) }, { easing: 'sineIn' })
                 .call(() => {
-                    if (++done >= this.symbolNodes.length) {
+                    if (++done >= launchNodes.length) {
                         if (this._state === ReelState.LAUNCHING) {
                             this._state = ReelState.SPINNING;
-                            // Nếu có pending stop (gọi stop() trong lúc bounce)
                             if (this._pendingStop) {
                                 const { type, win, index, forcedMidSymbol, debugTopUpIdx, token } = this._pendingStop;
                                 this._pendingStop = null;
@@ -345,10 +347,18 @@ export class TopUpReelController extends Component {
         const token = this._spinToken;
         // Log.d(`${this._logPrefix} stop — Type=${type}...`);
 
+        if (this._state === ReelState.STOPPING) return;
+
         if (this._state === ReelState.LAUNCHING) {
-            // Đang bounce → lưu pending, bounce xong sẽ tự gọi
-            this._pendingStop = { type, win, index, forcedMidSymbol, debugTopUpIdx, token };
-            return;
+            // 5×3→5×5: bounce tween trên hàng mới bật có thể không bao giờ .call()
+            // → abort launch, vào SPINNING rồi stop luôn.
+            this._pendingStop = null;
+            this.unscheduleAllCallbacks();
+            for (const node of this.symbolNodes) {
+                if (node) Tween.stopAllByTarget(node);
+            }
+            this._snapToRestPositions();
+            this._state = ReelState.SPINNING;
         }
 
         if (this._state !== ReelState.SPINNING) {
@@ -389,13 +399,16 @@ export class TopUpReelController extends Component {
         // then the whole set starts one row above and eases down into its rest positions.
         this._prepareLandingToRest(index, forcedMidSymbol, debugTopUpIdx);
 
-        // Tween tất cả nodes xuống đúng 1 symbol: Mid node already holds the target result.
         const overshoot = this.symbolHeight * this.stopBounceOvershootRatio;
         const settleDur = this.stopBounceSettleDuration * this._tm;
+        const nodes = this.symbolNodes.filter((n) => !!n);
+        if (nodes.length === 0) {
+            this._finishStop(type, win, index);
+            return;
+        }
         let completed = 0;
-        for (let i = 0; i < this.symbolNodes.length; i++) {
-            const node = this.symbolNodes[i];
-            const restY = this._restY[i];
+        for (const node of nodes) {
+            const restY = this._restY[this.symbolNodes.indexOf(node)] ?? node.position.y;
             Tween.stopAllByTarget(node);
             tween(node)
                 .to(
@@ -409,7 +422,7 @@ export class TopUpReelController extends Component {
                     { easing: 'backOut' }
                 )
                 .call(() => {
-                    if (++completed >= this.symbolNodes.length) {
+                    if (++completed >= nodes.length) {
                         if (token !== this._spinToken) {
                             Log.e(`[TOPUP-PLUS] ignore stale TopUpReel finish token=${token} current=${this._spinToken}`);
                             return;
@@ -419,6 +432,12 @@ export class TopUpReelController extends Component {
                 })
                 .start();
         }
+        const failsafe = (this.stopDuration + this.stopBounceSettleDuration) * this._tm + 0.15;
+        this.scheduleOnce(() => {
+            if (this._state === ReelState.STOPPING && token === this._spinToken) {
+                this._finishStop(type, win, index);
+            }
+        }, failsafe);
     }
 
     // ─── INTERNAL ───
@@ -534,6 +553,7 @@ export class TopUpReelController extends Component {
     }
 
     private _finishStop(type: number, win: number, index: number): void {
+        if (this._state === ReelState.IDLE) return;
         this._state = ReelState.IDLE;
         this._pendingStop = null;
 

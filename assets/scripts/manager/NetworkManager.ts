@@ -2011,6 +2011,11 @@ class RealNetworkAdapter implements INetworkAdapter {
         const code = packet[5] as number;
         const msg = (packet[6] as string) || '';
         if (code !== 0) {
+            // 30034 ERR_NO_NEED_CLAIM — không phải mất mạng; caller tự xử lý (Matsuri Claim sớm).
+            if (code === 30034) {
+                Log.w(`[Network] 30034 ERR_NO_NEED_CLAIM msg="${msg}" — skip DISCONNECTED`);
+                throw new ServerApiError(`Server error [30034]: ${msg}`, 30034, true);
+            }
             const popupCase = PopUpMessage.popupCaseFromServerCode(code);
             // Log toàn bộ packet để backend biết chính xác server trả về gì
             const packetSummary = packet.map((v, i) => {
@@ -2239,6 +2244,15 @@ class RealNetworkAdapter implements INetworkAdapter {
             //   → KHÔNG dùng _parseTopupStickyCells cho normal/freespin vì TopupReel là state grid feature, không phải spin grid thường
             //   → Luôn dùng _parseStickyWithFallback (getBaseGrid) cho normal/freespin
             stickyCells: (() => {
+                // CarnivalNeko feature spin: sticky CHỈ đến từ StarterCoins / NewStickies / AllStickies
+                // (gán bên dưới). Grid fallback sẽ bắt symbol 44 nằm trên free-spin strip →
+                // sinh ô Green ảo không credit và làm reset remain sai.
+                const isCnFeatureSpin = data.currentMode === 'matsuri'
+                    || ((res as any).CurrentFeatureType != null && Number(res.ReelIndex) === 1);
+                if (isCnFeatureSpin) {
+                    Log.e(`[StickyRoute] CN feature spin → bỏ grid fallback (mode=${data.currentMode} ReelIndex=${res.ReelIndex})`);
+                    return undefined;
+                }
                 const useTopup = data.currentMode === 'respin';
                 let topupCells: import('../data/SlotTypes').StickyCell[] | undefined;
                 if (useTopup) {
@@ -2291,8 +2305,12 @@ class RealNetworkAdapter implements INetworkAdapter {
         const featureRowsRaw = anyRes.FeatureRows ?? anyRes.featureRows;
         if (featureRowsRaw != null && !Number.isNaN(Number(featureRowsRaw))) {
             resp.featureRows = clampMatsuriRows(Number(featureRowsRaw));
+        } else if (resp.currentFeatureType != null && resp.currentFeatureType >= 0) {
+            // API §8.4: Mighty/Ultra=3, Mega/Supreme=4, Super/Ultimate=5.
+            resp.featureRows = clampMatsuriRows(3 + (resp.currentFeatureType % 3));
         }
 
+        // rows sai → Row đảo sai ô → Green land lệch chỗ + credit lookup miss.
         const rows = resp.featureRows
             ?? (GameData.instance.currentMode === 'matsuri' ? GameData.instance.matsuriRows : 3);
 
@@ -2322,12 +2340,24 @@ class RealNetworkAdapter implements INetworkAdapter {
             resp.collectWin = collectWin;
             resp.featureSpinWin = collectWin;
         }
+        const accSticky = Number(anyRes.AccumulatedStickyCredit ?? anyRes.accumulatedStickyCredit ?? 0);
+        if (Number.isFinite(accSticky) && accSticky > 0) resp.accumulatedStickyCredit = accSticky;
+        const stickyCount = Number(anyRes.StickyCount ?? anyRes.stickyCount);
+        if (Number.isFinite(stickyCount) && stickyCount > 0) resp.stickyCount = stickyCount;
+
+        const stickyKeyRe = /sticky|credit|starter|collect|featureSpin|payout/i;
+        const extraSticky = Object.keys(anyRes).filter(k => stickyKeyRe.test(k));
         Log.e(
-            `[CN-STICKY] rows=${rows} starter=${starter.map(c => `${c.reel}-${c.row}=${c.credit}`).join(',') || 'none'}` +
-            ` new=${news.map(c => `${c.reel}-${c.row}=${c.credit}`).join(',') || 'none'}` +
-            ` all=${all.map(c => `${c.reel}-${c.row}=${c.credit}`).join(',') || 'none'}` +
-            ` rawNew=${JSON.stringify(anyRes.NewStickies ?? anyRes.newStickies ?? null)}` +
-            ` rawAll=${JSON.stringify(anyRes.AllStickies ?? anyRes.allStickies ?? null)}`,
+            `[GREEN-CREDIT][RAW] TotalBet=${anyRes.TotalBet ?? resp.totalBet} TotalWin=${anyRes.TotalWin ?? resp.totalWin}` +
+            ` FeatureSpinTotalWin=${anyRes.FeatureSpinTotalWin ?? resp.featureSpinTotalWin ?? 'n/a'}` +
+            ` AccumulatedStickyCredit=${anyRes.AccumulatedStickyCredit ?? 'n/a'}` +
+            ` StickyCount=${anyRes.StickyCount ?? 'n/a'}` +
+            ` parsedNew=${news.map(c => `${c.reel}-${c.row}=${c.credit}`).join(',') || 'none'}` +
+            ` parsedAll=${all.map(c => `${c.reel}-${c.row}=${c.credit}`).join(',') || 'none'}` +
+            `\n  extraKeys=[${extraSticky.join(', ')}]` +
+            `\n  rawNew=${JSON.stringify(anyRes.NewStickies ?? anyRes.newStickies ?? null)}` +
+            `\n  rawAll=${JSON.stringify(anyRes.AllStickies ?? anyRes.allStickies ?? null)}` +
+            `\n  rawStarter=${JSON.stringify(anyRes.StarterCoins ?? anyRes.starterCoins ?? null)}`,
         );
 
         // stickyCells cho UI: enter = StarterCoins; mid = NewStickies (Green land)

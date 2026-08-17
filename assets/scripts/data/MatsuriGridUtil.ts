@@ -16,9 +16,8 @@ import { Log } from '../core/Logger';
 
 export const MATSURI_COL_COUNT = 5;
 /**
- * Số Free Spin Matsuri lúc vào feature / khi Green land (reset).
- * ★ MOCK + client fallback dùng const này.
- * Real API: lấy RemainFeatureSpinCount / remainRespinCount từ response — không hardcode phía client.
+ * Số Free Spin Matsuri lúc vào feature / khi có Green (reset về 3).
+ * Real API: ưu tiên RemainFeatureSpinCount; Green land luôn reset 3 theo spec.
  */
 export const MATSURI_SPIN_COUNT = 3;
 export const MATSURI_MIN_ROWS = 3;
@@ -51,26 +50,35 @@ export function matsuriGridFrameHeightMul(rows: number): number {
 }
 
 /**
- * Trừ height FrameFront / fill / mask từ baseline 5×5.
- * 5×5 → 0, 5×4 → 130, 5×3 → 260.
- */
+     * Trừ height FrameFront / fill / mask từ baseline 5×5 (co từ mép dưới, mép trên đứng yên).
+     * 5×5 → 0, 5×4 → 130, 5×3 → 260.
+     */
 export function matsuriGridFrameHeightShrink(rows: number): number {
     return MATSURI_CELL_SIZE * (MATSURI_MAX_ROWS - clampMatsuriRows(rows));
 }
 
 /**
- * Dịch Y grid từ layout prefab 5×5 khi ẩn hàng dưới (giữ lệch khung do artist canh).
- * 5×5 → 0, 5×4 → -65, 5×3 → -130.
+ * Offset Y để pin mép trên khi co height node neo giữa.
+ * 5×5 → 0, 5×4 → +65, 5×3 → +130.
  */
-export function matsuriGridPrefabYShift(rows: number): number {
-    return -matsuriGridFrameHeightShrink(rows) * 0.5;
+export function matsuriGridFrameTopPinY(rows: number): number {
+    return matsuriGridFrameHeightShrink(rows) * 0.5;
 }
 
 /**
- * Offset Y root StickyOverlay — luôn 0 (grid đã canh trong FrameFront).
+ * @deprecated Grid giữ vị trí prefab (hàng 0 = top). Dùng matsuriGridFrameTopPinY cho FrameFront.
  */
-export function matsuriGridYOffset(_rows?: number): number {
-    return 0;
+export function matsuriGridPrefabYShift(rows: number): number {
+    return -matsuriGridFrameTopPinY(rows);
+}
+
+/**
+ * Offset Y root StickyOverlay — canh giữa theo số hàng (size không đổi).
+ * Pin-top hiện tại cao hơn tâm 5×5 đúng shrink/2 → dịch xuống:
+ *   5×5 → 0, 5×4 → −65, 5×3 → −130.
+ */
+export function matsuriGridYOffset(rows?: number): number {
+    return -matsuriGridFrameTopPinY(rows ?? MATSURI_MAX_ROWS);
 }
 
 export function matsuriCellCount(rows: number): number {
@@ -120,18 +128,40 @@ export function pickMatsuriCredit(totalBet: number, rng: () => number = Math.ran
  * Parse StarterCoins / NewStickies / AllStickies từ CNSpinResponse (V1.0.2).
  * Shape: [{ Reel, Row, Credit }] — Credit = PayoutRate × TotalBet (đã nhân sẵn).
  * Server Row 0 = top → visual row 0 = bottom.
- *
- * Không dùng `Credit ?? Win`: Credit:0 (default server) sẽ nuốt Win/PayoutRate.
+ * MessagePack/C# có thể gửi tuple [Reel, Row, Credit] hoặc decimal object.
  */
+function toPositiveNumber(v: any): number {
+    if (v == null || v === '') return 0;
+    if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? v : 0;
+    if (typeof v === 'string') {
+        const n = Number(v.replace(',', '.'));
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+    if (typeof v === 'object') {
+        return toPositiveNumber(
+            v.Value ?? v.value ?? v.Credit ?? v.credit ?? v.Win ?? v.win
+            ?? v.Amount ?? v.amount ?? v.m ?? v.Val ?? v.val,
+        );
+    }
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 export function parseCnStickyCredit(item: any, totalBet?: number): number {
-    if (item == null || typeof item !== 'object') return 0;
+    if (item == null) return 0;
+    if (typeof item !== 'object') return toPositiveNumber(item);
+    if (Array.isArray(item)) {
+        // [Reel, Row, Credit] hoặc [Reel, Row, PayoutRate]
+        const fromTuple = toPositiveNumber(item[2] ?? item[3]);
+        if (fromTuple > 0) return fromTuple;
+    }
     const nested = item.Sticky ?? item.sticky ?? item.Data ?? item.data ?? item.Coin ?? item.coin;
-    const sources = [item, nested].filter((v) => v != null && typeof v === 'object');
+    const sources = [item, nested].filter((v) => v != null && typeof v === 'object' && !Array.isArray(v));
     const firstPositive = (keys: string[]): number => {
         for (const src of sources) {
             for (const key of keys) {
-                const n = Number(src[key]);
-                if (Number.isFinite(n) && n > 0) return n;
+                const n = toPositiveNumber(src[key]);
+                if (n > 0) return n;
             }
         }
         return 0;
@@ -140,6 +170,7 @@ export function parseCnStickyCredit(item: any, totalBet?: number): number {
         'Credit', 'credit', 'Win', 'win', 'Val', 'val', 'Value', 'value',
         'Prize', 'prize', 'Payout', 'payout', 'Amount', 'amount',
         'Cash', 'cash', 'CoinValue', 'coinValue', 'StickyWin', 'stickyWin',
+        'Item3', 'item3',
     ]);
     if (direct > 0) return direct;
     const rate = firstPositive([
@@ -164,16 +195,47 @@ export function parseCnStickyCells(
     const out: StickyCell[] = [];
     for (const item of raw) {
         if (item == null) continue;
-        const reel = Number(item.Reel ?? item.reel ?? item.Col ?? item.col ?? item.Column ?? 0);
-        const apiRow = Number(item.Row ?? item.row ?? 0);
+        let reel = NaN;
+        let apiRow = NaN;
+        if (Array.isArray(item)) {
+            reel = Number(item[0]);
+            apiRow = Number(item[1]);
+        } else if (typeof item === 'object') {
+            const hasReel = item.Reel != null || item.reel != null || item.Col != null || item.col != null
+                || item.Column != null || item.Item1 != null;
+            const hasRow = item.Row != null || item.row != null || item.Item2 != null;
+            if (hasReel) {
+                reel = Number(item.Reel ?? item.reel ?? item.Col ?? item.col ?? item.Column ?? item.Item1);
+            }
+            if (hasRow) {
+                apiRow = Number(item.Row ?? item.row ?? item.Item2);
+            }
+            if (!Number.isFinite(reel) || !Number.isFinite(apiRow)) {
+                const index = Number(item.Index ?? item.index ?? item.Slot ?? item.slot ?? item.Pos ?? item.pos);
+                if (Number.isFinite(index) && index >= 0) {
+                    const vis = matsuriServerToVisual(index, rows);
+                    reel = vis.reel;
+                    apiRow = rows - 1 - vis.row;
+                }
+            }
+        } else if (typeof item === 'number' && Number.isFinite(item) && item >= 0) {
+            const vis = matsuriServerToVisual(item, rows);
+            reel = vis.reel;
+            apiRow = rows - 1 - vis.row;
+        }
+        if (!Number.isFinite(reel) || !Number.isFinite(apiRow)) continue;
         const row = rows - 1 - apiRow;
         if (reel < 0 || reel >= MATSURI_COL_COUNT || row < 0 || row >= rows) continue;
         const credit = parseCnStickyCredit(item, totalBet);
         if (credit <= 0 && defaultSymbolId === SymbolId.STICKY_GREEN) {
-            const keys = item && typeof item === 'object' ? Object.keys(item).join(',') : '';
+            const keys = item && typeof item === 'object' && !Array.isArray(item)
+                ? Object.keys(item).join(',')
+                : Array.isArray(item) ? `tuple[${item.length}]` : typeof item;
             Log.e(`[GREEN-CREDIT][PARSE] col=${reel} row=${row} apiRow=${apiRow} credit=0 keys=${keys || 'none'} raw=${JSON.stringify(item)}`);
         }
-        const psSym = item.SymbolId ?? item.symbolId ?? item.Symbol ?? item.PsId;
+        const psSym = (item && typeof item === 'object' && !Array.isArray(item))
+            ? (item.SymbolId ?? item.symbolId ?? item.Symbol ?? item.PsId)
+            : undefined;
         let symbolId = defaultSymbolId;
         if (psSym != null) {
             const mapped = PS_TO_CLIENT[Number(psSym)];
@@ -182,6 +244,42 @@ export function parseCnStickyCells(
         out.push({ reel, row, symbolId, credit });
     }
     return out;
+}
+
+/**
+ * Tìm Credit API cho 1 ô Green — đúng tọa độ (và row đảo nếu parser lệch).
+ * Không lấy credit của ô khác / cột kề (tránh green nhảy chỗ).
+ */
+export function lookupCnStickyCredit(
+    reel: number,
+    row: number,
+    rows: number,
+    lists: Array<{ reel: number; row: number; credit?: number }[] | undefined>,
+    allowUnique = true,
+): number {
+    const rCount = clampMatsuriRows(rows || 3);
+    const altRow = rCount - 1 - row;
+    const coords: Array<[number, number]> = [
+        [reel, row],
+        [reel, altRow],
+    ];
+    for (const list of lists) {
+        if (!list?.length) continue;
+        for (const [c, y] of coords) {
+            if (c < 0 || c >= MATSURI_COL_COUNT) continue;
+            for (const cell of list) {
+                const credit = Math.max(0, cell.credit ?? 0);
+                if (credit <= 0) continue;
+                if (cell.reel === c && cell.row === y) return credit;
+            }
+        }
+    }
+    if (allowUnique) {
+        const news = lists[0] ?? [];
+        const hits = news.filter(c => (c.credit ?? 0) > 0);
+        if (hits.length === 1) return hits[0].credit ?? 0;
+    }
+    return 0;
 }
 
 /**

@@ -17,7 +17,8 @@
  * ── FLOW ──
  *   GameManager TopUp prepare / resume → await ensureLoaded()
  *   → emit TOPUP_START (overlay + TopUpManager đã sẵn sàng)
- *   TOPUP_END → ẩn instance (giữ cache). destroyOnTopUpEnd=true thì destroy.
+ *   TOPUP_END → destroy instance, giữ Prefab cache.
+ *   Feature lần 2 instantiate lại — Mask RECT sạch như lần đầu (không tái dùng stencil).
  */
 
 import { _decorator, Component, Node, Prefab, instantiate, assetManager } from 'cc';
@@ -73,9 +74,9 @@ export class StickyOverlayLoader extends Component {
     prefabPath: string = DEFAULT_PREFAB_PATH;
 
     @property({
-        tooltip: 'true = destroy instance khi TOPUP_END.\nfalse = chỉ ẩn, giữ cache cho lần Feature/TopUp sau.',
+        tooltip: 'Luôn destroy instance khi TOPUP_END (giữ Prefab). Tái dùng Mask RECT làm mất symbol từ feature lần 2.',
     })
-    destroyOnTopUpEnd: boolean = false;
+    destroyOnTopUpEnd: boolean = true;
 
     private _instance: Node | null = null;
     private _overlay: StickyOverlayController | null = null;
@@ -169,8 +170,7 @@ export class StickyOverlayLoader extends Component {
     }
 
     private _onTopUpEnd(): void {
-        if (!this.destroyOnTopUpEnd) return;
-        // Đợi 1 frame để StickyOverlay/TopUpManager xử lý TOPUP_END xong rồi mới destroy.
+        // Prefab cache giữ nguyên. Instance mới = Mask sạch như feature lần 1.
         this.scheduleOnce(() => this.unload(), 0);
     }
 

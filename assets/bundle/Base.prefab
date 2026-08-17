@@ -49173,7 +49173,7 @@
       "__id__": 907
     },
     "prefabPath": "StickyOverlay",
-    "destroyOnTopUpEnd": false,
+    "destroyOnTopUpEnd": true,
     "_id": ""
   },
   {

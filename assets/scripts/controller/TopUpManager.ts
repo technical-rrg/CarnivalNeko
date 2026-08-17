@@ -72,6 +72,7 @@ export class TopUpManager extends Component {
 
     get rowCount(): number { return this._rowCount; }
     get cellCount(): number { return COLUMN_COUNT * this._rowCount; }
+    get isSpinning(): boolean { return this._isSpinning; }
 
     private _isSpinning: boolean = false;
     /** Thứ tự quay theo col-major index 0..cellCount-1 */
@@ -82,6 +83,13 @@ export class TopUpManager extends Component {
     private _spunCount: number = 0;
     /** Số reel đã dừng xong */
     private _stoppedCount: number = 0;
+    /** true sau khi nhận SpinResponse — không start thêm reel (tránh treo). */
+    private _stopArmed: boolean = false;
+    /** idx đã gọi spin() trong lượt này — chống start 2 lần khi API về sớm. */
+    private _startedReelIdx = new Set<number>();
+    /** Ô Gold/Green chốt lúc spinAll — không quay, kể cả khi stickyCells bị parser ghi đè mid-spin. */
+    private _heldReelIdx = new Set<number>();
+    private _stoppedReelIdx = new Set<number>();
 
     /** Hệ số tốc độ dựa trên speed mode (NORMAL=1, QUICK=0.8, TURBO=0.6) */
     private get _tm(): number {
@@ -151,12 +159,17 @@ export class TopUpManager extends Component {
                 for (let row = 0; row < target; row++) {
                     const reel = this._poolReels[col * fullRows + row];
                     if (!reel) continue;
+                    // Pool giữ instance qua nhiều feature: luôn reset cả ô vẫn active,
+                    // vì chính các ô đã dùng ở feature trước có thể còn Sprite/opacity ẩn.
+                    reel.reset();
                     reel.node.active = true;
                     next.push(reel);
                 }
                 for (let row = target; row < fullRows; row++) {
                     const reel = this._poolReels[col * fullRows + row];
-                    if (reel?.node) reel.node.active = false;
+                    if (!reel) continue;
+                    reel.reset();
+                    reel.node.active = false;
                 }
             }
             this.reels = next;
@@ -254,6 +267,17 @@ export class TopUpManager extends Component {
         }
     }
 
+    private _resetAllPoolReels(): void {
+        const active = new Set(this.reels);
+        const list = this._poolReels.length > 0 ? this._poolReels : this.reels;
+        for (const reel of list) {
+            if (!reel) continue;
+            const keepActive = active.has(reel);
+            reel.reset();
+            if (!keepActive) reel.node.active = false;
+        }
+    }
+
     onDestroy(): void {
         EventBus.instance.offTarget(this);
     }
@@ -299,18 +323,47 @@ export class TopUpManager extends Component {
         this.stopReels(response);
     }
 
+    /**
+     * Watchdog: thoát cờ spin treo mà không emit REELS_STOPPED giả.
+     * Dùng khi GameManager thấy grid "đang spin" nhưng không reel nào thực sự chạy.
+     */
+    public forceSettle(reason: string): boolean {
+        if (!this._isSpinning) return false;
+        const moving = this.reels.filter((r) => {
+            const st = r ? (r as any)['_state'] as number : 0;
+            return st === 1 || st === 2;
+        }).length;
+        Log.e(
+            `[TopUpManager] forceSettle (${reason}) spun=${this._spunCount}` +
+            ` stopped=${this._stoppedCount} moving=${moving}`,
+        );
+        if (moving > 0) return false;
+        this.unscheduleAllCallbacks();
+        this._isSpinning = false;
+        this._stopArmed = false;
+        this._seqIndex = 0;
+        this._spunCount = 0;
+        this._stoppedCount = 0;
+        this._startedReelIdx.clear();
+        this._stoppedReelIdx.clear();
+        this._setMaskEnabled(false);
+        return true;
+    }
+
     /** Reset reels khi kết thúc TopUp / FreeSpin — clear stickyCells để session sau không bị dính data cũ */
     private _onTopUpEnd(): void {
         Log.d('[TopUpManager] _onTopUpEnd — RESET all reels + clear stickyCells');
         this.unscheduleAllCallbacks();
-        for (const reel of this.reels) {
-            if (reel) reel.reset();
-        }
+        this._resetAllPoolReels();
         GameData.instance.stickyCells.clear();
         this._isSpinning = false;
         this._seqIndex = 0;
         this._spunCount = 0;
         this._stoppedCount = 0;
+        this._stopArmed = false;
+        this._startedReelIdx.clear();
+        this._heldReelIdx.clear();
+        this._stoppedReelIdx.clear();
         this._pendingResults = [];
         this._setMaskEnabled(false);
     }
@@ -319,10 +372,21 @@ export class TopUpManager extends Component {
     private _onTopUpStart(): void {
         Log.d('[TopUpManager] _onTopUpStart — BẮT ĐẦU');
         this.unscheduleAllCallbacks();
-        // ★ Reset toàn bộ reel trước khi init — đề phòng _onTopUpEnd bị miss (transition FreeSpin → TopUp)
-        for (const reel of this.reels) {
-            if (reel) reel.reset();
+        this._resetAllPoolReels();
+        // Feature mới luôn bắt đầu sạch: _isSpinning sót lại từ feature trước sẽ khiến
+        // GameManager._areSlotReelsSettled() chặn spin đầu tiên vĩnh viễn.
+        if (this._isSpinning) {
+            Log.e('[TopUpManager] _onTopUpStart — _isSpinning còn true từ feature trước → force reset');
         }
+        this._isSpinning = false;
+        this._seqIndex = 0;
+        this._spunCount = 0;
+        this._stoppedCount = 0;
+        this._stopArmed = false;
+        this._pendingResults = [];
+        this._startedReelIdx.clear();
+        this._heldReelIdx.clear();
+        this._stoppedReelIdx.clear();
         this.initFromGameData();
 
         const isMatsuri = GameData.instance.currentMode === 'matsuri';
@@ -360,7 +424,7 @@ export class TopUpManager extends Component {
             const slot = isMatsuri ? undefined : lastResp?.topupReel?.[serverIdx];
             const idx = slot?.index ?? Math.floor(Math.random() * (reel['_strip'].length || 1));
             const forcedMid = this._fallbackNonBonusSymbol(reel);
-            reel.setSymbols(idx, forcedMid, false);
+            reel.setSymbols(idx, forcedMid);
         }
 
         Log.e(
@@ -452,94 +516,168 @@ export class TopUpManager extends Component {
             return;
         }
         this.unscheduleAllCallbacks();
+        // FeatureRows (API) phải khớp lưới đang render — lệch thì reelIdx → (col,row) sai ô.
+        if (GameData.instance.currentMode === 'matsuri') {
+            const wantRows = clampMatsuriRows(GameData.instance.matsuriRows || this._rowCount);
+            if (wantRows !== this._rowCount) {
+                Log.e(`[TopUpManager] spinAll rows mismatch ${this._rowCount} → ${wantRows} (FeatureRows)`);
+                this.ensureRowCount(wantRows);
+            }
+        }
         this._isSpinning = true;
         this._seqIndex = 0;
         this._spunCount = 0;
         this._stoppedCount = 0;
+        this._stopArmed = false;
         this._pendingResults = new Array(this.cellCount);
+        this._startedReelIdx.clear();
+        this._heldReelIdx.clear();
+        this._stoppedReelIdx.clear();
 
         Log.d(`[TopUpManager] spinAll — bắt đầu sequence spin stagger.`);
         this._setMaskEnabled(true);
-        const cells = GameData.instance.stickyCells;
         for (let i = 0; i < this.cellCount; i++) {
-            const col = Math.floor(i / this._rowCount);
-            const row = i % this._rowCount;
-            const key = `${col}-${row}`;
-            const cell = cells.get(key);
             const reel = this.reels[i];
             if (!reel) continue;
-            if (!cell) {
+            if (this._hasStickyAt(i) || reel.isLocked) {
+                this._heldReelIdx.add(i);
+                reel.blockInPlace();
+                reel.hideForOverlayResult();
+            } else {
                 reel.prepareFreeCellForSpin();
             }
         }
 
         this._spinNext();
+        Log.e(
+            `[TopUpManager] spinAll held=${this._heldReelIdx.size}` +
+            ` free=${this.cellCount - this._heldReelIdx.size}` +
+            ` sticky=${GameData.instance.stickyCells.size} rows=${this._rowCount}` +
+            ` locked=${[...this.reels].filter((r) => r?.isLocked).length}`,
+        );
     }
 
     /** Schedule start spin cho reel tiếp theo với stagger delay. Tất cả reel chạy song song. */
     private _spinNext(): void {
+        if (this._stopArmed) return;
         while (this._seqIndex < this._seqOrder.length) {
             const reelIdx = this._seqOrder[this._seqIndex];
             const reel = this.reels[reelIdx];
-            if (reel && !reel.isLocked) {
-                // ★ Check stickyCells: nếu vừa có coin mới (per-reel land) → lock ngay, skip
-                const col = Math.floor(reelIdx / this._rowCount);
-                const row = reelIdx % this._rowCount;
-                const key = `${col}-${row}`;
-                const cell = GameData.instance.stickyCells.get(key);
-                if (cell) {
-                    const type = this._symbolIdToTopupType(cell.symbolId);
-                    if (type !== TopupReelType.NONE) {
-                        Log.d(`[TopUp-SPIN] reelIdx=${reelIdx} auto-locked from stickyCells ${key} ${SymbolId[cell.symbolId]}`);
-                        reel.applyStickyResult(type, cell.credit ?? 0);
-                        this._seqIndex++;
-                        continue;
-                    }
-                }
-
-                const resultData = this._pendingResults[reelIdx];
-                const hasResult = resultData != null;
-                Log.d(`[TopUp-SPIN] seq=${this._seqIndex} reelIdx=${reelIdx} type=${resultData?.type} sym=${SymbolId[resultData?._symbolId] ?? resultData?._symbolId} index=${resultData?.index} win=${resultData?.win}`);
-
-                reel.onStopComplete = (r) => {
-                    const res = this._pendingResults[reelIdx];
-                    Log.d(`[TopUp-SPIN] reelIdx=${reelIdx} STOPPED type=${res?.type} sym=${SymbolId[res?._symbolId] ?? res?._symbolId} index=${res?.index} win=${res?.win}`);
-                    EventBus.instance.emit(GameEvents.REEL_STOPPED, { reelIndex: reelIdx, result: res });
-                    this._stoppedCount++;
-                    if (this._stoppedCount >= this._spunCount) {
-                        this._isSpinning = false;
-                        this._setMaskEnabled(false);
-                        // Log.e(`[SPIN-HANG][TopUpManager] emit REELS_STOPPED all reels stopped | stopped=${this._stoppedCount}/${this._spunCount} active=${this.node?.active ?? false}`);
-                        EventBus.instance.emit(GameEvents.REELS_STOPPED);
-                        Log.d('[TopUpManager] All reels stopped → emit REELS_STOPPED');
-                    }
-                };
-                reel.spin();
-                this._spunCount++;
+            if (reel && !this._isHeldCell(reelIdx)) {
                 this._seqIndex++;
-
-                if (hasResult) {
-                    this.scheduleOnce(() => {
-                        const st = (reel as any)['_state'];
-                        if (st === 1 || st === 2) { // LAUNCHING or SPINNING
-                            reel.stop(resultData);
-                        }
-                    }, reel.minSpinDuration * this._tm);
-                }
-                // ★ Schedule reel tiếp theo start sau stagger delay (song song, không đợi reel trước dừng)
+                this._startFreeReel(reelIdx);
                 this.scheduleOnce(() => this._spinNext(), this.startStaggerDelay * this._tm);
                 return;
             }
             this._seqIndex++;
         }
 
-        // Đã schedule hết tất cả reel. Nếu không có reel nào spin → emit ngay.
         if (this._spunCount === 0) {
             this._isSpinning = false;
             this._setMaskEnabled(false);
-            // Log.e(`[SPIN-HANG][TopUpManager] emit REELS_STOPPED no reels to spin | stopped=${this._stoppedCount}/${this._spunCount} active=${this.node?.active ?? false}`);
             EventBus.instance.emit(GameEvents.REELS_STOPPED);
             Log.d('[TopUpManager] No reels to spin → emit REELS_STOPPED');
+        }
+    }
+
+    /** Ô đã có Gold/Green trên stickyCells — không quay. */
+    private _hasStickyAt(idx: number): boolean {
+        const cells = GameData.instance.stickyCells;
+        if (cells.size === 0) return false;
+        const rowSets = [this._rowCount];
+        const matsuriRows = clampMatsuriRows(GameData.instance.matsuriRows || this._rowCount);
+        if (matsuriRows !== this._rowCount) rowSets.push(matsuriRows);
+
+        for (const rows of rowSets) {
+            const col = Math.floor(idx / rows);
+            const row = idx % rows;
+            const byKey = cells.get(`${col}-${row}`);
+            if (byKey && this._symbolIdToTopupType(byKey.symbolId) !== TopupReelType.NONE) return true;
+        }
+        for (const cell of cells.values()) {
+            if (this._symbolIdToTopupType(cell.symbolId) === TopupReelType.NONE) continue;
+            for (const rows of rowSets) {
+                if (cell.reel * rows + cell.row === idx) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Giữ ô vàng/xanh: snapshot lúc spinAll, isLocked, hoặc stickyCells hiện tại. */
+    private _isHeldCell(idx: number): boolean {
+        if (this._heldReelIdx.has(idx)) return true;
+        const reel = this.reels[idx];
+        if (reel?.isLocked) return true;
+        return this._hasStickyAt(idx);
+    }
+
+    private _wireSpinStopCallback(reelIdx: number): void {
+        const reel = this.reels[reelIdx];
+        if (!reel) return;
+        reel.onStopComplete = () => {
+            if (this._stoppedReelIdx.has(reelIdx)) return;
+            this._stoppedReelIdx.add(reelIdx);
+            const res = this._pendingResults[reelIdx];
+            EventBus.instance.emit(GameEvents.REEL_STOPPED, { reelIndex: reelIdx, result: res });
+            this._stoppedCount++;
+            if (this._stoppedCount >= this._spunCount) {
+                this._isSpinning = false;
+                this._setMaskEnabled(false);
+                EventBus.instance.emit(GameEvents.REELS_STOPPED);
+                Log.d('[TopUpManager] All reels stopped → emit REELS_STOPPED');
+            }
+        };
+    }
+
+    /** Quay 1 ô trống. Nếu đã có result thì stop sau minSpinDuration. */
+    private _startFreeReel(reelIdx: number): void {
+        if (this._startedReelIdx.has(reelIdx) || this._isHeldCell(reelIdx)) return;
+        const reel = this.reels[reelIdx];
+        if (!reel) return;
+        reel.prepareFreeCellForSpin();
+        this._wireSpinStopCallback(reelIdx);
+        const resultData = this._pendingResults[reelIdx];
+        reel.spin();
+        const st = (reel as any)['_state'] as number;
+        if (st !== 1 && st !== 2) return;
+        this._startedReelIdx.add(reelIdx);
+        this._spunCount++;
+        if (resultData != null) {
+            this.scheduleOnce(() => {
+                const s = (reel as any)['_state'];
+                if (s === 1 || s === 2) reel.stop(resultData);
+            }, reel.minSpinDuration * this._tm);
+        }
+    }
+
+    /**
+     * API đã về: stop mọi ô đang quay (kể cả lỡ quay nhầm ô vàng) + start nốt ô trống.
+     */
+    private _settleFreeReelsAfterResults(): void {
+        this._stopArmed = true;
+        this.unscheduleAllCallbacks();
+
+        for (let i = 0; i < this.cellCount; i++) {
+            const reel = this.reels[i];
+            const data = this._pendingResults[i];
+            if (!reel || data == null) continue;
+
+            const st = (reel as any)['_state'] as number;
+            if (st === 1 || st === 2) {
+                this._wireSpinStopCallback(i);
+                reel.stop(data);
+                continue;
+            }
+            if (st === 3) continue;
+            if (this._isHeldCell(i)) continue;
+            this._startFreeReel(i);
+        }
+
+        if (this._spunCount === 0 && this._isSpinning) {
+            this._isSpinning = false;
+            this._setMaskEnabled(false);
+            EventBus.instance.emit(GameEvents.REELS_STOPPED);
+            Log.e('[CarnivalMatsuri] settle — no free cells → REELS_STOPPED');
         }
     }
 
@@ -575,21 +713,13 @@ export class TopUpManager extends Component {
             this._pendingResults[i] = this._enrichResultForTopUpIndex(slot, i, serverIdx);
         }
 
-        // Dừng TẤT CẢ reel đang quay (parallel spin: nhiều reel quay cùng lúc)
-        for (let i = 0; i < this.cellCount; i++) {
-            const reel = this.reels[i];
-            const data = this._pendingResults[i];
-            const st = (reel as any)['_state'];
-            if (reel && data != null && (st === 1 || st === 2)) { // LAUNCHING or SPINNING
-                reel.stop(data);
-            }
-        }
+        this._settleFreeReelsAfterResults();
     }
 
     /**
-     * CN Matsuri: SpinResponse chỉ có Rands[5] + NewStickies (không TopupReel 15/20/25).
+     * CN Matsuri (API V1.0.2): CNSpinResponse có Rands[5] + NewStickies (không TopupReel).
      * Mỗi cột dùng chung rands[col] làm strip index.
-     * NewStickies → type=GREEN để per-reel land hiện đồng xanh trên StickyOverlay ngay khi dừng.
+     * NewStickies = Green mới của spin này (kèm Credit) — nguồn DUY NHẤT quyết định ô xanh.
      */
     private _stopMatsuriReels(resp: any): void {
         const rands: number[] = Array.isArray(resp?.rands)
@@ -598,28 +728,20 @@ export class TopUpManager extends Component {
         const rows = this._rowCount;
         this._pendingResults = new Array(this.cellCount);
 
-        // Green mới từ NewStickies / stickyCells (mid-spin parser gán stickyCells = news)
         const greenMap = new Map<string, number>();
-        const news: any[] = Array.isArray(resp?.newStickies)
-            ? resp.newStickies
-            : (Array.isArray(resp?.stickyCells) ? resp.stickyCells : []);
+        const news: any[] = Array.isArray(resp?.newStickies) ? resp.newStickies : [];
         for (const cell of news) {
             if (!cell) continue;
             const reel = Number(cell.reel ?? cell.Reel);
             const row = Number(cell.row ?? cell.Row);
-            if (Number.isNaN(reel) || Number.isNaN(row)) continue;
-            const sym = cell.symbolId ?? cell.SymbolId;
-            if (sym != null && sym !== SymbolId.STICKY_GREEN) continue;
-            // Ô đã có Gold/sticky từ trước → không override
-            const existing = GameData.instance.stickyCells.get(`${reel}-${row}`);
-            if (existing
-                && existing.symbolId !== SymbolId.STICKY_GREEN) {
-                continue;
+            if (!Number.isFinite(reel) || !Number.isFinite(row)) continue;
+            const credit = Number(cell.credit ?? cell.Credit ?? 0) || 0;
+            if (credit <= 0) {
+                Log.e(`[GREEN-CREDIT][NEW] col=${reel} row=${row} ⚠ NewStickies.Credit=0`);
             }
-            greenMap.set(`${reel}-${row}`, Number(cell.credit ?? cell.Credit ?? cell.win ?? cell.Win ?? 0) || 0);
+            greenMap.set(`${reel}-${row}`, credit);
         }
 
-        let stopCalls = 0;
         for (let i = 0; i < this.cellCount; i++) {
             const col = Math.floor(i / rows);
             const row = i % rows;
@@ -627,7 +749,7 @@ export class TopUpManager extends Component {
             const index = Number(rands[col] ?? 0) || 0;
             const isGreen = greenMap.has(key);
             const credit = greenMap.get(key) ?? 0;
-            const slot = {
+            this._pendingResults[i] = {
                 type: isGreen ? TopupReelType.GREEN : TopupReelType.NONE,
                 Type: isGreen ? TopupReelType.GREEN : TopupReelType.NONE,
                 index,
@@ -635,31 +757,18 @@ export class TopUpManager extends Component {
                 win: credit,
                 Win: credit,
                 _symbolId: isGreen ? SymbolId.STICKY_GREEN : undefined,
+                // Toạ độ chốt theo lưới đang render — GameManager không tự suy lại từ rowCount khác.
+                _cellReel: col,
+                _cellRow: row,
             };
-            this._pendingResults[i] = slot;
-
-            const reel = this.reels[i];
-            if (!reel || reel.isLocked) continue;
-            const st = (reel as any)['_state'];
-            if (st === 1 || st === 2) { // LAUNCHING or SPINNING
-                reel.stop(slot);
-                stopCalls++;
-            }
         }
 
+        this._settleFreeReelsAfterResults();
         Log.e(
             `[CarnivalMatsuri] stopReels via Rands=[${rands.join(',')}]` +
-            ` greens=${greenMap.size} rows=${rows} cells=${this.cellCount} stopCalls=${stopCalls}` +
+            ` newStickies=${greenMap.size} rows=${rows} cells=${this.cellCount}` +
             ` spun=${this._spunCount} stopped=${this._stoppedCount}`,
         );
-
-        // Không còn reel đang quay (full sticky / miss schedule) → emit luôn
-        if (stopCalls === 0 && this._isSpinning) {
-            this._isSpinning = false;
-            this._setMaskEnabled(false);
-            EventBus.instance.emit(GameEvents.REELS_STOPPED);
-            Log.e('[CarnivalMatsuri] stopReels — no spinning cells → REELS_STOPPED');
-        }
     }
 
     public getDebugClientGrid(): number[][] {

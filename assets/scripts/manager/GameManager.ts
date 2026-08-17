@@ -45,6 +45,7 @@ import {
     clampMatsuriRows,
     parseCnStickyCells,
     pickMatsuriStartCoinCells,
+    lookupCnStickyCredit,
 } from '../data/MatsuriGridUtil';
 import { buildCarnivalFeatureFromSpin } from '../data/CarnivalFeatureResolve';
 
@@ -194,6 +195,15 @@ export class GameManager extends Component {
         if (this._reelsStoppedProcessed) return;
 
         this._logSpinState('REELS_STOPPED watchdog tick');
+        if (this._isMatsuri() || this._isTopUp()) {
+            if (!this._areSlotReelsSettled()) {
+                this.unschedule(this._reelsStoppedTimeout);
+                this.scheduleOnce(this._reelsStoppedTimeout, 1.0);
+                return;
+            }
+            this._onReelsStopped();
+            return;
+        }
         const scene = this.node.scene;
         const slotMachines = scene?.getComponentsInChildren(SlotMachineController) ?? [];
         if (slotMachines.some((smc) => smc.tryRecoverReelsStopped())) return;
@@ -770,8 +780,10 @@ export class GameManager extends Component {
     // ─── SPIN REQUEST ───
 
     private _areSlotReelsSettled(): boolean {
-        if (this._isTopUp()) return true;
-        if (this._isMatsuri()) return true;
+        if (this._isTopUp() || this._isMatsuri()) {
+            const mgr = this._getTopUpManagerCached();
+            return !mgr || !mgr.isSpinning;
+        }
         const scene = this.node.scene;
         if (!scene) return true;
         const slotMachines = scene.getComponentsInChildren(SlotMachineController);
@@ -808,6 +820,7 @@ export class GameManager extends Component {
         this._pendingSpinRequestAfterSettled = true;
         this._logSpinState('schedule retry SPIN_REQUEST after reels settled');
 
+        let attempts = 0;
         const retry = () => {
             if (!this._pendingSpinRequestAfterSettled) return;
             if (!this._shouldRetrySpinRequestAfterSettled()) {
@@ -815,11 +828,30 @@ export class GameManager extends Component {
                 this._logSpinState('cancel retry SPIN_REQUEST because auto/feature no longer active');
                 return;
             }
+            attempts++;
             if (this._isSpinning || this._gameState === GameState.RESULT || this._gameState === GameState.POPUP) {
+                if (attempts % 10 === 0) {
+                    Log.e(
+                        `[CarnivalMatsuri] retry SPIN #${attempts} chờ GM` +
+                        ` isSpinning=${this._isSpinning} gameState=${this._gameState}`,
+                    );
+                }
                 this.scheduleOnce(retry, 0.2);
                 return;
             }
             if (!this._areSlotReelsSettled()) {
+                // Grid báo "đang spin" nhưng không reel nào chạy → cờ treo, tự thoát.
+                if (attempts >= 10 && (this._isMatsuri() || this._isTopUp())) {
+                    const mgr = this._getTopUpManagerCached();
+                    if (mgr?.forceSettle(`retry SPIN #${attempts}`)) {
+                        this._pendingSpinRequestAfterSettled = false;
+                        EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+                        return;
+                    }
+                }
+                if (attempts % 10 === 0) {
+                    Log.e(`[CarnivalMatsuri] retry SPIN #${attempts} chờ grid settle`);
+                }
                 this.scheduleOnce(retry, 0.2);
                 return;
             }
@@ -834,19 +866,35 @@ export class GameManager extends Component {
 
     private async _onSpinRequest(): Promise<void> {
         this._logSpinState('SPIN_REQUEST received');
+        // Feature spin bị chặn = treo game không log → luôn báo rõ lý do.
+        const inFeature = this._isMatsuri() || this._isTopUp();
+        const blocked = (why: string) => {
+            if (inFeature) {
+                const mgr = this._getTopUpManagerCached();
+                Log.e(
+                    `[CarnivalMatsuri] SPIN_REQUEST blocked — ${why}` +
+                    ` | isSpinning=${this._isSpinning} gameState=${this._gameState}` +
+                    ` stage=${this._currentStage} awaitSeed=${this._matsuriAwaitingSeed}` +
+                    ` awaitCollect=${this._matsuriAwaitingCollect}` +
+                    ` gridSpinning=${mgr ? mgr.isSpinning : 'no-mgr'}` +
+                    ` pendingRetry=${this._pendingSpinRequestAfterSettled}`,
+                );
+            }
+            this._logSpinState(`SPIN_REQUEST ignored — ${why}`);
+        };
+
         if (this._isSpinning) {
-            this._logSpinState('SPIN_REQUEST ignored because GameManager is spinning');
+            blocked('GameManager is spinning');
             return;
         }
         // Matsuri: chặn mọi spin cho tới khi seed sticky vàng hiện xong hết
         if (this._matsuriAwaitingSeed) {
-            this._logSpinState('SPIN_REQUEST ignored — waiting Matsuri seed stickies');
+            blocked('waiting Matsuri seed stickies');
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
             return;
         }
         if (!this._areSlotReelsSettled()) {
-            // Log.e('[SPIN-HANG][GM] SPIN_REQUEST ignored — slot reels are still settling');
-            this._logSpinState('SPIN_REQUEST ignored because slot reels are still settling');
+            blocked('reels still settling');
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
             if (this._shouldRetrySpinRequestAfterSettled()) {
                 this._retrySpinRequestAfterReelsSettled();
@@ -855,7 +903,7 @@ export class GameManager extends Component {
         }
         // Block spin khi đang xử lý result hoặc popup
         if (this._gameState === GameState.RESULT || this._gameState === GameState.POPUP) {
-            this._logSpinState(`SPIN_REQUEST ignored because gameState=${this._gameState}`);
+            blocked(`gameState=${this._gameState}`);
             return;
         }
 
@@ -937,11 +985,14 @@ export class GameManager extends Component {
 
         if (isTopUp || isMatsuri) {
             this._topUpRemainBeforeSpin = data.respinRemaining;
-            data.respinRemaining = Math.max(0, data.respinRemaining - 1);
-            EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
             this._topUpStickySnapshot = new Set(data.stickyCells.keys());
             if (isMatsuri) {
                 this._matsuriGreenLandedThisSpinCount = 0;
+                // Matsuri: HUD remain chỉ đổi khi có kết quả (Green → 3, không Green → API −1).
+                // Trừ sẵn lúc start rồi sync API lần nữa → trừ 2 / nhảy số.
+            } else {
+                data.respinRemaining = Math.max(0, data.respinRemaining - 1);
+                EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
             }
         }
         if (isFreeSpin) {
@@ -1172,10 +1223,10 @@ export class GameManager extends Component {
         }
         this._applyCnFeatureStrips(apiType);
 
-        // Remain từ server (FREE_SPIN_START); fallback MATSURI_SPIN_COUNT
+        // Remain từ server (FREE_SPIN_START); thiếu / 0 → 3 Free Spin ban đầu
         const serverRemain = spin?.remainRespinCount;
-        data.respinRemaining = (serverRemain != null && serverRemain >= 0)
-            ? serverRemain
+        data.respinRemaining = (serverRemain != null && serverRemain > 0)
+            ? Math.min(MATSURI_SPIN_COUNT, serverRemain)
             : MATSURI_SPIN_COUNT;
         data.respinTotalWin = spin?.featureSpinTotalWin ?? 0;
         data.stickyCells.clear();
@@ -1183,6 +1234,22 @@ export class GameManager extends Component {
         this._topUpRemainBeforeSpin = 0;
         this._currentStage = SlotStageType.CARNIVAL_MATSURI_START;
         this._gameState = GameState.IDLE;
+        // Cờ sót từ feature trước (5×3 → 5×5) sẽ chặn spin đầu tiên → reset sạch.
+        this._isSpinning = false;
+        this._reelsStoppedProcessed = false;
+        this._pendingSpinRequestAfterSettled = false;
+        this._matsuriAwaitingCollect = false;
+        this._matsuriCollectCreditsSeen = false;
+        this._pendingMatsuriGoldForFailsafe = [];
+        this._pendingMatsuriNext = null;
+        this._pendingMatsuriServerTotal = null;
+        this._matsuriCollectTotalTarget = null;
+        this._matsuriGreenLandedThisSpinCount = 0;
+        this.unschedule(this._matsuriCollectFailsafe);
+        this.unschedule(this._reelsStoppedTimeout);
+        this.unschedule(this._spinCycleFallback);
+        // Overlay được lazy-instantiate lại mỗi feature → cache TopUpManager có thể trỏ instance cũ.
+        this._cachedTopUpMgr = null;
 
         // Real: StarterCoins từ server; Mock: random seed
         let placed: StickyCell[];
@@ -1284,7 +1351,7 @@ export class GameManager extends Component {
                 ` sticky=${d.stickyCells.size} gameState=${this._gameState}`,
             );
             EventBus.instance.emit(GameEvents.SPIN_REQUEST);
-        }, 0.35);
+        }, this._speedDelay(0.35));
     }
 
     private _onCarnivalMatsuriStubDone(): void {
@@ -1323,15 +1390,14 @@ export class GameManager extends Component {
         void this._handleTopUpClaim();
     }
 
-    /** Mỗi ô Green mới → +1 remain ngay (tối đa 3), diễn HUD tức thì. */
+    /** Green xuất hiện → reset Free Spin về 3 (không cộng từng ô). */
     private _applyMatsuriRemainOnGreenLand(): void {
         if (GameData.instance.currentMode !== 'matsuri') return;
         const data = GameData.instance;
-        const next = Math.min(MATSURI_SPIN_COUNT, Math.max(0, data.respinRemaining) + 1);
-        if (next === data.respinRemaining) return;
-        data.respinRemaining = next;
-        EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, next);
-        Log.e(`[Matsuri] Green land +1 → remain=${next}`);
+        if (data.respinRemaining === MATSURI_SPIN_COUNT) return;
+        data.respinRemaining = MATSURI_SPIN_COUNT;
+        EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, MATSURI_SPIN_COUNT);
+        Log.e(`[Matsuri] Green land → remain reset=${MATSURI_SPIN_COUNT}`);
     }
 
     /** Đợi collect+flip Matsuri xong mới transition stage. */
@@ -1341,44 +1407,13 @@ export class GameManager extends Component {
     private _pendingMatsuriGoldForFailsafe: StickyCell[] = [];
     /** featureSpinTotalWin / Grand từ API — snap vào UI sau collect (tránh cộng trùng). */
     private _pendingMatsuriServerTotal: number | null = null;
+    /** Đếm tổng tiền theo từng Gold bay về, chốt đúng AccumulatedStickyCredit. */
+    private _matsuriCollectTotalStart = 0;
+    private _matsuriCollectTotalTarget: number | null = null;
+    private _matsuriCollectSteps = 1;
+    private _matsuriCollectStepDone = 0;
     /** Green đã land per-reel trong spin hiện tại (trước REELS_STOPPED). */
     private _matsuriGreenLandedThisSpinCount = 0;
-
-    /** Green mới trong spin này (kể cả đã pre-add per-reel trước REELS_STOPPED). */
-    private _hasMatsuriGreenLandedThisSpin(resp: SpinResponse): boolean {
-        if (this._matsuriGreenLandedThisSpinCount > 0) return true;
-
-        const data = GameData.instance;
-        const snap = this._topUpStickySnapshot;
-
-        if (resp.stickyCells) {
-            for (const cell of resp.stickyCells) {
-                if (cell.symbolId !== SymbolId.STICKY_GREEN) continue;
-                const key = `${cell.reel}-${cell.row}`;
-                if (!snap?.has(key)) return true;
-            }
-        }
-
-        for (const [key, cell] of data.stickyCells) {
-            if (cell.symbolId === SymbolId.STICKY_GREEN && !snap?.has(key)) {
-                return true;
-            }
-        }
-
-        const rows = clampMatsuriRows(data.matsuriRows || 3);
-        const slots = resp.topupReel ?? [];
-        for (let serverIdx = 0; serverIdx < slots.length; serverIdx++) {
-            const slot = slots[serverIdx];
-            if ((slot.type ?? TopupReelType.NONE) !== TopupReelType.GREEN) continue;
-            const apiRow = Math.floor(serverIdx / 5);
-            const reel = serverIdx % 5;
-            const row = rows - 1 - apiRow;
-            const key = `${reel}-${row}`;
-            if (!snap?.has(key)) return true;
-        }
-
-        return false;
-    }
 
     /**
      * Credit Green sau flip = NewStickies.Credit (API V1.0.2).
@@ -1396,36 +1431,40 @@ export class GameManager extends Component {
             if (!apiCredit.has(key)) apiCredit.set(key, credit);
         };
 
+        // NewStickies = Green vừa land (Credit chính thức); AllStickies = toàn bộ ô đang giữ.
         for (const cell of resp.newStickies ?? []) {
-            addCredit(cell.reel, cell.row, cell.credit ?? 0);
-        }
-        for (const cell of resp.stickyCells ?? []) {
-            if (cell.symbolId != null && cell.symbolId !== SymbolId.STICKY_GREEN) continue;
             addCredit(cell.reel, cell.row, cell.credit ?? 0);
         }
         for (const cell of resp.allStickies ?? []) {
             addCredit(cell.reel, cell.row, cell.credit ?? 0);
         }
-        const slots = resp.topupReel ?? [];
-        for (let serverIdx = 0; serverIdx < slots.length; serverIdx++) {
-            const slot = slots[serverIdx];
-            if ((slot.type ?? TopupReelType.NONE) !== TopupReelType.GREEN) continue;
-            const apiRow = Math.floor(serverIdx / 5);
-            const reel = serverIdx % 5;
-            const row = rows - 1 - apiRow;
-            addCredit(reel, row, slot.win ?? 0);
-        }
 
-        // 1 Green mà cell.Credit=0 → dùng CollectWin / TotalWin của spin (field API).
+        // Còn đúng 1 Green thiếu credit → suy từ AccumulatedStickyCredit − các ô đã biết.
         const zeroGreenKeys: string[] = [];
+        let knownSum = 0;
         for (const [key, cell] of data.stickyCells) {
-            if (cell.symbolId !== SymbolId.STICKY_GREEN) continue;
-            if ((apiCredit.get(key) ?? cell.credit ?? 0) > 0) continue;
-            zeroGreenKeys.push(key);
+            const credit = apiCredit.get(key) ?? cell.credit ?? 0;
+            if (credit > 0) {
+                knownSum += credit;
+                continue;
+            }
+            if (cell.symbolId === SymbolId.STICKY_GREEN) zeroGreenKeys.push(key);
         }
-        const spinCollect = Number(resp.collectWin ?? resp.featureSpinWin ?? resp.totalWin ?? 0);
-        if (zeroGreenKeys.length === 1 && spinCollect > 0) {
-            apiCredit.set(zeroGreenKeys[0], spinCollect);
+        const acc = Number(resp.accumulatedStickyCredit ?? 0);
+        const spinCollect = Number(resp.collectWin ?? resp.featureSpinWin ?? 0);
+        if (zeroGreenKeys.length === 1) {
+            const fromLookup = lookupCnStickyCredit(
+                parseInt(zeroGreenKeys[0].split('-')[0], 10),
+                parseInt(zeroGreenKeys[0].split('-')[1], 10),
+                rows,
+                [resp.newStickies, resp.allStickies],
+            );
+            const fromAcc = Math.round((acc - knownSum) * 1000) / 1000;
+            const fallback = fromLookup || (fromAcc > 0 ? fromAcc : 0) || spinCollect;
+            if (fallback > 0) {
+                apiCredit.set(zeroGreenKeys[0], fallback);
+                Log.w(`[GREEN-CREDIT][SYNC] bù ${zeroGreenKeys[0]} = ${fallback} (acc=${acc} known=${knownSum})`);
+            }
         }
 
         const dump: string[] = [];
@@ -1444,7 +1483,8 @@ export class GameManager extends Component {
             `\n  map=${[...apiCredit.entries()].map(([k, v]) => `${k}=${v}`).join(',') || 'empty'}` +
             `\n  newStickies=${(resp.newStickies ?? []).map(c => `col=${c.reel} row=${c.row} credit=${c.credit ?? 0}`).join(' | ') || 'none'}` +
             `\n  allStickies=${(resp.allStickies ?? []).map(c => `col=${c.reel} row=${c.row} credit=${c.credit ?? 0}`).join(' | ') || 'none'}` +
-            `\n  collectWin=${resp.collectWin ?? 'n/a'} totalWin=${resp.totalWin ?? 0}`,
+            `\n  collectWin=${resp.collectWin ?? 'n/a'} featureSpinTotalWin=${resp.featureSpinTotalWin ?? 'n/a'}` +
+            ` accSticky=${resp.accumulatedStickyCredit ?? 'n/a'} totalWin=${resp.totalWin ?? 0}`,
         );
     }
 
@@ -1457,90 +1497,75 @@ export class GameManager extends Component {
         const data = GameData.instance;
         this.unschedule(this._spinCycleFallback);
 
-        const rows = clampMatsuriRows(data.matsuriRows || 3);
-        let greenCount = 0;
+        const overlay = this.node.scene?.getComponentInChildren(StickyOverlayController) ?? null;
 
-        if (resp.stickyCells) {
-            for (const cell of resp.stickyCells) {
-                // Chỉ đếm Green mới — tránh coi mọi stickyCells là green → reset spin mãi
-                if (cell.symbolId != null && cell.symbolId !== SymbolId.STICKY_GREEN) continue;
-                const key = `${cell.reel}-${cell.row}`;
-                const credit = cell.credit ?? 0;
-                const existing = data.stickyCells.get(key);
-                // Ô đã là Gold từ trước → không phải Green mới
-                if (existing
-                    && existing.symbolId !== SymbolId.STICKY_GREEN) {
-                    continue;
-                }
-                greenCount++;
-
-                // Per-reel land có thể đã add Green — chỉ bổ sung nếu thiếu
-                if (!existing) {
-                    const green: StickyCell = {
-                        reel: cell.reel,
-                        row: cell.row,
-                        symbolId: SymbolId.STICKY_GREEN,
-                        credit,
-                    };
-                    data.stickyCells.set(key, green);
-                    this._lockTopUpCell(green);
-                    // Fallback: hiện xanh trên overlay nếu per-reel miss
-                    const overlay = this.node.scene?.getComponentInChildren(StickyOverlayController) ?? null;
-                    overlay?.revealMatsuriGreenCoin({ reel: cell.reel, row: cell.row, credit });
-                    this._applyMatsuriRemainOnGreenLand();
-                    Log.e(`[Matsuri] late-add Green ${key} credit=${credit}`);
-                } else if (existing.symbolId === SymbolId.STICKY_GREEN && credit > 0) {
-                    existing.credit = credit;
-                }
-            }
+        if (resp.featureRows != null && resp.featureRows !== clampMatsuriRows(data.matsuriRows || 3)) {
+            Log.e(`[Matsuri] FeatureRows API=${resp.featureRows} ≠ client=${data.matsuriRows} — toạ độ sticky có thể lệch`);
         }
 
-        // Sync từ topupReel nếu stickyCells thiếu (phòng parser)
-        const slots = resp.topupReel ?? [];
-        if (greenCount === 0 && slots.length > 0) {
-            for (let serverIdx = 0; serverIdx < slots.length; serverIdx++) {
-                const slot = slots[serverIdx];
-                if ((slot.type ?? TopupReelType.NONE) !== TopupReelType.GREEN) continue;
-                const apiRow = Math.floor(serverIdx / 5);
-                const reel = serverIdx % 5;
-                const row = rows - 1 - apiRow;
-                const key = `${reel}-${row}`;
-                const existing = data.stickyCells.get(key);
-                if (existing
-                    && existing.symbolId !== SymbolId.STICKY_GREEN) {
-                    continue;
-                }
-                const credit = slot.win ?? 0;
-                greenCount++;
-                if (existing) continue;
-                const green: StickyCell = { reel, row, symbolId: SymbolId.STICKY_GREEN, credit };
+        // ── 1) Green mới của spin này = NewStickies (API V1.0.2, luôn kèm Credit) ──
+        const newGreenKeys = new Set<string>();
+        let greenCount = 0;
+        for (const cell of resp.newStickies ?? []) {
+            const key = `${cell.reel}-${cell.row}`;
+            const credit = cell.credit ?? 0;
+            const existing = data.stickyCells.get(key);
+            if (existing && existing.symbolId !== SymbolId.STICKY_GREEN) {
+                Log.w(`[Matsuri] NewSticky ${key} trùng ô Gold đang giữ — bỏ qua`);
+                continue;
+            }
+            newGreenKeys.add(key);
+            greenCount++;
+
+            if (!existing) {
+                const green: StickyCell = {
+                    reel: cell.reel,
+                    row: cell.row,
+                    symbolId: SymbolId.STICKY_GREEN,
+                    credit,
+                };
                 data.stickyCells.set(key, green);
                 this._lockTopUpCell(green);
-                const overlay = this.node.scene?.getComponentInChildren(StickyOverlayController) ?? null;
-                overlay?.revealMatsuriGreenCoin({ reel, row, credit });
-                this._applyMatsuriRemainOnGreenLand();
+                overlay?.revealMatsuriGreenCoin({ reel: cell.reel, row: cell.row, credit });
+                Log.e(`[Matsuri] late-add Green ${key} credit=${credit}`);
+            } else if (credit > 0 && (existing.credit ?? 0) !== credit) {
+                data.stickyCells.set(key, { ...existing, credit });
             }
         }
 
-        const greenLandedThisSpin = this._hasMatsuriGreenLandedThisSpin(resp);
+        // ── 2) Gold đang giữ = AllStickies − NewStickies (Credit từ API) ──
+        for (const cell of resp.allStickies ?? []) {
+            const key = `${cell.reel}-${cell.row}`;
+            if (newGreenKeys.has(key)) continue;
+            const credit = cell.credit ?? 0;
+            const existing = data.stickyCells.get(key);
+            if (!existing) {
+                Log.w(`[Matsuri] AllStickies bù ô thiếu ${key} credit=${credit}`);
+                data.stickyCells.set(key, { ...cell, symbolId: MATSURI_GOLD_SYMBOL });
+            } else if (credit > 0 && (existing.credit ?? 0) <= 0) {
+                // Green cũ chưa flip vẫn giữ symbolId — chỉ bù credit còn thiếu.
+                data.stickyCells.set(key, { ...existing, credit });
+            }
+        }
+
+        const greenLandedThisSpin = greenCount > 0 || this._matsuriGreenLandedThisSpinCount > 0;
         if (greenLandedThisSpin) {
             this._syncMatsuriGreenCreditFromApi(resp);
         }
 
-        // Không Green mới: sync remain từ API. Có Green: đã +1 từng ô lúc land — không ghi đè tổng.
-        if (!greenLandedThisSpin && resp.remainRespinCount != null) {
-            data.respinRemaining = Math.max(0, resp.remainRespinCount);
+        // ── 3) Remain = RemainFeatureSpinCount (server tự reset 3 khi có sticky mới) ──
+        const apiRemain = resp.remainRespinCount;
+        if (apiRemain != null && apiRemain >= 0) {
+            data.respinRemaining = Math.min(MATSURI_SPIN_COUNT, apiRemain);
+        } else if (greenLandedThisSpin) {
+            data.respinRemaining = MATSURI_SPIN_COUNT;
+        } else {
+            data.respinRemaining = Math.max(0, this._topUpRemainBeforeSpin - 1);
         }
-
-        // Sync AllStickies (Gold đã giữ) nếu server gửi full set
-        if (resp.allStickies?.length) {
-            for (const cell of resp.allStickies) {
-                const key = `${cell.reel}-${cell.row}`;
-                if (!data.stickyCells.has(key)) {
-                    data.stickyCells.set(key, { ...cell, symbolId: MATSURI_GOLD_SYMBOL });
-                }
-            }
-        }
+        Log.e(
+            `[Matsuri] remain ${this._topUpRemainBeforeSpin} → ${data.respinRemaining}` +
+            ` (api=${apiRemain ?? 'n/a'} newGreens=${greenCount})`,
+        );
 
         // Server total (đã gồm collect + Grand). Khi có Green: chưa ghi vào respinTotalWin —
         // collect animation sẽ +credit từng Gold, rồi flip-done snap về đúng số API.
@@ -1557,12 +1582,8 @@ export class GameManager extends Component {
 
         this._isSpinning = false;
 
-        // Server FREE_SPIN_END / NEED_CLAIM / remain=0 / full grid → END
-        const serverEnd = resp.nextStage === SlotStageType.FREE_SPIN_END
-            || resp.nextStage === SlotStageType.NEED_CLAIM
-            || (resp.nextStage as number) >= 100
-            || !!resp.isGridFull;
-        const next = (!serverEnd && data.respinRemaining > 0)
+        // /Claim chỉ khi NextStage ≥ 100 (FREE_SPIN_END=101). remain=0 + NextStage=4 → vẫn /Spin.
+        const next = this._matsuriContinueSpin(resp)
             ? SlotStageType.TOPUP_SPIN
             : SlotStageType.TOPUP_SPIN_END;
 
@@ -1590,20 +1611,32 @@ export class GameManager extends Component {
             this._matsuriAwaitingCollect = true;
             this._matsuriCollectCreditsSeen = false;
             this._pendingMatsuriGoldForFailsafe = goldCells;
+            // Tiền bay về đếm dần tới AccumulatedStickyCredit — không cộng dồn credit từng ô
+            // (mỗi lượt Green land collect lại toàn bộ Gold nên cộng dồn sẽ phình).
+            this._matsuriCollectTotalStart = data.respinTotalWin;
+            this._matsuriCollectTotalTarget = Math.max(
+                data.respinTotalWin,
+                Number(resp.accumulatedStickyCredit ?? 0),
+                serverTotal ?? 0,
+            );
+            this._matsuriCollectSteps = Math.max(1, goldCells.length);
+            this._matsuriCollectStepDone = 0;
             // Chờ green land pop (~0.22s) hiện rõ trên overlay trước khi collect Gold
             this.unschedule(this._matsuriCollectFailsafe);
+            // Failsafe phải dài hơn collect thật (nhún + bay theo số Gold), nếu không
+            // nó fire giữa chuỗi → COLLECT_DONE/FLIP_DONE chạy đôi.
+            const tm = AutoSpinManager.instance.getTimingMultiplier();
+            const collectFailsafeDelay = Math.min(9.0, 4.5 + goldCells.length * 0.06) * tm + 0.6;
             this.scheduleOnce(() => {
                 if (!this._matsuriAwaitingCollect) return;
                 EventBus.instance.emit(GameEvents.MATSURI_COLLECT_START, { goldCells });
-                this.scheduleOnce(this._matsuriCollectFailsafe, 5.0);
-            }, 0.35);
+                this.scheduleOnce(this._matsuriCollectFailsafe, collectFailsafeDelay);
+            }, this._speedDelay(0.35));
             return;
         }
 
-        // Không Green — sync total từ API (nếu có) rồi tiếp tục
-        if (serverTotal != null && serverTotal > data.respinTotalWin) {
-            data.respinTotalWin = serverTotal;
-        }
+        // Không Green — tổng = AccumulatedStickyCredit (tuyệt đối theo API)
+        this._syncMatsuriTotalFromApi(resp, serverTotal);
         EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
         EventBus.instance.emit(GameEvents.TOPUP_TOTAL_UPDATED, {
             baseCredit: data.featureBaseCredit,
@@ -1614,6 +1647,27 @@ export class GameManager extends Component {
         if (this._gameState !== GameState.POPUP) {
             this._gameState = GameState.IDLE;
         }
+    }
+
+    /**
+     * Tổng Matsuri = AccumulatedStickyCredit (API §5.4) — tổng credit của MỌI ô đang giữ.
+     * Client cộng dồn từng lần collect sẽ phình vì mỗi lượt Green land lại bay hết Gold
+     * một lần nữa (20 ô × ~11.88 → 57.38 sau vài lượt).
+     */
+    private _syncMatsuriTotalFromApi(
+        resp: SpinResponse | null | undefined,
+        serverTotal: number | null,
+    ): void {
+        const data = GameData.instance;
+        const accSticky = Number(resp?.accumulatedStickyCredit ?? 0);
+        const target = Math.max(accSticky, serverTotal ?? 0);
+        if (target <= 0) return;
+        if (Math.abs(target - data.respinTotalWin) < 0.0005) return;
+        Log.e(
+            `[Matsuri] snap total ${data.respinTotalWin} → ${target}` +
+            ` (accSticky=${accSticky} serverTotal=${serverTotal ?? 'n/a'})`,
+        );
+        data.respinTotalWin = target;
     }
 
     private _matsuriCollectFailsafe = (): void => {
@@ -1646,12 +1700,24 @@ export class GameManager extends Component {
         if (credit <= 0) return;
         this._matsuriCollectCreditsSeen = true;
         const data = GameData.instance;
-        data.respinTotalWin = truncateMoney3(data.respinTotalWin + credit);
+        const target = this._matsuriCollectTotalTarget;
+        if (target != null) {
+            this._matsuriCollectStepDone++;
+            const t = Math.min(1, this._matsuriCollectStepDone / this._matsuriCollectSteps);
+            const start = this._matsuriCollectTotalStart;
+            data.respinTotalWin = truncateMoney3(start + (target - start) * t);
+        } else {
+            data.respinTotalWin = truncateMoney3(data.respinTotalWin + credit);
+        }
         EventBus.instance.emit(GameEvents.TOPUP_TOTAL_UPDATED, {
             baseCredit: data.featureBaseCredit,
             totalWin: data.respinTotalWin,
         });
-        Log.e(`[Matsuri] collect +${credit} → total=${data.respinTotalWin}`);
+        Log.e(
+            `[Matsuri] collect ${this._matsuriCollectStepDone}/${this._matsuriCollectSteps}` +
+            ` coin=${credit} → total=${data.respinTotalWin}` +
+            ` target=${this._matsuriCollectTotalTarget ?? 'n/a'}`,
+        );
     }
 
     private _onMatsuriFlipDone(): void {
@@ -1663,23 +1729,15 @@ export class GameManager extends Component {
 
         const data = GameData.instance;
 
-        // Snap về total API sau collect (absolute — sửa lệch nếu client +credit ≠ server)
+        // Snap về total API sau collect (absolute — client cộng dồn sẽ phình)
         const resp = data.lastSpinResponse;
         const serverTotal = this._pendingMatsuriServerTotal
             ?? resp?.gridFullGrandWin
             ?? resp?.featureSpinTotalWin
             ?? null;
         this._pendingMatsuriServerTotal = null;
-        if (serverTotal != null && serverTotal > data.respinTotalWin) {
-            Log.e(
-                `[Matsuri] flip-done sync total client=${data.respinTotalWin} → server=${serverTotal}`,
-            );
-            data.respinTotalWin = serverTotal;
-        } else if (serverTotal != null && serverTotal < data.respinTotalWin) {
-            Log.w(
-                `[Matsuri] flip-done giữ client total=${data.respinTotalWin} (server=${serverTotal})`,
-            );
-        }
+        this._matsuriCollectTotalTarget = null;
+        this._syncMatsuriTotalFromApi(resp, serverTotal);
 
         EventBus.instance.emit(GameEvents.TOPUP_COUNT_UPDATED, data.respinRemaining);
         EventBus.instance.emit(GameEvents.TOPUP_TOTAL_UPDATED, {
@@ -1687,12 +1745,11 @@ export class GameManager extends Component {
             totalWin: data.respinTotalWin,
         });
 
-        // remain <= 0 → END (không reset 3 / không default tiếp tục quay)
-        let next = this._pendingMatsuriNext
-            ?? (data.respinRemaining > 0 ? SlotStageType.TOPUP_SPIN : SlotStageType.TOPUP_SPIN_END);
-        if (data.respinRemaining <= 0) {
-            next = SlotStageType.TOPUP_SPIN_END;
-        }
+        // Theo NextStage server — không ép END chỉ vì HUD remain=0 (tránh Claim 30034).
+        const next = this._pendingMatsuriNext
+            ?? (this._matsuriContinueSpin(data.lastSpinResponse)
+                ? SlotStageType.TOPUP_SPIN
+                : SlotStageType.TOPUP_SPIN_END);
         this._pendingMatsuriNext = null;
 
         Log.e(`[Matsuri] flip done → next=${next} remain=${data.respinRemaining} total=${data.respinTotalWin}`);
@@ -1787,13 +1844,18 @@ export class GameManager extends Component {
         const rows = data.currentMode === 'matsuri'
             ? clampMatsuriRows(data.matsuriRows || 3)
             : 3;
-        const reel = Math.floor(reelIdx / rows);
-        const row  = reelIdx % rows;
+        // TopUpManager gửi kèm toạ độ theo lưới đang render — tránh suy lại sai khi rows lệch.
+        const reel = Number.isFinite(result?._cellReel) ? Number(result._cellReel) : Math.floor(reelIdx / rows);
+        const row = Number.isFinite(result?._cellRow) ? Number(result._cellRow) : reelIdx % rows;
         const key  = `${reel}-${row}`;
-
-        // Nếu ô đã có sticky thì bỏ qua
-        if (data.stickyCells.has(key)) {
-            return;
+        const isMatsuri = data.currentMode === 'matsuri';
+        const existing = data.stickyCells.get(key);
+        if (existing) {
+            const isNewGreen = isMatsuri
+                && result.type === TopupReelType.GREEN
+                && existing.symbolId !== SymbolId.STICKY_GREEN
+                && !this._topUpStickySnapshot?.has(key);
+            if (!isNewGreen) return;
         }
 
         let symbolId: number | null = null;
@@ -1803,12 +1865,25 @@ export class GameManager extends Component {
         else return;
 
         // Matsuri: giữ Green trên stickyCells — StickyOverlay hiện xanh rồi flip sang Gold
-        const isMatsuri = data.currentMode === 'matsuri';
+        // (isMatsuri đã lấy ở trên)
 
         // TopUp Yellow/Green mới chưa absorb → credit = 0; Matsuri hiện credit ngay
         const isAbsorbCoin = !isMatsuri
             && (symbolId === SymbolId.STICKY_YELLOW || symbolId === SymbolId.STICKY_GREEN);
-        const credit = isAbsorbCoin ? 0 : (result.win ?? 0);
+        let credit = isAbsorbCoin ? 0 : (result.win ?? 0);
+
+        // Credit lấy đúng ô vừa dừng — không dời green sang NewStickies khác.
+        if (isMatsuri && symbolId === SymbolId.STICKY_GREEN && credit <= 0) {
+            const resp = data.lastSpinResponse;
+            credit = lookupCnStickyCredit(
+                reel,
+                row,
+                rows,
+                [resp?.newStickies, resp?.allStickies],
+                false,
+            ) || credit;
+        }
+
         data.stickyCells.set(key, { reel, row, symbolId, credit });
         this._lockTopUpCell({ reel, row, symbolId, credit });
         if (isMatsuri && symbolId === SymbolId.STICKY_GREEN) {
@@ -1819,13 +1894,11 @@ export class GameManager extends Component {
             );
         }
 
-        // ★ Đảm bảo TopUpReel tại index này được lock ngay — phòng trường hợp reel chưa block
         const topUpMgrs = this.node.scene?.getComponentsInChildren(TopUpManager) ?? [];
         for (const mgr of topUpMgrs) {
             const topUpReel = mgr.reels[reelIdx];
             if (!topUpReel) continue;
             if (isMatsuri) {
-                // Matsuri: chỉ ẩn reel — Green/Gold hiện trên StickyOverlay
                 topUpReel.blockInPlace();
                 topUpReel.hideForOverlayResult();
             } else if (!topUpReel.isLocked) {
@@ -1836,7 +1909,7 @@ export class GameManager extends Component {
             }
         }
 
-        // Matsuri Green: reveal overlay + cộng remain ngay (server đã trả remainRespinCount).
+        // Matsuri Green: reveal overlay + reset remain = 3.
         if (isMatsuri && symbolId === SymbolId.STICKY_GREEN) {
             const overlay = this.node.scene?.getComponentInChildren(StickyOverlayController) ?? null;
             overlay?.revealMatsuriGreenCoin({ reel, row, credit });
@@ -1854,8 +1927,13 @@ export class GameManager extends Component {
 
     private _getTopUpManagerCached(): TopUpManager | null {
         if (this._cachedTopUpMgr?.isValid) return this._cachedTopUpMgr;
-        const overlay = this.node.scene?.getComponentInChildren(StickyOverlayController) ?? null;
-        this._cachedTopUpMgr = overlay?.node?.getComponentInChildren(TopUpManager)
+        // Loader trước: getComponentInChildren bỏ qua node inactive → có thể miss/trỏ sai instance.
+        const loader = this.node.scene?.getComponentInChildren(StickyOverlayLoader) ?? null;
+        const overlay = loader?.overlay
+            ?? this.node.scene?.getComponentInChildren(StickyOverlayController)
+            ?? null;
+        this._cachedTopUpMgr = loader?.topUpManager
+            ?? overlay?.node?.getComponentInChildren(TopUpManager)
             ?? this.node.scene?.getComponentInChildren(TopUpManager)
             ?? null;
         return this._cachedTopUpMgr;
@@ -1891,9 +1969,14 @@ export class GameManager extends Component {
             this._logSpinState('REELS_STOPPED ignored because already processed');
             return;
         }
-        if (!this._isTopUp() && !this._isMatsuri() && !this._areSlotReelsSettled()) {
+        if (this._isMatsuri() || this._isTopUp()) {
+            if (!this._areSlotReelsSettled()) {
+                this._logSpinState('REELS_STOPPED ignored — TopUp reels still spinning');
+                this.scheduleOnce(this._reelsStoppedTimeout, 0.2);
+                return;
+            }
+        } else if (!this._areSlotReelsSettled()) {
             this._logSpinState('REELS_STOPPED ignored because slot reels are not settled yet');
-            // Log.e('[SPIN-HANG][GM] REELS_STOPPED ignored — slot reels are not settled yet');
             this.scheduleOnce(this._reelsStoppedTimeout, 0.2);
             return;
         }
@@ -2836,6 +2919,12 @@ export class GameManager extends Component {
 
     // ─── HELPERS ───
 
+    /** Delay feature (Matsuri/TopUp) theo speed mode — không xuống 0 để tránh đua event. */
+    private _speedDelay(sec: number): number {
+        const m = AutoSpinManager.instance.getTimingMultiplier();
+        return Math.max(0.08, sec * m);
+    }
+
     /** Trả về auto-spin delay (giây) theo speed mode — đồng bộ với Normal AutoSpin */
     private _getAutoSpinDelay(): number {
         switch (AutoSpinManager.instance.speedMode) {
@@ -2888,10 +2977,10 @@ export class GameManager extends Component {
             case SlotStageType.FREE_SPIN_RE_TRIGGER: {
                 // Matsuri mid: RE_TRIGGER đã xử lý trong _handleMatsuriReelsStopped
                 if (GameData.instance.currentMode === 'matsuri') {
-                    if (GameData.instance.respinRemaining > 0) {
+                    if (this._matsuriContinueSpin(GameData.instance.lastSpinResponse)) {
                         this._currentStage = SlotStageType.TOPUP_SPIN;
                         this._gameState = GameState.IDLE;
-                        this.scheduleOnce(() => EventBus.instance.emit(GameEvents.SPIN_REQUEST), 0.35);
+                        this.scheduleOnce(() => EventBus.instance.emit(GameEvents.SPIN_REQUEST), this._speedDelay(0.35));
                     } else {
                         this._transitionStage(SlotStageType.TOPUP_SPIN_END);
                     }
@@ -2908,10 +2997,10 @@ export class GameManager extends Component {
             case SlotStageType.FREE_SPIN:
             case SlotStageType.BUY_FREE_SPIN: {
                 if (GameData.instance.currentMode === 'matsuri') {
-                    if (GameData.instance.respinRemaining > 0) {
+                    if (this._matsuriContinueSpin(GameData.instance.lastSpinResponse)) {
                         this._currentStage = SlotStageType.TOPUP_SPIN;
                         this._gameState = GameState.IDLE;
-                        this.scheduleOnce(() => EventBus.instance.emit(GameEvents.SPIN_REQUEST), 0.35);
+                        this.scheduleOnce(() => EventBus.instance.emit(GameEvents.SPIN_REQUEST), this._speedDelay(0.35));
                     } else {
                         this._transitionStage(SlotStageType.TOPUP_SPIN_END);
                     }
@@ -2932,7 +3021,7 @@ export class GameManager extends Component {
                 this._gameState = GameState.POPUP;
                 if (GameData.instance.currentMode === 'matsuri') {
                     Log.d('[GameManager] FREE_SPIN_END (Matsuri) → _endCarnivalMatsuri');
-                    this.scheduleOnce(() => this._endCarnivalMatsuri(), 0.6);
+                    this.scheduleOnce(() => this._endCarnivalMatsuri(), this._speedDelay(0.6));
                     break;
                 }
                 Log.d(`[GameManager] FREE_SPIN_END transition — scheduling FreeSpinEndPopup display after ${this.freeSpinEndPopupDelay}s`);
@@ -2953,7 +3042,16 @@ export class GameManager extends Component {
                 if (GameData.instance.respinRemaining <= 0) {
                     if (GameData.instance.currentMode === 'matsuri' && this._matsuriAwaitingCollect) {
                         Log.w('[Matsuri] TOPUP_SPIN deferred — awaiting collect/flip');
-                        this._pendingMatsuriNext = SlotStageType.TOPUP_SPIN_END;
+                        this._pendingMatsuriNext = this._matsuriContinueSpin(GameData.instance.lastSpinResponse)
+                            ? SlotStageType.TOPUP_SPIN
+                            : SlotStageType.TOPUP_SPIN_END;
+                        break;
+                    }
+                    if (GameData.instance.currentMode === 'matsuri'
+                        && this._matsuriContinueSpin(GameData.instance.lastSpinResponse)) {
+                        this._currentStage = SlotStageType.TOPUP_SPIN;
+                        this._gameState = GameState.IDLE;
+                        this.scheduleOnce(() => EventBus.instance.emit(GameEvents.SPIN_REQUEST), this._speedDelay(0.35));
                         break;
                     }
                     Log.e('[TopUp/Matsuri] TOPUP_SPIN nhưng remain=0 → ép TOPUP_SPIN_END');
@@ -2964,7 +3062,7 @@ export class GameManager extends Component {
                 this._gameState = GameState.IDLE;
                 this.scheduleOnce(() => {
                     EventBus.instance.emit(GameEvents.SPIN_REQUEST);
-                }, 0.35);
+                }, this._speedDelay(0.35));
                 break;
 
             case SlotStageType.TOPUP_SPIN_END:
@@ -2976,9 +3074,9 @@ export class GameManager extends Component {
                 }
                 this._gameState = GameState.POPUP;
                 if (GameData.instance.currentMode === 'matsuri') {
-                    this.scheduleOnce(() => this._endCarnivalMatsuri(), 0.6);
+                    this.scheduleOnce(() => this._endCarnivalMatsuri(), this._speedDelay(0.6));
                 } else {
-                    this.scheduleOnce(() => this._handleTopUpClaim(), 0.6);
+                    this.scheduleOnce(() => this._handleTopUpClaim(), this._speedDelay(0.6));
                 }
                 break;
 
@@ -3793,7 +3891,7 @@ export class GameManager extends Component {
         if (continueSpin && data.respinRemaining > 0) {
             EventBus.instance.emit(GameEvents.STAGE_CHANGED, SlotStageType.TOPUP_SPIN);
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
-            this.scheduleOnce(() => EventBus.instance.emit(GameEvents.SPIN_REQUEST), 0.35);
+            this.scheduleOnce(() => EventBus.instance.emit(GameEvents.SPIN_REQUEST), this._speedDelay(0.35));
         } else {
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
         }
@@ -3843,10 +3941,15 @@ export class GameManager extends Component {
             ?? this.node.scene?.getComponentInChildren(StickyOverlayController)
             ?? null;
         const topUpMgr = loader?.topUpManager
+            ?? overlay?.node?.getComponentInChildren(TopUpManager)
             ?? this.node.scene?.getComponentInChildren(TopUpManager)
             ?? null;
+        if (overlay?.node) overlay.node.active = true;
         overlay?.ensureRowCount(rows, topUpMgr);
-        if (!overlay && topUpMgr) topUpMgr.ensureRowCount(rows);
+        // Overlay inactive sau 5×3: scene getComponentInChildren có thể miss TM — luôn gọi trực tiếp.
+        topUpMgr?.ensureRowCount(rows);
+        // Giữ cache trỏ đúng instance vừa resize (guard _areSlotReelsSettled dùng chung).
+        if (topUpMgr) this._cachedTopUpMgr = topUpMgr;
     }
 
     // ─── BUY BONUS ───
@@ -4500,6 +4603,20 @@ export class GameManager extends Component {
         const beforeClaimClientTotal = data.respinTotalWin;
         const beforeClaimEachWin = data.topUpDisplayedEachWin;
         const beforeClaimBalance = WalletManager.instance.balance;
+        const lastNs = Number(data.lastSpinResponse?.nextStage ?? 0);
+        if (USE_REAL_API && lastNs < SlotStageType.NEED_CLAIM && !data.lastSpinResponse?.isGridFull) {
+            if (data.currentMode === 'matsuri' && this._matsuriContinueSpin(data.lastSpinResponse)) {
+                Log.w(`[TopUp-CLAIM] NextStage=${lastNs} → /Spin tiếp, không /Claim`);
+                this._currentStage = SlotStageType.TOPUP_SPIN;
+                this._gameState = GameState.IDLE;
+                this.scheduleOnce(() => EventBus.instance.emit(GameEvents.SPIN_REQUEST), 0.2);
+                return;
+            }
+            Log.w(`[TopUp-CLAIM] skip /Claim — NextStage=${lastNs} < 100`);
+            this._gameState = GameState.POPUP;
+            EventBus.instance.emit(GameEvents.TOPUP_END_POPUP, data.respinTotalWin);
+            return;
+        }
         try {
             const result = await NetworkManager.instance.sendClaimRequest();
             WalletManager.instance.balance = result.balance;
@@ -4535,11 +4652,21 @@ export class GameManager extends Component {
                 Log.e('[TopUp-CLAIM] NextStage=PICK_START → sẽ mở Pick sau Matsuri end popup');
             }
         } catch (err) {
-            Log.e('[TopUp-CLAIM] ❌ Claim failed — hiện 0:', err);
-            data.respinTotalWin = 0;
+            const code = PopUpMessage.extractServerCode(err as Error);
+            Log.e(`[TopUp-CLAIM] ❌ Claim failed code=${code}:`, err);
             this._pendingPickAfterMatsuriClaim = null;
-            const popupCase = PopUpMessage.popupCaseFromError(err);
-            EventBus.instance.emit(GameEvents.SHOW_SYSTEM_POPUP, { popupCase });
+            // 30034 ERR_NO_NEED_CLAIM — không phải mất kết nối; vẫn hiện popup tổng client.
+            if (code === 30034) {
+                Log.w('[TopUp-CLAIM] 30034 no-need-claim → end popup, không DISCONNECTED');
+                this._gameState = GameState.POPUP;
+                EventBus.instance.emit(GameEvents.TOPUP_END_POPUP, data.respinTotalWin);
+                return;
+            }
+            data.respinTotalWin = 0;
+            if (!(err instanceof ServerApiError && err.alreadyHandled)) {
+                const popupCase = PopUpMessage.popupCaseFromError(err as Error);
+                EventBus.instance.emit(GameEvents.SHOW_SYSTEM_POPUP, { popupCase });
+            }
             return;
         }
 
@@ -4751,14 +4878,36 @@ export class GameManager extends Component {
         return GameData.instance.currentMode === 'matsuri';
     }
 
+    /** CN: /Claim chỉ khi NextStage ≥ 100 (FREE_SPIN_END=101). 30034 nếu Claim lúc NextStage=4. */
+    private _matsuriServerAllowsClaim(resp?: SpinResponse | null): boolean {
+        if (!resp) return false;
+        if (resp.isGridFull) return true;
+        return Number(resp.nextStage ?? 0) >= SlotStageType.NEED_CLAIM;
+    }
+
+    /** Còn trong feature theo server — /Spin, không /Claim. */
+    private _matsuriContinueSpin(resp?: SpinResponse | null): boolean {
+        if (this._matsuriServerAllowsClaim(resp)) return false;
+        // API §4.5: NextStage là nguồn duy nhất — FREE_SPIN(4)/RE_TRIGGER(5)/START(3) → /Spin.
+        if (resp?.nextStage == null) return GameData.instance.respinRemaining > 0;
+        const ns = Number(resp.nextStage);
+        return ns === SlotStageType.FREE_SPIN
+            || ns === SlotStageType.FREE_SPIN_RE_TRIGGER
+            || ns === SlotStageType.FREE_SPIN_START
+            || ns === SlotStageType.TOPUP_SPIN
+            || ns === SlotStageType.TOPUP_SPIN_START
+            || ns === SlotStageType.CARNIVAL_MATSURI_START;
+    }
+
     /**
      * Server stages cần /Claim trước /Spin tiếp.
-     * - NEED_CLAIM(100) … HIDDEN_FREE_SPIN_END(109), DIRECT_PAY(1000+)
-     * - Loại client-only 200–999 (FEATURE_SELECT_START, POT_WIN, CARNIVAL_MATSURI_START=240, …)
+     * - NEED_CLAIM(100) … HIDDEN_FREE_SPIN_END(109)
+     * - Loại client-only 200–999 và TOPUP_SPIN_END(1003)
      */
     private _stageRequiresServerClaim(stage: SlotStageType): boolean {
         const n = stage as number;
         if (n >= 200 && n < 1000) return false;
+        if (n === SlotStageType.TOPUP_SPIN_END || n === SlotStageType.RESPIN_END) return false;
         return n >= SlotStageType.NEED_CLAIM;
     }
 

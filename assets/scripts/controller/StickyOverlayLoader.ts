@@ -17,13 +17,14 @@
  * ── FLOW ──
  *   GameManager TopUp prepare / resume → await ensureLoaded()
  *   → emit TOPUP_START (overlay + TopUpManager đã sẵn sàng)
- *   TOPUP_END → unload() destroy instance
+ *   TOPUP_END → ẩn instance (giữ cache). destroyOnTopUpEnd=true thì destroy.
  */
 
 import { _decorator, Component, Node, Prefab, instantiate, assetManager } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { Log } from '../core/Logger';
+import { GameData } from '../data/GameData';
 import { SlotMachineController } from './SlotMachineController';
 import { StickyOverlayController } from './StickyOverlayController';
 import { TopUpManager } from './TopUpManager';
@@ -60,8 +61,9 @@ export class StickyOverlayLoader extends Component {
     @property({
         type: MatsuriEffect,
         tooltip:
-            'MatsuriEffect — GẮN 1 LẦN trên node này, gán seedSourceNode + collectTargetNode tại đó.\n' +
-            'Để trống → auto-add MatsuriEffect trên node loader.',
+            'MatsuriEffect — GẮN 1 LẦN trên node này, gán seedSourceNode tại đó.\n' +
+            'collectTargetNode để trống → tự lấy SpriteNumber tổng tiền trên StickyOverlay.\n' +
+            'Để trống component → auto-add MatsuriEffect trên node loader.',
     })
     matsuriEffect: MatsuriEffect | null = null;
 
@@ -71,15 +73,16 @@ export class StickyOverlayLoader extends Component {
     prefabPath: string = DEFAULT_PREFAB_PATH;
 
     @property({
-        tooltip: 'true = destroy instance khi TOPUP_END.\nfalse = chỉ ẩn, giữ cache cho lần TopUp sau.',
+        tooltip: 'true = destroy instance khi TOPUP_END.\nfalse = chỉ ẩn, giữ cache cho lần Feature/TopUp sau.',
     })
-    destroyOnTopUpEnd: boolean = true;
+    destroyOnTopUpEnd: boolean = false;
 
     private _instance: Node | null = null;
     private _overlay: StickyOverlayController | null = null;
     private _topUpManager: TopUpManager | null = null;
     private _loading: Promise<StickyOverlayController | null> | null = null;
     private _cachedPrefab: Prefab | null = null;
+    private _prefabLoading: Promise<Prefab | null> | null = null;
 
     onLoad(): void {
         EventBus.instance.on(GameEvents.TOPUP_END, this._onTopUpEnd, this);
@@ -101,19 +104,53 @@ export class StickyOverlayLoader extends Component {
     }
 
     /**
+     * Chỉ tải Prefab + dependency vào cache — KHÔNG instantiate.
+     * Gọi lúc Pot burst để parse texture/JSON lúc đang anim, không đụng popup.
+     */
+    preloadPrefab(): Promise<Prefab | null> {
+        if (this._cachedPrefab) return Promise.resolve(this._cachedPrefab);
+        if (this._prefabLoading) return this._prefabLoading;
+
+        const bundle = assetManager.getBundle(BUNDLE_NAME);
+        if (!bundle) {
+            Log.e(`[StickyOverlayLoader] Bundle '${BUNDLE_NAME}' chưa load`);
+            return Promise.resolve(null);
+        }
+
+        const path = (this.prefabPath || DEFAULT_PREFAB_PATH).trim();
+        this._prefabLoading = new Promise((resolve) => {
+            bundle.load(path, Prefab, (err: Error | null, prefab: Prefab) => {
+                this._prefabLoading = null;
+                if (err || !prefab) {
+                    Log.e(`[StickyOverlayLoader] Load failed: ${path}`, err);
+                    resolve(null);
+                    return;
+                }
+                this._cachedPrefab = prefab;
+                Log.d(`[StickyOverlayLoader] Prefab cached: ${path}`);
+                resolve(prefab);
+            });
+        });
+        return this._prefabLoading;
+    }
+
+    /**
      * Đảm bảo StickyOverlay đã được load + wire.
      * Gọi TRƯỚC khi emit TOPUP_START.
      */
     ensureLoaded(): Promise<StickyOverlayController | null> {
         if (this._overlay?.isValid && this._instance?.isValid) {
             this._wireRefs();
+            this._hideIfNotInFeature();
             return Promise.resolve(this._overlay);
         }
         if (this._loading) return this._loading;
 
-        this._loading = this._loadAndInstantiate().finally(() => {
-            this._loading = null;
-        });
+        this._loading = this.preloadPrefab()
+            .then((prefab) => this._spawnOverlay(prefab))
+            .finally(() => {
+                this._loading = null;
+            });
         return this._loading;
     }
 
@@ -137,73 +174,46 @@ export class StickyOverlayLoader extends Component {
         this.scheduleOnce(() => this.unload(), 0);
     }
 
-    private _loadAndInstantiate(): Promise<StickyOverlayController | null> {
-        return new Promise((resolve) => {
-            const finish = (prefab: Prefab | null) => {
-                if (!prefab || !this.isValid) {
-                    resolve(null);
-                    return;
-                }
-                this._cachedPrefab = prefab;
-                const parent = this.overlayParent ?? this.node;
-                const instance = instantiate(prefab);
-                instance.name = 'StickyOverlay';
-                // Inactive trước addChild → onLoad chưa chạy → wire slotMachine trước.
-                instance.active = false;
-                parent.addChild(instance);
+    private _spawnOverlay(prefab: Prefab | null): StickyOverlayController | null {
+        if (!prefab || !this.isValid) return null;
+        if (this._overlay?.isValid && this._instance?.isValid) {
+            this._wireRefs();
+            this._hideIfNotInFeature();
+            return this._overlay;
+        }
 
-                const overlay = instance.getComponent(StickyOverlayController)
-                    ?? instance.getComponentInChildren(StickyOverlayController);
-                const topUpMgr = instance.getComponent(TopUpManager)
-                    ?? instance.getComponentInChildren(TopUpManager);
+        this._cachedPrefab = prefab;
+        const parent = this.overlayParent ?? this.node;
+        const instance = instantiate(prefab);
+        instance.name = 'StickyOverlay';
+        instance.active = false;
+        parent.addChild(instance);
 
-                if (!overlay) {
-                    Log.e('[StickyOverlayLoader] Prefab thiếu StickyOverlayController');
-                    instance.destroy();
-                    resolve(null);
-                    return;
-                }
-                if (!topUpMgr) {
-                    Log.w('[StickyOverlayLoader] Prefab chưa có TopUpManager — chỉ overlay coin sẽ hoạt động');
-                }
+        const overlay = instance.getComponent(StickyOverlayController)
+            ?? instance.getComponentInChildren(StickyOverlayController);
+        const topUpMgr = instance.getComponent(TopUpManager)
+            ?? instance.getComponentInChildren(TopUpManager);
 
-                this._instance = instance;
-                this._overlay = overlay;
-                this._topUpManager = topUpMgr;
+        if (!overlay) {
+            Log.e('[StickyOverlayLoader] Prefab thiếu StickyOverlayController');
+            instance.destroy();
+            return null;
+        }
+        if (!topUpMgr) {
+            Log.w('[StickyOverlayLoader] Prefab chưa có TopUpManager — chỉ overlay coin sẽ hoạt động');
+        }
 
-                // Wire TRƯỚC khi active để onLoad/TopUpManager nhận được slotMachine.
-                this._wireRefs();
-                instance.active = true;
-                // Re-wire absorb sau khi components đã onLoad.
-                this._wireRefs();
+        this._instance = instance;
+        this._overlay = overlay;
+        this._topUpManager = topUpMgr;
 
-                Log.d('[StickyOverlayLoader] instantiated + wired StickyOverlay');
-                resolve(overlay);
-            };
+        this._wireRefs();
+        instance.active = true;
+        this._wireRefs();
+        this._hideIfNotInFeature();
 
-            if (this._cachedPrefab) {
-                finish(this._cachedPrefab);
-                return;
-            }
-
-            const bundle = assetManager.getBundle(BUNDLE_NAME);
-            if (!bundle) {
-                Log.e(`[StickyOverlayLoader] Bundle '${BUNDLE_NAME}' chưa load`);
-                resolve(null);
-                return;
-            }
-
-            const path = (this.prefabPath || DEFAULT_PREFAB_PATH).trim();
-            bundle.load(path, Prefab, (err: Error | null, prefab: Prefab) => {
-                if (err || !prefab) {
-                    Log.e(`[StickyOverlayLoader] Load failed: ${path}`, err);
-                    resolve(null);
-                    return;
-                }
-                Log.d(`[StickyOverlayLoader] Prefab loaded: ${path}`);
-                finish(prefab);
-            });
-        });
+        Log.d('[StickyOverlayLoader] instantiated + wired StickyOverlay');
+        return overlay;
     }
 
     private _wireRefs(): void {
@@ -235,5 +245,14 @@ export class StickyOverlayLoader extends Component {
         }
         matsuri.bindStickyOverlay(this._overlay);
         matsuri.topUpAbsorbEffect = absorb;
+    }
+
+    private _hideIfNotInFeature(): void {
+        const inst = this._instance;
+        if (!inst?.isValid) return;
+        const mode = GameData.instance.currentMode;
+        if (mode !== 'matsuri' && mode !== 'respin') {
+            inst.active = false;
+        }
     }
 }

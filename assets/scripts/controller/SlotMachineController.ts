@@ -713,7 +713,7 @@ export class SlotMachineController extends Component {
         //   1. Áp dụng freespin speed settings (minSpinDurationFreeSpin, decelDurationFreeSpin)
         //   2. Bỏ qua response.reelIndex khi set strip index → reel dùng normal strips khi dừng
         this._isTopUp = true;
-        // Ẩn SlotReel chính (ReelMask) — giữ StickyOverLayparent sibling vẫn hiện
+        // Ẩn ReelMask + ReelBack + ReelFrameImg — giữ StickyOverLayparent sibling vẫn hiện
         this._setMainSlotReelsVisible(false);
         this._updateSlotBackgroundSprite();
     }
@@ -732,12 +732,12 @@ export class SlotMachineController extends Component {
     }
 
     /**
-     * Ẩn/hiện ReelMask (5 ReelController chính) bằng opacity fade.
+     * Ẩn/hiện ReelMask + ReelBack + ReelFrameImg bằng opacity fade.
      * Không đụng StickyOverLayparent (sibling) — StickyOverlay vẫn hiện.
      */
     private _setMainSlotReelsVisible(visible: boolean): void {
-        const mask = this.node.getChildByName('ReelMask');
         const targets: Node[] = [];
+        const mask = this.node.getChildByName('ReelMask');
         if (mask?.isValid) {
             targets.push(mask);
         } else {
@@ -745,12 +745,15 @@ export class SlotMachineController extends Component {
                 if (reel?.node?.isValid) targets.push(reel.node);
             }
         }
+        for (const name of ['ReelBack', 'ReelFrameImg']) {
+            const n = this.node.getChildByName(name);
+            if (n?.isValid) targets.push(n);
+        }
         const dur = this.uiFadeDuration;
         for (const n of targets) {
             if (visible) {
                 fadeInNode(n, dur);
             } else {
-                // Giữ active trong lúc fade; tắt sau khi mờ xong (tránh hit-test)
                 fadeOutNode(n, dur, true);
             }
         }

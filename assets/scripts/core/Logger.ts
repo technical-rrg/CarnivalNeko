@@ -78,4 +78,5 @@ Log.setWhitelist([
     'cn-feature',     // [CN-FEATURE] feature parse
     'claim',          // [Claim] / [TopUp-CLAIM]
     'matsuri',        // [Matsuri] mid-feature
+    'green-credit',   // [GREEN-CREDIT] Matsuri Green credit debug
 ]);

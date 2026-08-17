@@ -83,6 +83,15 @@ export class PopupLoader extends Component {
 
     /** Các prefab đang trong quá trình load — tránh double-instantiate */
     private _loadingSet: Set<string> = new Set();
+    /** Callback chờ khi prefab đang instantiate (warm + open cùng lúc). */
+    private _pendingAfterLoad: Map<string, Array<(node: Node) => void>> = new Map();
+    /** Prefab asset đã bundle.load — chưa instantiate. */
+    private _prefabCache: Map<string, Prefab> = new Map();
+    /** Waiters khi đang cache Prefab (không instantiate). */
+    private _prefabWaiters: Map<string, Array<(prefab: Prefab | null) => void>> = new Map();
+
+    /** Delay instantiate nặng — sau scale-in Start popup (~0.4s). */
+    private static readonly HEAVY_WARM_DELAY = 0.5;
 
     // ── LIFECYCLE ─────────────────────────────────────────────────────────
 
@@ -102,6 +111,8 @@ export class PopupLoader extends Component {
         EventBus.instance.on(GameEvents.MATSURI_START_POPUP,     this._onMatsuriStartPopup,     this);
         EventBus.instance.on(GameEvents.PICK_GAME_START_POPUP,   this._onJackpotStartPopup,     this);
         EventBus.instance.on(GameEvents.CARNIVAL_RED_ENVELOPE,   this._onRedEnvelopePopup,      this);
+        EventBus.instance.on(GameEvents.CARNIVAL_POT_BURST,      this._cacheStartPopups,        this);
+        EventBus.instance.on(GameEvents.GAME_READY,              this._cacheStartPopups,        this);
         // Any popup opened → re-raise PayTable to top if active/present
         EventBus.instance.on(GameEvents.POPUP_OPENED, this._ensurePayTableOnTop, this);
 
@@ -135,39 +146,105 @@ export class PopupLoader extends Component {
     }
 
     /**
-     * Load prefab từ bundle rồi instantiate vào node hiện tại.
-     * Nếu prefab đang load (loading flag) → bỏ qua để tránh double-instantiate.
-     * @param prefabName  Tên prefab trong bundle (không có extension)
-     * @param callback    Gọi sau khi node đã addChild, nhận node đã tạo
+     * Cache Prefab popup Start (nhỏ) — không instantiate.
+     * Không cache PickGame ở đây: decode spine/texture trùng frame hiện popup sẽ giật scale-in.
      */
-    private _loadPrefab(prefabName: string, callback: (node: Node) => void): void {
-        if (this._loadingSet.has(prefabName)) {
-            Log.d(`[PopupLoader] ${prefabName} đang load, bỏ qua`);
+    private _cacheStartPopups = (): void => {
+        this._cachePrefab(PREFAB_NAMES.matsuriStart);
+        this._cachePrefab(PREFAB_NAMES.jackpotStart);
+    };
+
+    private _cachePrefab(prefabName: string): void {
+        this._ensurePrefabAsset(prefabName, () => {});
+    }
+
+    private _ensurePrefabAsset(prefabName: string, cb: (prefab: Prefab | null) => void): void {
+        const cached = this._prefabCache.get(prefabName);
+        if (cached) {
+            cb(cached);
+            return;
+        }
+        const waiters = this._prefabWaiters.get(prefabName);
+        if (waiters) {
+            waiters.push(cb);
             return;
         }
 
         const bundle = assetManager.getBundle(BUNDLE_NAME);
         if (!bundle) {
             Log.w(`[PopupLoader] Bundle '${BUNDLE_NAME}' chưa được load!`);
+            cb(null);
+            return;
+        }
+
+        this._prefabWaiters.set(prefabName, [cb]);
+        bundle.load(prefabName, Prefab, (err: Error | null, prefab: Prefab) => {
+            if (prefab) this._prefabCache.set(prefabName, prefab);
+            else if (err) Log.e(`[PopupLoader] Cache prefab thất bại: ${prefabName}`, err);
+            const list = this._prefabWaiters.get(prefabName) ?? [];
+            this._prefabWaiters.delete(prefabName);
+            for (const w of list) w(prefab ?? null);
+        });
+    }
+
+    /**
+     * Load prefab từ bundle rồi instantiate vào node hiện tại.
+     * Nếu prefab đang instantiate → xếp callback, không bỏ qua (tránh miss open khi đang warm).
+     */
+    private _loadPrefab(prefabName: string, callback: (node: Node) => void): void {
+        if (this._loadingSet.has(prefabName)) {
+            const q = this._pendingAfterLoad.get(prefabName) ?? [];
+            q.push(callback);
+            this._pendingAfterLoad.set(prefabName, q);
+            Log.d(`[PopupLoader] ${prefabName} đang instantiate — queue callback`);
             return;
         }
 
         this._loadingSet.add(prefabName);
-        bundle.load(prefabName, Prefab, (err: Error | null, prefab: Prefab) => {
+        this._ensurePrefabAsset(prefabName, (prefab) => {
             this._loadingSet.delete(prefabName);
-            if (err || !prefab) {
-                Log.e(`[PopupLoader] Load prefab thất bại: ${prefabName}`, err);
+            const queued = this._pendingAfterLoad.get(prefabName) ?? [];
+            this._pendingAfterLoad.delete(prefabName);
+            if (!prefab) {
+                Log.e(`[PopupLoader] Load prefab thất bại: ${prefabName}`);
                 return;
             }
             const node = instantiate(prefab);
             this.node.addChild(node);
-            // Always keep PayTablePopUp on topmost layer among Popup children
             this._ensurePayTableOnTop();
             Log.d(`[PopupLoader] Instantiated: ${prefabName}`);
             callback(node);
-            // Re-ensure in case callback did further child ops
+            for (const cb of queued) cb(node);
             this._ensurePayTableOnTop();
         });
+    }
+
+    /** Instantiate ẩn để cache — không mở popup. */
+    private _warmPrefab(prefabName: string, assign: (node: Node) => void, already: Node | null): void {
+        if (already?.isValid) return;
+        this._loadPrefab(prefabName, assign);
+    }
+
+    private _warmPickGame(): void {
+        this._warmPrefab(PREFAB_NAMES.pickGame, (node) => {
+            if (this._pickGameNode?.isValid && this._pickGameNode !== node) {
+                node.destroy();
+                return;
+            }
+            this._pickGameNode = node;
+            Log.d('[PopupLoader] Warmed PickGamePopup');
+        }, this._pickGameNode);
+    }
+
+    private _warmTopUpEnd(): void {
+        this._warmPrefab(PREFAB_NAMES.topUpEnd, (node) => {
+            if (this._topUpEndNode?.isValid && this._topUpEndNode !== node) {
+                node.destroy();
+                return;
+            }
+            this._topUpEndNode = node;
+            Log.d('[PopupLoader] Warmed TopUpEndPopup');
+        }, this._topUpEndNode);
     }
 
     // ── INTERNAL UTILS ────────────────────────────────────────────────────
@@ -337,7 +414,6 @@ export class PopupLoader extends Component {
             if (popup) popup.openPickGame(state);
             return;
         }
-        // Node cũ đã bị destroy — clear và instantiate mới
         this._pickGameNode = null;
         this._loadPrefab(PREFAB_NAMES.pickGame, (node) => {
             this._pickGameNode = node;
@@ -371,12 +447,14 @@ export class PopupLoader extends Component {
         if (this._matsuriStartNode?.isValid) {
             this._matsuriStartNode.setSiblingIndex(this.node.children.length - 1);
             this._showMatsuriStart(this._matsuriStartNode, feature);
+            this._scheduleHeavyWarm();
             return;
         }
         this._loadPrefab(PREFAB_NAMES.matsuriStart, (node) => {
             this._matsuriStartNode = node;
             node.setSiblingIndex(this.node.children.length - 1);
             this._showMatsuriStart(node, feature);
+            this._scheduleHeavyWarm();
         });
     }
 
@@ -395,14 +473,27 @@ export class PopupLoader extends Component {
         if (this._jackpotStartNode?.isValid) {
             this._jackpotStartNode.setSiblingIndex(this.node.children.length - 1);
             this._showJackpotStart(this._jackpotStartNode, state);
+            this._scheduleHeavyWarm();
             return;
         }
         this._loadPrefab(PREFAB_NAMES.jackpotStart, (node) => {
             this._jackpotStartNode = node;
             node.setSiblingIndex(this.node.children.length - 1);
             this._showJackpotStart(node, state);
+            this._scheduleHeavyWarm();
         });
     }
+
+    /** Instantiate PickGame / TopUpEnd sau khi Start popup đã scale-in. */
+    private _scheduleHeavyWarm(): void {
+        this.unschedule(this._doHeavyWarm);
+        this.scheduleOnce(this._doHeavyWarm, PopupLoader.HEAVY_WARM_DELAY);
+    }
+
+    private _doHeavyWarm = (): void => {
+        this._warmPickGame();
+        this._warmTopUpEnd();
+    };
 
     private _showJackpotStart(node: Node, state: PickGameState): void {
         let popup = node.getComponent(JackpotStartPopup);

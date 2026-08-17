@@ -57,6 +57,8 @@ const SYMBOL_FRAME_FALLBACKS: Record<number, string[]> = {
     [SymbolId.TRAIL_BLUE]: ['22_ps_41'],
     [SymbolId.TRAIL_RED]: ['23_ps_43'],
     [SymbolId.TRAIL_GREEN]: ['24_ps_42'],
+    [SymbolId.STICKY_YELLOW]: ['ps_45', 'ps_55'],
+    [SymbolId.STICKY_GREEN]: ['ps_44'],
 };
 
 /** Hoisted — tránh tạo mảng mới mỗi lần wrap symbol khi reel đang quay. */

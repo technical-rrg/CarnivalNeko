@@ -81,7 +81,11 @@ export class EventBus {
         // Clone để tránh mutation khi once tự remove
         const snapshot = [...entries];
         for (const entry of snapshot) {
-            entry.callback.apply(entry.target, args);
+            try {
+                entry.callback.apply(entry.target, args);
+            } catch (err) {
+                Log.e(`[EventBus] listener error on "${event}"`, err);
+            }
             if (entry.once) {
                 this.off(event, entry.callback, entry.target);
             }

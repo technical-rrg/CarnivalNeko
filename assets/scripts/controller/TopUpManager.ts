@@ -265,6 +265,10 @@ export class TopUpManager extends Component {
                 const reel = this.reels[i];
                 if (!reel) continue;
                 reel.symbolFrames = this.slotMachine.symbolFrames;
+                const gold = this.slotMachine.symbolFrames[SymbolId.STICKY_YELLOW];
+                const green = this.slotMachine.symbolFrames[SymbolId.STICKY_GREEN];
+                if (gold) reel.coinFrames[1] = gold;
+                if (green) reel.coinFrames[2] = green;
 
                 const col = Math.floor(i / this._rowCount);
                 // TopUpReelController.symbolNodes: [0]=Top [1]=Mid [2]=Bot
@@ -465,12 +469,7 @@ export class TopUpManager extends Component {
             const reel = this.reels[i];
             if (!reel) continue;
             if (!cell) {
-                const wasLocked = reel.isLocked;
                 reel.prepareFreeCellForSpin();
-                if (i < 3 || wasLocked) {
-                    const childStates = reel.symbolNodes.map((node, childIdx) => `${childIdx}:${node ? (node.active ? 1 : 0) : 'null'}`).join(',');
-                    Log.e(`[TOPUP-ENTER-CHECK][TOPUP-REEL] prepareFree idx=${i} key=${key} wasLocked=${wasLocked ? 1 : 0} node=${reel.node.active ? 1 : 0} symbols=${childStates}`);
-                }
             }
         }
 
@@ -617,7 +616,7 @@ export class TopUpManager extends Component {
                 && existing.symbolId !== SymbolId.STICKY_GREEN) {
                 continue;
             }
-            greenMap.set(`${reel}-${row}`, Number(cell.credit ?? cell.Credit ?? 0) || 0);
+            greenMap.set(`${reel}-${row}`, Number(cell.credit ?? cell.Credit ?? cell.win ?? cell.Win ?? 0) || 0);
         }
 
         let stopCalls = 0;

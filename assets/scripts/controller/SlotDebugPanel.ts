@@ -38,6 +38,10 @@ import { GameData } from '../data/GameData';
 
 import { Log } from '../core/Logger';
 
+import { SymbolId, PS_TO_CLIENT } from '../data/SlotTypes';
+
+import { WaysPayCalculator } from '../data/WaysPayCalculator';
+
 
 
 const { ccclass, property } = _decorator;
@@ -49,6 +53,8 @@ const REEL_COUNT = 5;
 /** DebugArray pot-force: 5 stop (-1) + optional feature type. */
 
 const POT_FORCE_LEN = 6;
+
+const MULTI_LINE_SEARCH_ITERS = 6000;
 
 
 
@@ -132,6 +138,10 @@ export class SlotDebugPanel extends Component {
 
     @property(Button) btnRedWithWin: Button = null!;
 
+    /** Multi Line win — ≥2 symbol thắng cùng lúc (ways pay). */
+
+    @property(Button) btnWin: Button = null!;
+
 
 
     // ── Unused legacy bindings — ẩn khi load ────────────────────────────────
@@ -164,6 +174,8 @@ export class SlotDebugPanel extends Component {
 
         this._hideLegacyButtons();
 
+        this._ensureWinButtonVisible();
+
         this._bindButtons();
 
         Log.d('%c[SlotDebugPanel] Loaded — Carnival Neko pot-force DebugArray presets',
@@ -183,6 +195,8 @@ export class SlotDebugPanel extends Component {
         if (!this.debugPanelNode) return;
 
         this.debugPanelNode.active = true;
+
+        this._ensureWinButtonVisible();
 
         this._setStatus('Carnival Neko — Force Pot / Feature ([-1×5] hoặc [-1×5, type]).');
 
@@ -219,6 +233,14 @@ export class SlotDebugPanel extends Component {
             if (btn?.node) btn.node.active = false;
 
         }
+
+    }
+
+
+
+    private _ensureWinButtonVisible(): void {
+
+        if (this.btnWin?.node) this.btnWin.node.active = true;
 
     }
 
@@ -261,6 +283,10 @@ export class SlotDebugPanel extends Component {
                 this._setButtonLabel(potButtons[i], this._shortLabel(i));
 
             }
+
+            this._bind(this.btnWin, this._onWinSpin);
+
+            this._setButtonLabel(this.btnWin, 'Multi Line');
 
             this._bind(this.btnSendCustom, this.onSendDebugSpin);
 
@@ -342,6 +368,24 @@ export class SlotDebugPanel extends Component {
 
 
 
+    private _onWinSpin(): void {
+
+        const found = this._searchMultiLineStops();
+
+        if (!found) return;
+
+        this._firePreset(
+
+            found.arr,
+
+            `Multi Line (${found.winCount} symbols, ${found.totalWays} ways)`,
+
+        );
+
+    }
+
+
+
     onSendDebugSpin(): void {
 
         try {
@@ -389,6 +433,172 @@ export class SlotDebugPanel extends Component {
             this._setStatus('❌ Lỗi: ' + String(err));
 
         }
+
+    }
+
+
+
+    // ════════════════════════════════════════════════════════════════════════
+
+    //  MULTI LINE SEARCH
+
+    // ════════════════════════════════════════════════════════════════════════
+
+
+
+    private _searchMultiLineStops(): { arr: number[]; winCount: number; totalWays: number } | null {
+
+        const psStrips = this._getDebugPsStrips();
+
+        if (!psStrips) return null;
+
+        const lens = psStrips.map((s) => s.length);
+
+        let best = { arr: lens.map(() => 0), winCount: 0, totalWays: 0 };
+
+        let bestScore = -1;
+
+        for (let n = 0; n < MULTI_LINE_SEARCH_ITERS; n++) {
+
+            const arr = lens.map((len) => Math.floor(Math.random() * len));
+
+            const evaled = this._evalMultiLineStops(psStrips, arr);
+
+            if (evaled.winCount < 2) continue;
+
+            const score = evaled.winCount * 1000 + evaled.totalWays * 10;
+
+            if (score > bestScore) {
+
+                bestScore = score;
+
+                best = { arr: arr.slice(), ...evaled };
+
+                if (evaled.winCount >= 3) break;
+
+            }
+
+        }
+
+        if (best.winCount < 2) {
+
+            this._setStatus('⚠ Không tìm được Multi Line trên strips hiện tại — thử lại.');
+
+            Log.w('[SlotDebugPanel] Multi Line search failed');
+
+            return null;
+
+        }
+
+        return best;
+
+    }
+
+
+
+    private _evalMultiLineStops(
+
+        psStrips: number[][],
+
+        arr: number[],
+
+    ): { winCount: number; totalWays: number } {
+
+        const grid: number[][] = [];
+
+        for (let r = 0; r < REEL_COUNT; r++) {
+
+            grid.push(
+
+                this._psWindow(psStrips[r], arr[r]).map((ps) => PS_TO_CLIENT[ps] ?? -1),
+
+            );
+
+        }
+
+        const wins = WaysPayCalculator.calculate(grid, 1, false);
+
+        return {
+
+            winCount: wins.length,
+
+            totalWays: wins.reduce((sum, w) => sum + w.ways, 0),
+
+        };
+
+    }
+
+
+
+    private _psWindow(strip: number[], idx: number): [number, number, number] {
+
+        const len = strip.length;
+
+        const i = ((idx % len) + len) % len;
+
+        return [
+
+            strip[(i - 1 + len) % len],
+
+            strip[i],
+
+            strip[(i + 1) % len],
+
+        ];
+
+    }
+
+
+
+    private _getDebugPsStrips(): number[][] | null {
+
+        const data = GameData.instance;
+
+        const raw = data.getRawPsStrips(false);
+
+        if (raw.length === REEL_COUNT && raw.every((s) => s?.length > 0)) return raw;
+
+        const client = data.getReelStrips(false);
+
+        if (!client?.length || client.some((s) => !s?.length)) {
+
+            this._setStatus('⚠ Strips chưa load — Enter game trước.');
+
+            return null;
+
+        }
+
+        return this._clientStripsToPs(client);
+
+    }
+
+
+
+    private _clientStripsToPs(clientStrips: number[][]): number[][] {
+
+        const map: Record<number, number> = {
+
+            [SymbolId.MINOR_9]: 1, [SymbolId.MINOR_10]: 2, [SymbolId.MINOR_J]: 3,
+
+            [SymbolId.MINOR_Q]: 4, [SymbolId.MINOR_K]: 5, [SymbolId.MINOR_A]: 6,
+
+            [SymbolId.MAJOR_HORUS]: 11, [SymbolId.MAJOR_ANUBIS]: 12,
+
+            [SymbolId.MAJOR_SOBEK]: 13, [SymbolId.MAJOR_RAMSES]: 14,
+
+            [SymbolId.MAJOR_CLEOPATRA]: 15,
+
+            [SymbolId.WILD]: 21,
+
+            [SymbolId.STICKY_YELLOW]: 45, [SymbolId.STICKY_GREEN]: 44,
+
+            [SymbolId.TRAIL_NORMAL]: 41, [SymbolId.TRAIL_BLUE]: 41,
+
+            [SymbolId.TRAIL_RED]: 43, [SymbolId.TRAIL_GREEN]: 42,
+
+        };
+
+        return (clientStrips ?? []).map((strip) => (strip ?? []).map((cs) => map[cs] ?? 1));
 
     }
 

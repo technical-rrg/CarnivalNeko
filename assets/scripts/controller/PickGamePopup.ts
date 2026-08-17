@@ -169,7 +169,6 @@ export class PickGamePopup extends Component {
         this.node.active = false;
         setNodeOpacity(this.node, 0);
         const bus = EventBus.instance;
-        bus.on(GameEvents.PICK_GAME_OPEN,          this.openPickGame,     this);
         bus.on(GameEvents.JACKPOT_END,             this._onJackpotEnd,       this);
         bus.on(GameEvents.TOPUP_TRANSITION_DONE,   this._onTransitionDone,   this);
         this._initCoinFontDemo();

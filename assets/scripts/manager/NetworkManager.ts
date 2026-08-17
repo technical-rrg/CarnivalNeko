@@ -56,7 +56,7 @@ import {
     cnFreeSpinStripGroupStart,
 } from '../data/SlotTypes';
 import { buildCarnivalFeatureFromSpin } from '../data/CarnivalFeatureResolve';
-import { parseCnStickyCells, MATSURI_GOLD_SYMBOL, clampMatsuriRows } from '../data/MatsuriGridUtil';
+import { parseCnStickyCells, parseCnStickyCredit, MATSURI_GOLD_SYMBOL, clampMatsuriRows } from '../data/MatsuriGridUtil';
 import { MockDataProvider, TestScenario } from '../data/MockDataProvider';
 import {
     buildBuyBonusMatsuriTrigger,
@@ -2300,20 +2300,35 @@ class RealNetworkAdapter implements INetworkAdapter {
             anyRes.StarterCoins ?? anyRes.starterCoins,
             rows,
             MATSURI_GOLD_SYMBOL,
+            resp.totalBet,
         );
         const news = parseCnStickyCells(
             anyRes.NewStickies ?? anyRes.newStickies,
             rows,
             SymbolId.STICKY_GREEN,
+            resp.totalBet,
         );
         const all = parseCnStickyCells(
             anyRes.AllStickies ?? anyRes.allStickies,
             rows,
             MATSURI_GOLD_SYMBOL,
+            resp.totalBet,
         );
         if (starter.length) resp.starterCoins = starter;
         if (news.length) resp.newStickies = news;
         if (all.length) resp.allStickies = all;
+        const collectWin = Number(anyRes.CollectWin ?? anyRes.collectWin ?? anyRes.FeatureSpinWin ?? anyRes.featureSpinWin ?? 0);
+        if (Number.isFinite(collectWin) && collectWin > 0) {
+            resp.collectWin = collectWin;
+            resp.featureSpinWin = collectWin;
+        }
+        Log.e(
+            `[CN-STICKY] rows=${rows} starter=${starter.map(c => `${c.reel}-${c.row}=${c.credit}`).join(',') || 'none'}` +
+            ` new=${news.map(c => `${c.reel}-${c.row}=${c.credit}`).join(',') || 'none'}` +
+            ` all=${all.map(c => `${c.reel}-${c.row}=${c.credit}`).join(',') || 'none'}` +
+            ` rawNew=${JSON.stringify(anyRes.NewStickies ?? anyRes.newStickies ?? null)}` +
+            ` rawAll=${JSON.stringify(anyRes.AllStickies ?? anyRes.allStickies ?? null)}`,
+        );
 
         // stickyCells cho UI: enter = StarterCoins; mid = NewStickies (Green land)
         const inMatsuri = GameData.instance.currentMode === 'matsuri';
@@ -2553,7 +2568,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             const isObj = typeof item === 'object' && item !== null;
             const type = isObj ? item?.Type ?? item?.type ?? TopupReelType.NONE : TopupReelType.NONE;
             const win = isObj
-                ? (item.Win ?? item.win ?? item.Credit ?? item.credit ?? item.Val ?? item.val ?? item.Value ?? item.value ?? 0)
+                ? (parseCnStickyCredit(item) || Number(item.Win ?? item.win ?? item.Credit ?? item.credit ?? 0) || 0)
                 : 0;
             const index = isObj ? item.Index ?? item.index ?? i : (typeof item === 'number' ? item : i);
             slots.push({ type, win, index });

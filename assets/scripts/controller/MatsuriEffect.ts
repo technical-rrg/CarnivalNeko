@@ -9,10 +9,8 @@
  *     nhún highlight song song lệch pha các sticky vàng
  *     → clone bay về UI tổng tiền → flip Green→Gold (lúc đó mới hiện CreditLabel)
  *
- * INSPECTOR (chỉ gán node, không chỉnh timing):
- *   seedSourceNode / seedOrbTemplate / collectTargetNode / …
- *
- * TIMING: hardcode const phía dưới — sửa số ở đó.
+ * INSPECTOR: seedSourceNode / seedOrbTemplate / collectTargetNode
+ * TIMING: chỉnh const SEED_ORB_SPEED / FLY_SPEED (px/s) phía dưới.
  */
 
 import {
@@ -28,14 +26,12 @@ import {
     clampMatsuriRows,
     matsuriGridFitScale,
 } from '../data/MatsuriGridUtil';
-import { Log } from '../core/Logger';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { StickyOverlayController } from './StickyOverlayController';
 import { StickyFillEffect } from './StickyFillEffect';
 import { TopUpAbsorbEffect } from './TopUpAbsorbEffect';
 import { TopUpManager } from './TopUpManager';
 import { TOPUP_STICKY_SYMBOL_SCALE } from './TopUpReelController';
-import { FreeSpinGoldUI } from './FreeSpinGoldUI';
 import { SymbolView } from './SymbolView';
 import { SoundManager } from '../manager/SoundManager';
 
@@ -46,16 +42,18 @@ const { ccclass, property } = _decorator;
 // Ưu tiên đọc từ StickyFillEffect trên scene nếu có.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── A) SEED — khớp StickyFillEffect._launchNextOrb ───────────────────────────
-/** Hop lên trước khi rơi (world Y). StickyFillEffect: +60 — KHÔNG × fit. */
+// ── A) SEED hop (đoạn rơi dùng seedOrbSpeed, không dùng duration cố định)
+/** Hop lên trước khi rơi (world Y). */
 const SEED_ORB_HOP_Y = 60;
-/** Thời gian hop. StickyFillEffect: 0.1. */
-const SEED_ORB_HOP_DURATION = 0.1;
-/** Fallback fall duration nếu không có StickyFillEffect.orbFallDuration. */
-const SEED_ORB_FALL_DURATION = 0.55;
+/** Thời gian hop. */
+const SEED_ORB_HOP_DURATION = 0.12;
 const SEED_ORB_SCALE_IN_DURATION = 0.18;
 /** ★ Delay giữa LẦN BẮT ĐẦU bắn 2 quả cầu (bay song song, không chờ land). */
-const SEED_ORB_LAUNCH_INTERVAL = 0.6;
+const SEED_ORB_LAUNCH_INTERVAL = 0.4;
+/** ★ Vận tốc rơi quả cầu Pot → ô (px/s). Lớn = bay nhanh. Rebuild sau khi sửa. */
+const SEED_ORB_SPEED = 520;
+
+// ── B) HIGHLIGHT — nhún sticky vàng song song, lệch pha (sau seed / trước bay tiền)
 
 // ── B) HIGHLIGHT — nhún sticky vàng song song, lệch pha (sau seed / trước bay tiền)
 /** ★ Hay chỉnh: cách bao lâu thì BẮT ĐẦU nhún sticky kế (song song, không chờ xong). */
@@ -68,12 +66,12 @@ const HIGHLIGHT_JUMP_Y = 16;
 const DELAY_BEFORE_FLY = 0.04;
 
 // ── C) FLY — clone sticky vàng bay về UI tổng tiền ────────────────────────────
-/** Thời gian 1 clone bay từ ô → UI đích. */
-const FLY_DURATION = 0.55;
+/** Fallback vận tốc clone vàng (px/s). */
+const FLY_SPEED = 800;
 /** ★ Hay chỉnh: cách bao lâu thì BẮT ĐẦU bay clone kế (song song, lệch pha). */
-const FLY_STAGGER = 0.1;
-/** Tỉ lệ đường bay trước khi bắt đầu co scale về 0 (0.5 = nửa đường). */
-const FLY_SHRINK_START_RATIO = 0.5;
+const FLY_STAGGER = 0.2;
+/** Co scale ngắn lúc sắp chạm UI — giữ nguyên size suốt đường bay. */
+const FLY_SHRINK_DURATION = 0.12;
 /** Cooldown SFX khi clone tới đích — tránh playOneShot chồng theo số lượng Gold. */
 const FLY_ARRIVE_SFX_COOLDOWN = 0.2;
 
@@ -96,7 +94,7 @@ export class MatsuriEffect extends Component {
 
     @property({
         type: Node,
-        tooltip: 'UI đích nhận tiền khi collect Gold (FreeSpinUI / CoinCount).',
+        tooltip: 'UI đích nhận tiền khi collect Gold (StickyOverlay CollectTotal). Để trống → tự lấy từ overlay.',
     })
     collectTargetNode: Node | null = null;
 
@@ -189,15 +187,16 @@ export class MatsuriEffect extends Component {
             this.stickyOverlay?.node?.getComponentInChildren(TopUpManager)
             ?? this.node.scene?.getComponentInChildren(TopUpManager)
             ?? null;
-        if (!this.collectTargetNode?.isValid) {
-            const fsUI = this.node.scene?.getComponentInChildren(FreeSpinGoldUI) ?? null;
-            const target = fsUI?.getCollectTargetNode() ?? null;
-            if (target?.isValid) {
-                this.collectTargetNode = target;
-                if (!this.collectTotalSpriteNumber && fsUI?.goldTotalSpriteNumber) {
-                    this.collectTotalSpriteNumber = fsUI.goldTotalSpriteNumber;
-                }
-            }
+        const overlayTarget = this.stickyOverlay?.getCollectTargetNode() ?? null;
+        if (overlayTarget?.isValid) {
+            this.collectTargetNode = overlayTarget;
+        }
+        const overlaySN = this.stickyOverlay?.getCollectTotalSpriteNumber() ?? null;
+        if (overlaySN) {
+            this.collectTotalSpriteNumber = overlaySN;
+        }
+        if (this.collectTotalSpriteNumber?.node?.isValid) {
+            this._totalBaseScale = this.collectTotalSpriteNumber.node.scale.clone();
         }
         // Điểm bắn seed = Pot (StickyFill) — KHÔNG dùng FreeSpinUI (sai đường bay)
         if (!this.seedSourceNode?.isValid) {
@@ -219,14 +218,11 @@ export class MatsuriEffect extends Component {
 
     private _onSeedStart(payload: { cells?: StickyCell[] }): void {
         if (this._seedBusy) {
-            Log.w('[MatsuriEffect] seed busy — ignore');
             return;
         }
         this._resolveRefs();
 
         const cells = this._sortLeftRightTopBottom(payload?.cells ?? []);
-
-        Log.e(`[MatsuriEffect:SEED] cells=${cells.length} src=${this.seedSourceNode?.name ?? 'NONE'}`);
 
         if (cells.length === 0) {
             EventBus.instance.emit(GameEvents.MATSURI_SEED_DONE);
@@ -267,8 +263,8 @@ export class MatsuriEffect extends Component {
 
             this.stickyOverlay?.snapActiveCoinsToReelRest();
             await this._wait(0.2);
-        } catch (err) {
-            Log.e('[MatsuriEffect:SEED] error', err);
+        } catch {
+            // seed failsafe
         }
         this.stickyOverlay?.setMatsuriDeferGoldLandBounce(false);
         this._seedBusy = false;
@@ -289,9 +285,7 @@ export class MatsuriEffect extends Component {
     }
 
     /**
-     * Bay 1 orb — cùng công thức StickyFillEffect._launchNextOrb:
-     *   start (Pot) → hop(+60Y, 0.1s) → fall(orbFallDuration, quadIn) → đích
-     * + children particle scale-in (sineOut).
+     * Bay 1 orb: hop rồi rơi theo vận tốc SEED_ORB_SPEED (px/s).
      */
     private async _seedLaunchOneLikeFill(
         cell: StickyCell,
@@ -317,12 +311,11 @@ export class MatsuriEffect extends Component {
             return;
         }
 
-        // Timing lấy từ StickyFillEffect trên scene (giống Pot fill)
-        const fallDur = fill?.orbFallDuration ?? SEED_ORB_FALL_DURATION;
+        // Rơi theo vận tốc: xa thì lâu hơn. Không lấy orbFallDuration (0.55s) — chỉnh duration không ăn.
         const hopDur = SEED_ORB_HOP_DURATION;
-        const hopY = SEED_ORB_HOP_Y; // world px — không × grid fit
+        const hopY = SEED_ORB_HOP_Y;
         const scaleIn = fill?.orbScaleInDuration ?? SEED_ORB_SCALE_IN_DURATION;
-        const fit = this._reelFitScale(); // chỉ scale size orb, không đụng đường bay
+        const fit = this._reelFitScale();
 
         SoundManager.instance?.playSfxByName('sxPotHit');
 
@@ -335,8 +328,9 @@ export class MatsuriEffect extends Component {
         this._playOrbParticles(orb);
         this._activeOrbs.push(orb);
 
-        // StickyFill: hop thẳng lên rồi quadIn lao xuống đích (= vòng cung cảm nhận)
+        // StickyFill: hop thẳng lên rồi quadIn lao xuống đích
         const hop = new Vec3(srcWorld.x, srcWorld.y + hopY, srcWorld.z);
+        const fallDur = this._durationFromSpeed(hop, dstWorld, SEED_ORB_SPEED);
 
         await new Promise<void>(resolve => {
             const moveTw = tween(orb)
@@ -359,6 +353,16 @@ export class MatsuriEffect extends Component {
                 })
                 .start();
         });
+    }
+
+    /** Thời gian bay = quãng đường / vận tốc (px/s). */
+    private _durationFromSpeed(from: Vec3, to: Vec3, speed: number, minDur = 0.25, maxDur = 3): number {
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const dz = to.z - from.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const v = Math.max(1, speed);
+        return Math.min(maxDur, Math.max(minDur, dist / v));
     }
 
     /** Tỉ lệ scale StickyOverlay / grid fit (đồng bộ reel thu nhỏ). */
@@ -473,7 +477,6 @@ export class MatsuriEffect extends Component {
 
     private _onCollectStart(payload: { goldCells?: StickyCell[] }): void {
         if (this._collectBusy) {
-            Log.w('[MatsuriEffect] collect busy — ignore');
             return;
         }
         this._resolveRefs();
@@ -489,8 +492,6 @@ export class MatsuriEffect extends Component {
                     arr.findIndex(t => t.reel === c.reel && t.row === c.row) === i,
                 ),
         );
-
-        Log.e(`[MatsuriEffect:COLLECT] golds=${cells.length} target=${this.collectTargetNode?.name ?? 'NONE'}`);
 
         if (cells.length === 0) {
             EventBus.instance.emit(GameEvents.MATSURI_COLLECT_DONE);
@@ -517,12 +518,16 @@ export class MatsuriEffect extends Component {
             await this._phaseHighlightStaggered(this._collectCells);
             if (DELAY_BEFORE_FLY > 0) await this._wait(DELAY_BEFORE_FLY);
             await this._phaseFlyAll();
-        } catch (err) {
-            Log.e('[MatsuriEffect:COLLECT] error', err);
+        } catch {
+            // collect failsafe
         }
         this._collectBusy = false;
         this._cleanupClones();
-        EventBus.instance.emit(GameEvents.MATSURI_COLLECT_DONE);
+        try {
+            EventBus.instance.emit(GameEvents.MATSURI_COLLECT_DONE);
+        } catch {
+            EventBus.instance.emit(GameEvents.MATSURI_FLIP_DONE);
+        }
     }
 
     /**
@@ -660,10 +665,9 @@ export class MatsuriEffect extends Component {
 
             this._activeClones.push(clone);
 
-            const flyDur = FLY_DURATION;
-            const shrinkRatio = Math.min(0.9, Math.max(0.1, FLY_SHRINK_START_RATIO));
-            const holdDur = flyDur * shrinkRatio;
-            const shrinkDur = flyDur * (1 - shrinkRatio);
+            const flyDur = this._durationFromSpeed(start, end, FLY_SPEED);
+            const shrinkDur = Math.min(FLY_SHRINK_DURATION, flyDur * 0.35);
+            const holdDur = Math.max(0, flyDur - shrinkDur);
 
             const failSafe = () => {
                 this._destroyClone(clone);
@@ -671,7 +675,7 @@ export class MatsuriEffect extends Component {
             };
             this.scheduleOnce(failSafe, flyDur + 1.0);
 
-            // Bay cả chặng; từ nửa đường co scale → 0 (song song với đoạn bay còn lại)
+            // Bay full size; chỉ co scale ở đoạn cuối sắp chạm UI
             tween(clone)
                 .to(flyDur, {
                     position: new Vec3(end.x, end.y, 0),
@@ -739,12 +743,16 @@ export class MatsuriEffect extends Component {
     private _pulseTotal(): void {
         const sn = this.collectTotalSpriteNumber;
         if (!sn?.node?.isValid) return;
-        const bs = this._totalBaseScale;
-        Tween.stopAllByTarget(sn.node);
-        tween(sn.node)
-            .to(0.07, { scale: new Vec3(bs.x * 1.28, bs.y * 1.28, bs.z) })
-            .to(0.1, { scale: new Vec3(bs.x, bs.y, bs.z) })
-            .start();
+        try {
+            const bs = this._totalBaseScale;
+            Tween.stopAllByTarget(sn.node);
+            tween(sn.node)
+                .to(0.07, { scale: new Vec3(bs.x * 1.28, bs.y * 1.28, bs.z) })
+                .to(0.1, { scale: new Vec3(bs.x, bs.y, bs.z) })
+                .start();
+        } catch {
+            // pulse failsafe
+        }
     }
 
     private _destroyClone(clone: Node): void {

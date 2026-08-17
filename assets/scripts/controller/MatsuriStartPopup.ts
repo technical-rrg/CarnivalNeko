@@ -121,22 +121,21 @@ export class MatsuriStartPopup extends Component {
         }
         this.node.active = true;
         this._fitOverlayFullscreen();
-        // Widget đôi khi cần 1 frame sau khi active mới stretch đúng
-        this.scheduleOnce(() => this._fitOverlayFullscreen(), 0);
         EventBus.instance.emit(GameEvents.POPUP_OPENED);
 
-        // Chỉ Panel scale-in
         const panel = this.popupNode;
         if (panel) {
             panel.setScale(0.2, 0.2, 1);
             const op = panel.getComponent(UIOpacity) ?? panel.addComponent(UIOpacity);
             op.opacity = 255;
             Tween.stopAllByTarget(panel);
-            tween(panel)
-                .to(0.28, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'backOut' })
-                .to(0.12, { scale: new Vec3(1, 1, 1) }, { easing: 'sineOut' })
-                .start();
         }
+
+        // Scale-in frame sau — tránh tween chạy cùng instantiate/layout
+        this.scheduleOnce(() => {
+            this._fitOverlayFullscreen();
+            this._playPanelScaleIn();
+        }, 0);
 
         if (this.hintLabel) {
             const hn = this.hintLabel.node;
@@ -154,6 +153,18 @@ export class MatsuriStartPopup extends Component {
         this.scheduleOnce(() => this._bindInput(), 0.15);
 
         Log.d(`[MatsuriStartPopup] show "${feature.featureName}" 5x${rows}`);
+    }
+
+    private _playPanelScaleIn(): void {
+        if (!this._isOpen) return;
+        const panel = this.popupNode;
+        if (panel?.isValid) {
+            Tween.stopAllByTarget(panel);
+            tween(panel)
+                .to(0.28, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'backOut' })
+                .to(0.12, { scale: new Vec3(1, 1, 1) }, { easing: 'sineOut' })
+                .start();
+        }
     }
 
     private _bindInput(): void {

@@ -11,6 +11,8 @@
  */
 
 import { StickyCell, SymbolId, TopupReelSlot, TopupReelType, PS_TO_CLIENT } from './SlotTypes';
+import { GameData } from './GameData';
+import { Log } from '../core/Logger';
 
 export const MATSURI_COL_COUNT = 5;
 /**
@@ -21,6 +23,8 @@ export const MATSURI_COL_COUNT = 5;
 export const MATSURI_SPIN_COUNT = 3;
 export const MATSURI_MIN_ROWS = 3;
 export const MATSURI_MAX_ROWS = 5;
+/** Size 1 ô GridMiniReel / coin slot (px). FrameFront 5×5 trừ đúng 1 ô khi 5×4, 2 ô khi 5×3. */
+export const MATSURI_CELL_SIZE = 130;
 
 export function clampMatsuriRows(rows: number): number {
     const n = Math.floor(rows);
@@ -30,33 +34,43 @@ export function clampMatsuriRows(rows: number): number {
 }
 
 /**
- * Scale root StickyOverlay (GridMiniReel + coin) theo số hàng.
- * Baseline = 5×3 (scale 1). 5×4 / 5×5 thu nhỏ nhẹ để vừa viewport.
+ * Scale root StickyOverlay — luôn 1.
+ * Khung / grid đã trừ height + canh giữa theo số hàng, không thu nhỏ root nữa.
  */
-export function matsuriGridFitScale(rows: number): number {
-    const r = clampMatsuriRows(rows);
-    if (r <= MATSURI_MIN_ROWS) return 1;
-    if (r === 4) return 0.85; // Mega — to hơn 0.75
-    return 0.72;              // Super 5×5 — to hơn 0.6
+export function matsuriGridFitScale(_rows?: number): number {
+    return 1;
 }
 
 /**
  * Hệ số chiều cao local của FillBlackFrame / mask theo số hàng
  * (trước khi root scale xuống). 5×3 = 1, 5×4 ≈ 1.33, 5×5 ≈ 1.67.
+ * @deprecated Prefab baseline đã là 5×5 — dùng matsuriGridFrameHeightShrink.
  */
 export function matsuriGridFrameHeightMul(rows: number): number {
     return clampMatsuriRows(rows) / MATSURI_MIN_ROWS;
 }
 
 /**
- * Đẩy Y local StickyOverlay lên (px) theo số hàng.
- * 5×3 → 16, 5×4 → 52, 5×5 → 78.
+ * Trừ height FrameFront / fill / mask từ baseline 5×5.
+ * 5×5 → 0, 5×4 → 130, 5×3 → 260.
  */
-export function matsuriGridYOffset(rows: number): number {
-    const r = clampMatsuriRows(rows);
-    if (r <= MATSURI_MIN_ROWS) return 16;
-    if (r === 4) return 152;
-    return 178;
+export function matsuriGridFrameHeightShrink(rows: number): number {
+    return MATSURI_CELL_SIZE * (MATSURI_MAX_ROWS - clampMatsuriRows(rows));
+}
+
+/**
+ * Dịch Y grid từ layout prefab 5×5 khi ẩn hàng dưới (giữ lệch khung do artist canh).
+ * 5×5 → 0, 5×4 → -65, 5×3 → -130.
+ */
+export function matsuriGridPrefabYShift(rows: number): number {
+    return -matsuriGridFrameHeightShrink(rows) * 0.5;
+}
+
+/**
+ * Offset Y root StickyOverlay — luôn 0 (grid đã canh trong FrameFront).
+ */
+export function matsuriGridYOffset(_rows?: number): number {
+    return 0;
 }
 
 export function matsuriCellCount(rows: number): number {
@@ -104,31 +118,68 @@ export function pickMatsuriCredit(totalBet: number, rng: () => number = Math.ran
 
 /**
  * Parse StarterCoins / NewStickies / AllStickies từ CNSpinResponse (V1.0.2).
- * Shape: [{ Reel, Row, Credit }] — Credit bắt buộc từ server trên Real path.
+ * Shape: [{ Reel, Row, Credit }] — Credit = PayoutRate × TotalBet (đã nhân sẵn).
  * Server Row 0 = top → visual row 0 = bottom.
+ *
+ * Không dùng `Credit ?? Win`: Credit:0 (default server) sẽ nuốt Win/PayoutRate.
  */
+export function parseCnStickyCredit(item: any, totalBet?: number): number {
+    if (item == null || typeof item !== 'object') return 0;
+    const nested = item.Sticky ?? item.sticky ?? item.Data ?? item.data ?? item.Coin ?? item.coin;
+    const sources = [item, nested].filter((v) => v != null && typeof v === 'object');
+    const firstPositive = (keys: string[]): number => {
+        for (const src of sources) {
+            for (const key of keys) {
+                const n = Number(src[key]);
+                if (Number.isFinite(n) && n > 0) return n;
+            }
+        }
+        return 0;
+    };
+    const direct = firstPositive([
+        'Credit', 'credit', 'Win', 'win', 'Val', 'val', 'Value', 'value',
+        'Prize', 'prize', 'Payout', 'payout', 'Amount', 'amount',
+        'Cash', 'cash', 'CoinValue', 'coinValue', 'StickyWin', 'stickyWin',
+    ]);
+    if (direct > 0) return direct;
+    const rate = firstPositive([
+        'PayoutRate', 'payoutRate', 'Rate', 'rate', 'Mul', 'mul',
+        'Multiplier', 'multiplier', 'BetMul', 'betMul',
+    ]);
+    const bet = (Number.isFinite(totalBet) && (totalBet as number) > 0)
+        ? (totalBet as number)
+        : (GameData.instance?.totalBet ?? 0);
+    if (rate > 0 && bet > 0) return rate * bet;
+    return 0;
+}
+
 export function parseCnStickyCells(
     raw: any,
     featureRows: number,
     defaultSymbolId: number = MATSURI_GOLD_SYMBOL,
+    totalBet?: number,
 ): StickyCell[] {
     if (!Array.isArray(raw) || raw.length === 0) return [];
     const rows = clampMatsuriRows(featureRows || 3);
     const out: StickyCell[] = [];
     for (const item of raw) {
         if (item == null) continue;
-        const reel = Number(item.Reel ?? item.reel ?? 0);
+        const reel = Number(item.Reel ?? item.reel ?? item.Col ?? item.col ?? item.Column ?? 0);
         const apiRow = Number(item.Row ?? item.row ?? 0);
         const row = rows - 1 - apiRow;
         if (reel < 0 || reel >= MATSURI_COL_COUNT || row < 0 || row >= rows) continue;
-        const credit = Number(item.Credit ?? item.credit ?? 0);
+        const credit = parseCnStickyCredit(item, totalBet);
+        if (credit <= 0 && defaultSymbolId === SymbolId.STICKY_GREEN) {
+            const keys = item && typeof item === 'object' ? Object.keys(item).join(',') : '';
+            Log.e(`[GREEN-CREDIT][PARSE] col=${reel} row=${row} apiRow=${apiRow} credit=0 keys=${keys || 'none'} raw=${JSON.stringify(item)}`);
+        }
         const psSym = item.SymbolId ?? item.symbolId ?? item.Symbol ?? item.PsId;
         let symbolId = defaultSymbolId;
         if (psSym != null) {
             const mapped = PS_TO_CLIENT[Number(psSym)];
             if (mapped != null && mapped >= 0) symbolId = mapped;
         }
-        out.push({ reel, row, symbolId, credit: credit > 0 ? credit : 0 });
+        out.push({ reel, row, symbolId, credit });
     }
     return out;
 }

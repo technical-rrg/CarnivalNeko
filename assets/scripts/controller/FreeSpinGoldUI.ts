@@ -1,21 +1,16 @@
 /**
  * FreeSpinGoldUI — UI trên node FreeSpinUI (Base.prefab).
  *
- * Dùng cho:
- *   • FreeSpin Gold (legacy GoF)
- *   • Carnival Matsuri Hold&Spin (feature chính)
- *
- * TopUpUI không còn dùng cho Matsuri — luôn để FreeSpinUI.
+ * Chỉ dùng cho FreeSpin Gold (legacy).
+ * Carnival Matsuri: remain + tổng tiền vẽ trên StickyOverlay (không bật node này).
  *
  * Events:
  *   FREE_SPIN_GOLD_*          → FreeSpin Gold mode
- *   CARNIVAL_MATSURI_START/END + TOPUP_COUNT/TOTAL + MATSURI_COLLECT_CREDIT → Matsuri
  */
 
 import { _decorator, Component, Node } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
-import { GameData } from '../data/GameData';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { Log } from '../core/Logger';
 
@@ -44,7 +39,6 @@ export class FreeSpinGoldUI extends Component {
 
     private _goldAccumulated: number = 0;
     private _lastSpinsRemaining: number = -1;
-    private _matsuriMode = false;
 
     onLoad(): void {
         this._autoWireSpriteNumbers();
@@ -55,13 +49,6 @@ export class FreeSpinGoldUI extends Component {
         bus.on(GameEvents.FREE_SPIN_GOLD_ABSORB_CREDIT, this._onAbsorbCredit, this);
         bus.on(GameEvents.FREE_SPIN_GOLD_END, this._onGoldEnd, this);
 
-        // Matsuri / Carnival feature → dùng FreeSpinUI
-        bus.on(GameEvents.CARNIVAL_MATSURI_START, this._onMatsuriStart, this);
-        bus.on(GameEvents.CARNIVAL_MATSURI_END, this._onMatsuriEnd, this);
-        bus.on(GameEvents.TOPUP_COUNT_UPDATED, this._onTopUpCount, this);
-        bus.on(GameEvents.TOPUP_TOTAL_UPDATED, this._onTopUpTotal, this);
-        bus.on(GameEvents.MATSURI_COLLECT_CREDIT, this._onMatsuriCollectCredit, this);
-
         this.node.active = false;
     }
 
@@ -69,7 +56,7 @@ export class FreeSpinGoldUI extends Component {
         EventBus.instance.offTarget(this);
     }
 
-    /** Tổng credit node — MatsuriEffect dùng làm đích bay. */
+    /** Tổng credit node — chỉ dùng cho FreeSpin Gold. */
     getCollectTargetNode(): Node | null {
         return this.goldTotalSpriteNumber?.node
             ?? this.node.getChildByName('CoinCount')
@@ -79,59 +66,16 @@ export class FreeSpinGoldUI extends Component {
     // ── FreeSpin Gold ─────────────────────────────────────────────────────────
 
     private _onGoldStart(payload: { spinsRemaining: number; baseCredit: number }): void {
-        this._matsuriMode = false;
         this._showUI(payload.spinsRemaining, 0, payload.baseCredit);
     }
 
     private _onGoldEnd(): void {
-        if (this._matsuriMode) return;
         this._hideUI();
     }
 
     private _onAbsorbCredit(payload: { credit: number }): void {
-        if (this._matsuriMode) return;
         this._goldAccumulated += payload.credit ?? 0;
         this._showGoldTotal();
-    }
-
-    // ── Matsuri ───────────────────────────────────────────────────────────────
-
-    private _onMatsuriStart(): void {
-        this._matsuriMode = true;
-        const data = GameData.instance;
-        this._showUI(data.respinRemaining || 3, data.respinTotalWin || 0, data.featureBaseCredit || 0);
-        Log.e('[FreeSpinUI] Matsuri START — FreeSpinUI active');
-    }
-
-    private _onMatsuriEnd(): void {
-        if (!this._matsuriMode) return;
-        this._matsuriMode = false;
-        this._hideUI();
-        Log.e('[FreeSpinUI] Matsuri END — FreeSpinUI hidden');
-    }
-
-    private _onTopUpCount(count: number): void {
-        if (!this._matsuriMode) return;
-        this._onCountUpdated(count);
-    }
-
-    private _onTopUpTotal(payload: { totalWin?: number }): void {
-        if (!this._matsuriMode) return;
-        if (payload?.totalWin == null) return;
-        this._goldAccumulated = Math.max(0, payload.totalWin);
-        GameData.instance.topUpDisplayedEachWin = this._goldAccumulated;
-        this._showGoldTotal();
-    }
-
-    private _onMatsuriCollectCredit(payload: { credit?: number }): void {
-        if (!this._matsuriMode) return;
-        // TOPUP_TOTAL_UPDATED cũng tới — vẫn sync nếu chỉ có credit event
-        if (payload?.credit != null && payload.credit > 0) {
-            // total đã được GM cộng; sync từ GameData cho chắc
-            this._goldAccumulated = GameData.instance.respinTotalWin;
-            GameData.instance.topUpDisplayedEachWin = this._goldAccumulated;
-            this._showGoldTotal();
-        }
     }
 
     // ── Shared ────────────────────────────────────────────────────────────────

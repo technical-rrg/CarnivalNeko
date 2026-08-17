@@ -11,12 +11,13 @@
  *   stop()     → tween về rest positions, gán đúng symbol tại Index, xử lý Lock
  */
 
-import { _decorator, Color, Component, Node, Sprite, SpriteFrame, tween, Vec3, Tween, Label, UIOpacity } from 'cc';
+import { _decorator, Color, Component, Node, Size, Sprite, SpriteFrame, tween, Vec3, Tween, Label, UIOpacity, UITransform } from 'cc';
 import { Log } from '../core/Logger';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { SymbolId, TopupReelType } from '../data/SlotTypes';
 import { GameData } from '../data/GameData';
+import { MATSURI_CELL_SIZE } from '../data/MatsuriGridUtil';
 import { SymbolView } from './SymbolView';
 
 const { ccclass, property } = _decorator;
@@ -25,6 +26,24 @@ enum ReelState { IDLE, LAUNCHING, SPINNING, STOPPING }
 
 /** Scale sticky vàng/xanh trên TopUpReel — StickyOverlay bắt đầu bounce từ giá trị này. */
 export const TOPUP_STICKY_SYMBOL_SCALE = 0.85;
+
+/** Ô reel = 130; symbol thường gói gọn trong 127×127. */
+export const GRID_MINI_SYMBOL_SIZE = 127;
+/** Đồng vàng / xanh — size cứng, khác symbol thường. */
+export const GRID_MINI_COIN_SIZE = 200;
+export const GRID_MINI_SYMBOL_SCALE = 1;
+
+export function isGridMiniCoinSymbol(symbolId: number): boolean {
+    return symbolId === SymbolId.STICKY_YELLOW || symbolId === SymbolId.STICKY_GREEN;
+}
+
+/** Fit sprite trong hình vuông max×max — giữ tỉ lệ, không ép vuông. */
+export function fitSpriteFrameInSquare(frame: SpriteFrame, maxSize: number): Size {
+    const ow = Math.max(1, frame.originalSize?.width ?? frame.width ?? maxSize);
+    const oh = Math.max(1, frame.originalSize?.height ?? frame.height ?? maxSize);
+    const scale = Math.min(maxSize / ow, maxSize / oh);
+    return new Size(ow * scale, oh * scale);
+}
 
 /** Màu symbol thường khi reel đang quay (tối hơn để nổi bật sticky vàng/xanh). */
 const DIM_SYMBOL_COLOR = new Color(0x40, 0x40, 0x40, 255);
@@ -96,7 +115,7 @@ export class TopUpReelController extends Component {
             if (node) {
                 Tween.stopAllByTarget(node);
                 node.active = true;
-                node.setScale(1, 1, 1);
+                node.setScale(GRID_MINI_SYMBOL_SCALE, GRID_MINI_SYMBOL_SCALE, 1);
                 node.setRotationFromEuler(0, 0, 0);
                 const credit = node.getChildByName('CreditLabel');
                 if (credit) {
@@ -129,6 +148,7 @@ export class TopUpReelController extends Component {
 
     onLoad(): void {
         this._logPrefix = `[TopUpReel ${this.name}]`;
+        this._applyGridCellSymbolFit();
 
         // Auto-layout: node[1] = Mid giữ Y, Top cao hơn, Bot thấp hơn
         if (this.autoLayoutSymbols && this.symbolNodes.length === 3) {
@@ -446,14 +466,61 @@ export class TopUpReelController extends Component {
         } else {
             node.emit('symbol-changed', symId);
         }
-        // Sau SymbolView (có thể reset scale về default) — sticky vàng/xanh = 0.85, còn lại = 1
+        // Sau SymbolView — fit trong 127×127, giữ tỉ lệ gốc (không ép vuông).
         this._applyStickyScale(node, symId);
+        this._fitSymbolInCell(node, symId);
     }
 
-    /** Carnival: chỉ Sticky xanh scale sticky; còn lại = 1. */
-    private _applyStickyScale(node: Node, symId: number): void {
-        const s = (symId === SymbolId.STICKY_GREEN) ? TOPUP_STICKY_SYMBOL_SCALE : 1;
+    /** Scale node = 1; kích thước sprite do _fitSymbolInCell. */
+    private _applyStickyScale(node: Node, _symId: number): void {
+        const s = GRID_MINI_SYMBOL_SCALE;
         node.setScale(s, s, 1);
+    }
+
+    /** Symbol thường ≤127 (giữ tỉ lệ). Vàng/xanh = 200×200. */
+    private _fitSymbolInCell(node: Node | null, symbolId?: number): void {
+        if (!node) return;
+        const sp = node.getComponent(Sprite);
+        const ut = node.getComponent(UITransform);
+        if (!sp || !ut) return;
+        sp.sizeMode = Sprite.SizeMode.CUSTOM;
+        const sid = symbolId
+            ?? node.getComponent(SymbolView)?.symbolId
+            ?? -1;
+        if (isGridMiniCoinSymbol(sid)) {
+            ut.setContentSize(GRID_MINI_COIN_SIZE, GRID_MINI_COIN_SIZE);
+            return;
+        }
+        const frame = sp.spriteFrame;
+        if (!frame) {
+            ut.setContentSize(GRID_MINI_SYMBOL_SIZE, GRID_MINI_SYMBOL_SIZE);
+            return;
+        }
+        const fit = fitSpriteFrameInSquare(frame, GRID_MINI_SYMBOL_SIZE);
+        ut.setContentSize(fit.width, fit.height);
+    }
+
+    /** Ô / mask = 130; symbol content ≤ 127, giữ tỉ lệ. */
+    private _applyGridCellSymbolFit(): void {
+        const cell = MATSURI_CELL_SIZE;
+        const rootUt = this.node.getComponent(UITransform);
+        if (rootUt) rootUt.setContentSize(cell, cell);
+
+        const container = this.node.getChildByName('ReelContainer');
+        const containerUt = container?.getComponent(UITransform);
+        if (containerUt) containerUt.setContentSize(cell, cell);
+
+        const mask = container?.getChildByName('Mask') ?? this.node.getChildByName('Mask');
+        const maskUt = mask?.getComponent(UITransform);
+        if (maskUt) maskUt.setContentSize(cell, cell);
+
+        for (const node of this.symbolNodes) {
+            if (!node) continue;
+            const view = node.getComponent(SymbolView);
+            if (view) view.defaultScale = GRID_MINI_SYMBOL_SCALE;
+            this._fitSymbolInCell(node);
+            node.setScale(GRID_MINI_SYMBOL_SCALE, GRID_MINI_SYMBOL_SCALE, 1);
+        }
     }
 
     /** Lấy 3 symbol từ strip tại centerIndex theo visual normal reel — [visualTop, mid, visualBot]. */
@@ -556,7 +623,7 @@ export class TopUpReelController extends Component {
         for (const node of this.symbolNodes) {
             if (!node) continue;
             node.active = true;
-            node.setScale(1, 1, 1);
+            node.setScale(GRID_MINI_SYMBOL_SCALE, GRID_MINI_SYMBOL_SCALE, 1);
             node.setRotationFromEuler(0, 0, 0);
             const opacity = node.getComponent(UIOpacity);
             if (opacity) {
@@ -605,8 +672,21 @@ export class TopUpReelController extends Component {
 
         if (midNode) {
             const sprite = midNode.getComponent(Sprite);
-            if (sprite && frameIdx >= 0 && frameIdx < this.coinFrames.length) {
-                sprite.spriteFrame = this.coinFrames[frameIdx];
+            let frame = (frameIdx >= 0 && frameIdx < this.coinFrames.length)
+                ? this.coinFrames[frameIdx]
+                : null;
+            if (!frame) {
+                const sid = coinType === TopupReelType.GREEN
+                    ? SymbolId.STICKY_GREEN
+                    : SymbolId.STICKY_YELLOW;
+                frame = this.symbolFrames[sid] ?? null;
+            }
+            if (sprite && frame) {
+                sprite.spriteFrame = frame;
+                const sid = coinType === TopupReelType.GREEN
+                    ? SymbolId.STICKY_GREEN
+                    : SymbolId.STICKY_YELLOW;
+                this._fitSymbolInCell(midNode, sid);
             }
         }
 

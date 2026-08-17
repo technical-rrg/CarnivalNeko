@@ -404,27 +404,24 @@ export class MockDataProvider {
                 const key = `${reel}-${row}`;
                 if (stickyMap.has(key)) continue;
                 if (Math.random() >= 0.10) continue;
-                const credit = pickMatsuriCredit(totalBet);
                 landedGreen = true;
                 newGreens.push({
                     reel,
                     row,
                     symbolId: SymbolId.STICKY_GREEN,
-                    credit,
+                    credit: pickMatsuriCredit(totalBet),
                 });
             }
         }
 
-        const topupReel = buildMatsuriTopupReel(stickyMap, newGreens, rows);
-
-        // ★ remainRespinCount = field API (mock gán tạm, client chỉ đọc resp.remainRespinCount)
-        // Design Matsuri: mỗi spin GM đã −1 trước request;
-        //   • không Green → giữ remain hiện tại (có thể 2→1→0 rồi END)
-        //   • có Green  → RESET về 3  ← đây là lý do UI thấy 3→2 rồi lại lên 3
+        // Mỗi Green +1 remain (cap 3). GM đã −1 trước request.
         const remainBefore = Math.max(0, data.respinRemaining);
-        let remainRespinCount = landedGreen ? MATSURI_SPIN_COUNT : remainBefore;
+        const greenAdds = newGreens.length;
+        let remainRespinCount = landedGreen
+            ? Math.min(MATSURI_SPIN_COUNT, remainBefore + greenAdds)
+            : remainBefore;
 
-        // Design: khi có Green → acquire tổng Credit của mọi Gold đang trên grid (+ Grand nếu full)
+        // Mock API: Green.Credit = tổng Gold đang hold (+ Grand nếu full)
         let collectWin = 0;
         if (landedGreen) {
             for (const c of stickyMap.values()) {
@@ -442,6 +439,11 @@ export class MockDataProvider {
             remainRespinCount = 0;
             Log.e(`[Matsuri MOCK] FULL GRID 5×${rows} → Grand + end`);
         }
+        for (const g of newGreens) {
+            if ((g.credit ?? 0) <= 0) g.credit = pickMatsuriCredit(totalBet);
+        }
+
+        const topupReel = buildMatsuriTopupReel(stickyMap, newGreens, rows);
 
         const spinWin = collectWin;
         const nextStage = (fullGrid || remainRespinCount <= 0)
@@ -455,7 +457,7 @@ export class MockDataProvider {
         Log.e(
             `[Matsuri MOCK] rows=${rows} newGreen=${newGreens.length} filled=${filledAfter}/${cellCount}` +
             ` remain ${remainBefore}→${remainRespinCount}` +
-            `${landedGreen ? ' (GREEN reset→3)' : ''}` +
+            `${landedGreen ? ` (GREEN +${greenAdds})` : ''}` +
             ` collect=${spinWin} next=${nextStage}`
         );
 
@@ -470,6 +472,7 @@ export class MockDataProvider {
             reelIndex: 3,
             remainCash: data.player.balance + spinWin,
             stickyCells: newGreens,
+            newStickies: newGreens,
             remainRespinCount,
             featureSpinTotalWin: data.respinTotalWin + spinWin,
             topupReel,

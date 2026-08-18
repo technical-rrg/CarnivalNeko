@@ -13488,7 +13488,7 @@
       "__id__": 761
     },
     "flipHalfDuration": 0.12,
-    "postStopHoldDuration": 0.25,
+    "postStopHoldDuration": 0.05,
     "flyDurationNormal": 0.75,
     "flyDurationQuick": 0.55,
     "flyDurationTurbo": 0.4,
@@ -13496,7 +13496,7 @@
     "apexHeight": 180,
     "flyCurvature": 0.8,
     "minFlyPathDistance": 180,
-    "flyLaunchDelay": 0.04,
+    "flyLaunchDelay": 0.02,
     "particleFadeOutDuration": 1.2,
     "_id": ""
   },
@@ -16692,7 +16692,7 @@
   },
   {
     "__type__": "SpeedModeSettings",
-    "spinSpeed": 5000,
+    "spinSpeed": 3000,
     "minSpinDuration": 0.5,
     "minSpinDurationFreeSpin": 0.5,
     "decelDuration": 0.5,
@@ -16704,7 +16704,7 @@
   },
   {
     "__type__": "SpeedModeSettings",
-    "spinSpeed": 7000,
+    "spinSpeed": 5000,
     "minSpinDuration": 0.3,
     "minSpinDurationFreeSpin": 0.3,
     "decelDuration": 0.2,
@@ -16716,7 +16716,7 @@
   },
   {
     "__type__": "SpeedModeSettings",
-    "spinSpeed": 8000,
+    "spinSpeed": 6000,
     "minSpinDuration": 0.15,
     "minSpinDurationFreeSpin": 0.15,
     "decelDuration": 0.1,

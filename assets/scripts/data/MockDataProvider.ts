@@ -693,6 +693,7 @@ export class MockDataProvider {
             matchedSymbols: w.cells.map(() => w.symbolId),
             containsWild: w.containsWild,
             reelCnt: w.reelCount,
+            matchedSymbolsCount: w.reelCount,
             matchedSymbolsIndices: w.cells.map((c) => ({ Item1: c.reel, Item2: c.row })),
         }));
     }

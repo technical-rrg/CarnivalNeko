@@ -34,9 +34,6 @@ const _matchWhitelist = (args: any[]): boolean => {
     return false;
 };
 
-/** TEMP DEBUG: chỉ cho qua log chứa tag này — tắt hết log khác. */
-const DEBUG_ONLY_TAG = 'spin-hang';
-
 export const Log = {
     d: (...args: any[]) => { if (_orig && _matchWhitelist(args)) { _orig.log(...args); } },
     w: (...args: any[]) => { if (_orig && _matchWhitelist(args)) { _orig.warn(...args); } },
@@ -64,19 +61,8 @@ export const Log = {
     clearWhitelist: (): void => { _white.clear(); },
 };
 
-// Carnival Neko debug + legacy tags
+// Chỉ in kết quả spin + lỗi network nghiêm trọng.
 Log.setWhitelist([
-    DEBUG_ONLY_TAG,
-    'progressivebgm',
-    'carnival',       // [CarnivalTrail], [CarnivalPot], [CarnivalMatsuri], …
-    'gamemanager',    // [GameManager] POT_WIN / BURST routing
-    'mockdataprovider',
-    'debug-pick',
-    'spin-req',       // [SPIN-REQ] Real API spin body
-    'network',        // [Network] SERVER ERROR / retry / dead
-    'sv-err',         // [SV-ERR] raw spin fields
-    'cn-feature',     // [CN-FEATURE] feature parse
-    'claim',          // [Claim] / [TopUp-CLAIM]
-    'matsuri',        // [Matsuri] mid-feature
-    'green-credit',   // [GREEN-CREDIT] Matsuri Green credit debug
+    'spin-result',    // [SPIN-RESULT] lines / totalWin / mult
+    'network',        // [Network] SERVER ERROR / decrypt fail / retry dead
 ]);

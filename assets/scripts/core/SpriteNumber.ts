@@ -262,6 +262,7 @@ export class SpriteNumber extends Component {
      * Dùng khi enableLangCurrency=true và server trả về currency code rõ ràng.
      * Ưu tiên hơn ngôn ngữ UI đang chọn.
      */
+    
     private static readonly CURRENCY_CODE_TO_SPRITE_INDEX: Record<string, number> = {
         // index khớp LANG_ORDER + 2 đơn vị thêm:
         // en=0, ko=1, zh-cn=2, zh-tw=3, fil=4, ja=5, th=6, sg=7, ms=8, vi=9, au=10, hk=11, C$=12, USDT=13

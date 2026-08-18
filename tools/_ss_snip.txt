@@ -1,0 +1,4 @@
+r: in sheet: False
+sheet r:id: 0
+preserve sample:
+'" /><family val="2" /></rPr><t>错误。\n您已与服务器断开连接。</t></r></si><si><r><t xml:space="preserve">Symbol ID 錯誤。\n</t></r><r><rPr><sz val="10" /><colo'

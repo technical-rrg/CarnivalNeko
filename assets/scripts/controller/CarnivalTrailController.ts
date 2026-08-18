@@ -68,9 +68,10 @@ export class CarnivalTrailController extends Component {
     flipHalfDuration: number = 0.12;
 
     @property({
-        tooltip: 'Sau khi reel dừng + hiện TRAIL_NORMAL xong, chờ bao lâu (giây) rồi mới flip/bay.',
+        tooltip: 'Sau khi reel dừng + hiện TRAIL_NORMAL xong, chờ bao lâu (giây) rồi mới flip/bay.\n'
+               + 'Hay chỉnh: giảm để trail bắn sớm hơn sau khi symbol land.',
     })
-    postStopHoldDuration: number = 0.25;
+    postStopHoldDuration: number = 0.05;
 
     @property({ tooltip: 'Thời gian particle bay Normal (giây) — khớp Wild Trail' })
     flyDurationNormal: number = 0.8;
@@ -104,9 +105,9 @@ export class CarnivalTrailController extends Component {
 
     @property({
         tooltip: 'Delay tối thiểu trước khi bắt đầu bay (giây) — chờ particle/trail seed tại Symbol.\n'
-               + 'Turbo/Quick sẽ tự nâng thêm để kịp thấy trail xuất phát từ Symbol.',
+               + 'Hay chỉnh: giảm để trail bay ngay sau flip ra màu.',
     })
-    flyLaunchDelay: number = 0.06;
+    flyLaunchDelay: number = 0.02;
 
     @property({
         tooltip: 'Thời gian giữ particle sau khi chạm Pot (giây).\n'
@@ -201,7 +202,7 @@ export class CarnivalTrailController extends Component {
 
         const symbolNode = this._getSymbolNode(hit.reel, hit.row);
         const reelCtrl = this.reels[hit.reel];
-        // Chờ stop-bounce xong → ép TRAIL_NORMAL → giữ 0.5s → flip/bay
+        // Chờ stop-bounce xong → ép TRAIL_NORMAL → giữ ngắn → flip/bay
         if (symbolNode?.isValid && reelCtrl && !reelCtrl.isIdle) {
             symbolNode.once('reel-settled', () => {
                 if (symbolNode.isValid) this._holdNormalThenAnimate(hit);
@@ -242,13 +243,22 @@ export class CarnivalTrailController extends Component {
         const baseX = symbolNode.scale.x;
         const baseY = symbolNode.scale.y;
 
-        // Đảm bảo vẫn đang ở NORMAL trước khi bắt đầu flip (sau hold 0.5s)
+        // Đảm bảo vẫn đang ở NORMAL trước khi bắt đầu flip
         if (view) {
             view.setSymbol(SymbolId.TRAIL_NORMAL);
             this._resetSpriteColor(view);
         }
 
         const half = this.flipHalfDuration;
+        let flyStarted = false;
+        const startFly = () => {
+            if (flyStarted) return;
+            flyStarted = true;
+            this._flyToPot(symbolNode, hit, () => {
+                this._flyingCount = Math.max(0, this._flyingCount - 1);
+                this._emitHitAndMaybeDone(hit.color);
+            });
+        };
         // ★ Tween PROXY — không tween symbolNode (setSymbol sẽ stopAllByTarget và cắt chuỗi bay)
         const proxy = { s: baseX };
         tween(proxy)
@@ -264,6 +274,8 @@ export class CarnivalTrailController extends Component {
                     this._resetSpriteColor(view);
                 }
                 if (symbolNode.isValid) symbolNode.setScale(0.05, baseY, 1);
+                // Bắn trail ngay khi flip ra màu — không chờ scale-out xong
+                startFly();
             })
             .to(half, { s: baseX }, {
                 easing: 'sineOut',
@@ -273,10 +285,6 @@ export class CarnivalTrailController extends Component {
             })
             .call(() => {
                 if (symbolNode.isValid) symbolNode.setScale(baseX, baseY, 1);
-                this._flyToPot(symbolNode, hit, () => {
-                    this._flyingCount = Math.max(0, this._flyingCount - 1);
-                    this._emitHitAndMaybeDone(hit.color);
-                });
             })
             .start();
     }
@@ -392,19 +400,19 @@ export class CarnivalTrailController extends Component {
     private _getLaunchDelay(totalDur: number): number {
         const mode = AutoSpinManager.instance.speedMode;
         let minHold = this.flyLaunchDelay;
-        let maxFrac = 0.25;
+        let maxFrac = 0.12;
         switch (mode) {
             case SpeedMode.TURBO:
-                minHold = Math.max(this.flyLaunchDelay, 0.14);
-                maxFrac = 0.35;
+                minHold = Math.max(this.flyLaunchDelay, 0.03);
+                maxFrac = 0.15;
                 break;
             case SpeedMode.QUICK:
-                minHold = Math.max(this.flyLaunchDelay, 0.09);
-                maxFrac = 0.3;
+                minHold = Math.max(this.flyLaunchDelay, 0.025);
+                maxFrac = 0.12;
                 break;
             default:
-                minHold = Math.max(this.flyLaunchDelay, 0.06);
-                maxFrac = 0.25;
+                minHold = Math.max(this.flyLaunchDelay, 0.02);
+                maxFrac = 0.1;
                 break;
         }
         return Math.min(Math.max(0, minHold), totalDur * maxFrac);

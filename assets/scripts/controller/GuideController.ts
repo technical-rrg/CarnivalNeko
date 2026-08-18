@@ -166,36 +166,33 @@ export class GuideController extends Component {
     }
 
     onEnable(): void {
-        // Stack trace để debug: ai đang activate GuideView?
-        const stack = new Error().stack ?? '(no stack)';
-        Log.d('[GuideController] onEnable called. Stack:\n' + stack);
-
         // Guard: nếu đã dismiss rồi thì từ chối — ai đó đang cố re-activate GuideView sai
         if (this._dismissed) {
-            Log.e('[GuideController] onEnable BLOCKED — GuideView đã được dismiss, force active=false!\nStack:\n' + stack);
+            Log.d('[GuideController] onEnable blocked — already dismissed');
             this.scheduleOnce(() => { this.node.active = false; }, 0);
             return;
         }
 
-        // Được gọi khi Loading/GEC bật GuideView
-        Log.d(`[GuideController] onEnable — black hold (deferFade=${this._deferEntranceFade})`);
+        try {
+            this._setupBgNodes();
+            if (this.guidePanel) this.guidePanel.active = true;
+            this._setGuideLabels();
+            this._showOverlayOnTop(GuideController._BLACK_OPAQUE);
 
-        this._setupBgNodes();
-        if (this.guidePanel) this.guidePanel.active = true;
-        this._setGuideLabels();
-        this._showOverlayOnTop(GuideController._BLACK_OPAQUE);
+            void this._ensureGuideFrames().then(() => {
+                if (!this.node.active || this._dismissed) return;
+                this._applyGuideLayout();
+            });
 
-        void this._ensureGuideFrames().then(() => {
-            if (!this.node.active || this._dismissed) return;
-            this._applyGuideLayout();
-        });
-
-        // Guide-first: giữ đen, chờ LoadingController gọi beginEntranceFade()
-        if (this._deferEntranceFade) {
-            this._deferEntranceFade = false;
-            return;
+            // Guide-first: giữ đen, chờ LoadingController gọi beginEntranceFade()
+            if (this._deferEntranceFade) {
+                this._deferEntranceFade = false;
+                return;
+            }
+            this.beginEntranceFade();
+        } catch (err) {
+            Log.e('[GuideController] onEnable failed', err);
         }
-        this.beginEntranceFade();
     }
 
     /**
@@ -498,7 +495,7 @@ export class GuideController extends Component {
     private _setupBgNodes(): void {
         if (this._prevTween) { this._prevTween.stop(); this._prevTween = null; }
         if (this._nextTween) { this._nextTween.stop(); this._nextTween = null; }
-        Log.d(`[GuideController] _setupBgNodes — bgNodes.length=${this.bgNodes.length}`);
+        if (!this.bgNodes) this.bgNodes = [];
         for (let i = 0; i < this.bgNodes.length; i++) {
             const node = this.bgNodes[i];
             if (!node) {

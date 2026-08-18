@@ -987,7 +987,7 @@ export class SlotMachineController extends Component {
     // ─── PHASE 1: BẮT ĐẦU QUAY (ngay khi nhấn Spin, trước khi chờ server) ───
 
     private _onReelsStartSpin(): void {
-        if (this._isTopUp) return; // TopUp mode: SlotMachineController không quay
+        if (this._isTopUp || GameData.instance.currentMode === 'matsuri') return;
 
         // Guard: reel chưa dừng hẳn từ spin trước → defer 0.2s rồi thử lại
         if (!this.areAllReelsStopped) {
@@ -1083,7 +1083,7 @@ export class SlotMachineController extends Component {
     // ─── PHASE 2: NHẬN KẾT QUẢ → RA LỆNH DỪNG ───
 
     private _onSpinResponse(response: SpinResponse): void {
-        if (this._isTopUp) return; // TopUp mode: SlotMachineController không dừng reels
+        if (this._isTopUp || GameData.instance.currentMode === 'matsuri') return;
 
         this._logSpinState(`[SPIN-HANG][SlotMC] SPIN_RESPONSE received | rands=${response.rands?.join(',')} reelIndex=${response.reelIndex}`);
 

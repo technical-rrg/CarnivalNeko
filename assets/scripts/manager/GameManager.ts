@@ -1554,7 +1554,9 @@ export class GameManager extends Component {
         }
 
         // ── 3) Remain = RemainFeatureSpinCount (server tự reset 3 khi có sticky mới) ──
-        const apiRemain = resp.remainRespinCount;
+        const apiRemain = Number.isFinite(Number(resp.remainRespinCount))
+            ? Number(resp.remainRespinCount)
+            : undefined;
         if (apiRemain != null && apiRemain >= 0) {
             data.respinRemaining = Math.min(MATSURI_SPIN_COUNT, apiRemain);
         } else if (greenLandedThisSpin) {
@@ -4864,6 +4866,7 @@ export class GameManager extends Component {
     // ─── HELPERS ───
 
     private _isFreeSpin(): boolean {
+        if (this._isMatsuri()) return false;
         return (
             this._currentStage === SlotStageType.FREE_SPIN ||
             this._currentStage === SlotStageType.FREE_SPIN_START ||
@@ -4881,22 +4884,28 @@ export class GameManager extends Component {
     /** CN: /Claim chỉ khi NextStage ≥ 100 (FREE_SPIN_END=101). 30034 nếu Claim lúc NextStage=4. */
     private _matsuriServerAllowsClaim(resp?: SpinResponse | null): boolean {
         if (!resp) return false;
-        if (resp.isGridFull) return true;
+        if (resp.isGridFull === true) return true;
         return Number(resp.nextStage ?? 0) >= SlotStageType.NEED_CLAIM;
     }
 
     /** Còn trong feature theo server — /Spin, không /Claim. */
     private _matsuriContinueSpin(resp?: SpinResponse | null): boolean {
         if (this._matsuriServerAllowsClaim(resp)) return false;
-        // API §4.5: NextStage là nguồn duy nhất — FREE_SPIN(4)/RE_TRIGGER(5)/START(3) → /Spin.
-        if (resp?.nextStage == null) return GameData.instance.respinRemaining > 0;
-        const ns = Number(resp.nextStage);
-        return ns === SlotStageType.FREE_SPIN
+        const ns = Number(resp?.nextStage);
+        if (ns === SlotStageType.FREE_SPIN
             || ns === SlotStageType.FREE_SPIN_RE_TRIGGER
             || ns === SlotStageType.FREE_SPIN_START
             || ns === SlotStageType.TOPUP_SPIN
             || ns === SlotStageType.TOPUP_SPIN_START
-            || ns === SlotStageType.CARNIVAL_MATSURI_START;
+            || ns === SlotStageType.CARNIVAL_MATSURI_START) {
+            return true;
+        }
+        // Web/parse miss NextStage (0/NaN) nhưng RemainFeatureSpinCount > 0 → vẫn /Spin.
+        if (!Number.isFinite(ns) || ns === SlotStageType.SPIN) {
+            const remain = resp?.remainRespinCount ?? GameData.instance.respinRemaining;
+            return (remain ?? 0) > 0;
+        }
+        return false;
     }
 
     /**

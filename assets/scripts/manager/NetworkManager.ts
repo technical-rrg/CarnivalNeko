@@ -2213,10 +2213,12 @@ class RealNetworkAdapter implements INetworkAdapter {
         // Secret Treasure: FS tiers dùng ReelIndex 2–6 (không chỉ legacy 1).
         // TopUp (respin) cũng có thể ReelIndex=2 → không được coi là Free Spin.
         const reelIdx = (res.ReelIndex as number) ?? 0;
+        // Matsuri dùng ReelIndex=1 giống FS — KHÔNG được coi là Free Spin (remainFS bị ép 0 → end feature).
         const isFreeSpin =
             data.currentMode === 'freespin'
-           
-            || (data.currentMode !== 'respin' && (reelIdx === 1 || isFreeSpinTierReelIndex(reelIdx)));
+            || (data.currentMode !== 'respin'
+                && data.currentMode !== 'matsuri'
+                && (reelIdx === 1 || isFreeSpinTierReelIndex(reelIdx)));
         const grid = data.getBaseGrid(rands, isFreeSpin, reelIdx);
         const waysPayWins = res.TotalWin > 0
             ? WaysPayCalculator.calculate(grid, res.TotalBet as number, isFreeSpin)
@@ -2228,11 +2230,13 @@ class RealNetworkAdapter implements INetworkAdapter {
             totalBet: res.TotalBet,
             totalWin: res.TotalWin,
             updateCash: res.UpdateCash,
-            nextStage: res.NextStage,
+            nextStage: Number.isFinite(Number(res.NextStage)) ? Number(res.NextStage) : res.NextStage,
             reelIndex: res.ReelIndex,
             featureMultiple: res.FreeSpinMultiplier ?? res.FeatureMultiple ?? res.MysteryMultiple,
             remainCash: raw.RemainCash,
-            remainFreeSpinCount: Math.max(0, res.RemainFreeSpinCount ?? 0),
+            remainFreeSpinCount: (res.RemainFreeSpinCount != null && Number.isFinite(Number(res.RemainFreeSpinCount)))
+                ? Math.max(0, Number(res.RemainFreeSpinCount))
+                : 0,
             winGrade: res.WinGrade ?? undefined,
             featureSpinTotalWin: res.FeatureSpinTotalWin ?? undefined,
             // ★ Gold of Fortune fields
@@ -2279,7 +2283,9 @@ class RealNetworkAdapter implements INetworkAdapter {
             potVisualLevel: (res as any).PotVisualLevel ?? undefined,
             triggerPotWin: (res as any).TriggerPotWin ?? (res as any).IsPotWin ?? undefined,
             pickGame: this._parsePickGame((res as any).PickGame ?? (res as any).PickGameState),
-            remainRespinCount: (res as any).RemainFeatureSpinCount ?? (res as any).RemainReSpinCount ?? (res as any).RemainRespinCount ?? undefined,
+            remainRespinCount: this._toFiniteNumber(
+                (res as any).RemainFeatureSpinCount ?? (res as any).RemainReSpinCount ?? (res as any).RemainRespinCount,
+            ),
             topupReel: this._parseTopupReel((res as any).TopupReel ?? (res as any).NormalSpinLinkReel ?? (res as any).NoramlSpinLinkReel),
         };
 
@@ -2374,9 +2380,10 @@ class RealNetworkAdapter implements INetworkAdapter {
         }
 
         if (anyRes.RemainFeatureSpinCount != null || anyRes.remainFeatureSpinCount != null) {
-            resp.remainRespinCount = Number(
+            const n = this._toFiniteNumber(
                 anyRes.RemainFeatureSpinCount ?? anyRes.remainFeatureSpinCount,
             );
+            if (n != null) resp.remainRespinCount = n;
         }
 
         // Reserved (API V1.0.2): luôn 0 / empty — JP Ultra+ qua Pick sau FS, không dùng field này
@@ -2389,7 +2396,8 @@ class RealNetworkAdapter implements INetworkAdapter {
         if (envelope != null && Number(envelope) > 0) resp.redEnvelopePay = Number(envelope);
 
         if (anyRes.IsGridFull != null || anyRes.isGridFull != null) {
-            resp.isGridFull = !!(anyRes.IsGridFull ?? anyRes.isGridFull);
+            const rawFull = anyRes.IsGridFull ?? anyRes.isGridFull;
+            resp.isGridFull = rawFull === true || rawFull === 1 || rawFull === '1' || rawFull === 'true';
         }
         const gridFullWin = anyRes.GridFullGrandWin ?? anyRes.gridFullGrandWin;
         if (gridFullWin != null) resp.gridFullGrandWin = Number(gridFullWin);
@@ -2488,6 +2496,23 @@ class RealNetworkAdapter implements INetworkAdapter {
                 `pots=${resp.potLevels ? `B${resp.potLevels.blue}/R${resp.potLevels.red}/G${resp.potLevels.green}` : 'n/a'}`,
             );
         }
+    }
+
+    /** Parse số từ MessagePack/JSON (tránh Number({}) = NaN làm remain=0 / NextStage lệch). */
+    private _toFiniteNumber(v: any): number | undefined {
+        if (v == null || v === '') return undefined;
+        if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+        if (typeof v === 'string') {
+            const n = Number(v.replace(',', '.'));
+            return Number.isFinite(n) ? n : undefined;
+        }
+        if (typeof v === 'object') {
+            return this._toFiniteNumber(
+                v.Value ?? v.value ?? v.m ?? v.Val ?? v.val ?? v.N ?? v.n,
+            );
+        }
+        const n = Number(v);
+        return Number.isFinite(n) ? n : undefined;
     }
 
     /**
@@ -2759,8 +2784,9 @@ class RealNetworkAdapter implements INetworkAdapter {
         const data = GameData.instance;
         const isFreeSpin =
             data.currentMode === 'freespin'
-           
-            || (data.currentMode !== 'respin' && (reelIndex === 1 || isFreeSpinTierReelIndex(reelIndex)));
+            || (data.currentMode !== 'respin'
+                && data.currentMode !== 'matsuri'
+                && (reelIndex === 1 || isFreeSpinTierReelIndex(reelIndex)));
         const rawStrips = data.getRawPsStrips(isFreeSpin, reelIndex);
         const payouts = data.symbolPayouts; // {psId: rate, ...} từ PS SymbolRates
 

@@ -25,7 +25,7 @@
 
 import {
     _decorator, Component, Node, Sprite, SpriteFrame, UIOpacity, UITransform,
-    tween, Vec3, Tween, instantiate,
+    tween, Vec3, Tween, instantiate, Layout,
 } from 'cc';
 import { EventBus }     from '../core/EventBus';
 import { GameEvents }   from '../core/GameEvents';
@@ -37,7 +37,11 @@ import { SoundManager } from '../manager/SoundManager';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
 import { SlotMachineController } from './SlotMachineController';
 import { TopUpManager } from './TopUpManager';
-import { GRID_MINI_COIN_SIZE, TOPUP_STICKY_SYMBOL_SCALE } from './TopUpReelController';
+import {
+    GRID_MINI_COIN_SIZE,
+    TOPUP_STICKY_SYMBOL_SCALE,
+    gridMiniGreenReelVisualScale,
+} from './TopUpReelController';
 import { TopUpTransitionPopup, TransitionMode } from './TopUpTransitionPopup';
 import {
     MATSURI_COL_COUNT,
@@ -98,6 +102,9 @@ export class StickyOverlayController extends Component {
     @property({ tooltip: 'Fade-in toàn overlay khi vừa vào TopUp (giây).' })
     topUpEnterFadeDuration: number = 0.4;
 
+    @property({ tooltip: 'Fade Cat ↔ Top trên FramFront khi seed / vào feature (giây).' })
+    matsuriFrameHudFadeDuration: number = 0.35;
+
     @property({ tooltip: 'Fade-in coin lần đầu vào TopUp (giây) — thường dài hơn coinFadeInDuration.' })
     topUpEnterCoinFadeDuration: number = 0.35;
 
@@ -139,6 +146,18 @@ export class StickyOverlayController extends Component {
 
     @property({ type: SpriteFrame, tooltip: 'FramFront — grid 5×5 (Reelframe_Freespin_5x5).' })
     featureFrame5x5: SpriteFrame | null = null;
+
+    @property({
+        type: Node,
+        tooltip: 'Cat — hiện khi đang ném quả cầu seed (MATSURI_SEED_START → DONE). Gán từ Editor.',
+    })
+    seedThrowCatNode: Node | null = null;
+
+    @property({
+        type: Node,
+        tooltip: 'FramFront/Top — HUD remain + collect; ẩn lúc seed, hiện khi vào feature. Gán từ Editor.',
+    })
+    featureFrameTopNode: Node | null = null;
 
     /**
      * Wire SlotMachineController từ code (lazy-load Prefab không serialize cross-prefab refs).
@@ -286,8 +305,10 @@ export class StickyOverlayController extends Component {
     private _frontFrameNode: Node | null = null;
     private _arrayNode: Node | null = null;
     private _gridNode: Node | null = null;
-    /** FramFront/Top — HUD trên khung. */
+    /** FramFront/Top — HUD trên khung (fallback nếu chưa gán Inspector). */
     private _featureTopNode: Node | null = null;
+    /** Đang ném quả cầu seed — Cat on, Top off. */
+    private _inSeedThrowPhase = false;
 
     private _lastFeatureRemain = -1;
     private _featureCollectTotal = 0;
@@ -474,6 +495,11 @@ export class StickyOverlayController extends Component {
         const gridNode = this._gridNode;
         const arrayNode = this._arrayNode;
 
+        const gridLayout = gridNode?.getComponent(Layout);
+        if (gridLayout) gridLayout.enabled = false;
+        const arrayLayout = arrayNode?.getComponent(Layout);
+        if (arrayLayout) arrayLayout.enabled = false;
+
         for (let col = 0; col < MATSURI_COL_COUNT; col++) {
             for (let poolRow = 0; poolRow < poolRows; poolRow++) {
                 const idx = col * poolRows + poolRow;
@@ -483,22 +509,30 @@ export class StickyOverlayController extends Component {
                 const reelNode = gridNode?.children[idx] ?? gridNode?.getChildByName(String(idx));
                 if (reelNode) {
                     reelNode.setPosition(reelLocal.x, reelLocal.y, reelNode.position.z);
+                    this._setNodeSquareSize(reelNode, cellSize);
                 }
 
                 const arraySlot = arrayNode?.children[idx] ?? arrayNode?.getChildByName(String(idx));
                 if (arraySlot) {
                     arraySlot.setPosition(arrayLocal.x, arrayLocal.y, arraySlot.position.z);
+                    this._setNodeSquareSize(arraySlot, cellSize);
                 }
 
                 const poolSlot = this._poolCoinSlots[idx];
                 if (poolSlot?.isValid && poolSlot.parent === arrayNode) {
                     poolSlot.setPosition(arrayLocal.x, arrayLocal.y, poolSlot.position.z);
+                    this._setNodeSquareSize(poolSlot, cellSize);
                 }
             }
         }
 
         const topUpMgr = this._getTopUpManager();
         topUpMgr?.applyGridCellSize(cellSize);
+    }
+
+    private _setNodeSquareSize(node: Node, size: number): void {
+        const ut = node.getComponent(UITransform);
+        if (ut) ut.setContentSize(size, size);
     }
 
     /** Bật đúng Rect5×N, tắt 2 Rect còn lại (debug/canhvùng grid trên Prefab). */
@@ -555,7 +589,13 @@ export class StickyOverlayController extends Component {
 
     // ── FEATURE HUD (remain slots + collect total trên FramFront/Top) ─────────
 
+    private _findSeedThrowCat(): Node | null {
+        if (this.seedThrowCatNode?.isValid) return this.seedThrowCatNode;
+        return this.node.getChildByName('Cat') ?? null;
+    }
+
     private _findFeatureTop(): Node | null {
+        if (this.featureFrameTopNode?.isValid) return this.featureFrameTopNode;
         if (this._featureTopNode?.isValid) return this._featureTopNode;
         const frame = this.node.getChildByName('FramFront')
             ?? this.node.getChildByName('FrameFront');
@@ -563,14 +603,78 @@ export class StickyOverlayController extends Component {
     }
 
     private _wireFeatureHud(): void {
-        this._syncFeatureHud();
+        this._inSeedThrowPhase = false;
+        this._applyMatsuriFrameNodes(false);
+    }
+
+    private _ensureFrameNodeOpacity(node: Node): UIOpacity {
+        return node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
+    }
+
+    /**
+     * Fade Cat/Top — crossfade bằng opacity, không toggle active giữa 2 node.
+     * @param deactivateWhenHidden chỉ khi thoát feature (ẩn hẳn sau fade).
+     */
+    private _fadeMatsuriFrameNode(
+        node: Node | null,
+        visible: boolean,
+        animate: boolean,
+        deactivateWhenHidden = false,
+    ): void {
+        if (!node?.isValid) return;
+        const op = this._ensureFrameNodeOpacity(node);
+        Tween.stopAllByTarget(op);
+        const dur = Math.max(0, this.matsuriFrameHudFadeDuration);
+
+        if (visible) node.active = true;
+
+        if (!animate || dur <= 0) {
+            op.opacity = visible ? 255 : 0;
+            if (!visible && deactivateWhenHidden) node.active = false;
+            return;
+        }
+
+        if (visible) {
+            if (op.opacity >= 255) return;
+            op.opacity = 0;
+            tween(op).to(dur, { opacity: 255 }, { easing: 'sineOut' }).start();
+            return;
+        }
+
+        if (op.opacity <= 0) {
+            if (deactivateWhenHidden) node.active = false;
+            return;
+        }
+        tween(op)
+            .to(dur, { opacity: 0 }, { easing: 'sineIn' })
+            .call(() => {
+                if (deactivateWhenHidden && node.isValid) node.active = false;
+            })
+            .start();
+    }
+
+    /** Cat ↔ Top: seed throw vs đã vào feature (crossfade opacity). */
+    private _applyMatsuriFrameNodes(animate = true): void {
+        const inMatsuri = this._isMatsuriMode();
+        const cat = this._findSeedThrowCat();
+        const top = this._findFeatureTop();
+
+        if (!inMatsuri) {
+            this._fadeMatsuriFrameNode(cat, false, animate, true);
+            this._fadeMatsuriFrameNode(top, false, animate, true);
+            return;
+        }
+
+        const showCat = this._inSeedThrowPhase;
+        if (cat?.isValid) cat.active = true;
+        if (top?.isValid) top.active = true;
+        this._fadeMatsuriFrameNode(cat, showCat, animate, false);
+        this._fadeMatsuriFrameNode(top, !showCat, animate, false);
     }
 
     private _syncFeatureHud(): void {
-        const show = this._isMatsuriMode();
-        const top = this._findFeatureTop();
-        if (top?.isValid) top.active = show;
-        if (!show) return;
+        this._applyMatsuriFrameNodes();
+        if (!this._isMatsuriMode() || this._inSeedThrowPhase) return;
         const data = GameData.instance;
         const remain = data.respinRemaining;
         if (remain > 0) this._setFeatureRemain(remain);
@@ -589,14 +693,26 @@ export class StickyOverlayController extends Component {
 
     private _onMatsuriHudStart(): void {
         this._featureCollectTotal = 0;
+        // Vào mới: grid trống → chờ seed orb; resume: đã có sticky → feature mode ngay.
+        this._inSeedThrowPhase = GameData.instance.stickyCells.size === 0;
         this._syncFeatureHud();
     }
 
     private _onMatsuriHudEnd(): void {
         this._lastFeatureRemain = -1;
         this._featureCollectTotal = 0;
-        const top = this._findFeatureTop();
-        if (top?.isValid) top.active = false;
+        this._inSeedThrowPhase = false;
+        this._applyMatsuriFrameNodes();
+    }
+
+    private _onMatsuriSeedStart(): void {
+        this._inSeedThrowPhase = true;
+        this._applyMatsuriFrameNodes();
+    }
+
+    private _onMatsuriSeedDone(): void {
+        this._inSeedThrowPhase = false;
+        this._syncFeatureHud();
     }
 
     private _onTopUpCountUpdated(count: number): void {
@@ -677,6 +793,8 @@ export class StickyOverlayController extends Component {
         EventBus.instance.on(GameEvents.TOPUP_COUNT_UPDATED, this._onTopUpCountUpdated, this);
         EventBus.instance.on(GameEvents.CARNIVAL_MATSURI_START, this._onMatsuriHudStart, this);
         EventBus.instance.on(GameEvents.CARNIVAL_MATSURI_END, this._onMatsuriHudEnd, this);
+        EventBus.instance.on(GameEvents.MATSURI_SEED_START, this._onMatsuriSeedStart, this);
+        EventBus.instance.on(GameEvents.MATSURI_SEED_DONE, this._onMatsuriSeedDone, this);
         EventBus.instance.on(GameEvents.TOPUP_END,           this._onTopUpEnd,     this);
         EventBus.instance.on(GameEvents.FREE_SPIN_GOLD_END, this._onTopUpEnd,     this);
         EventBus.instance.on(GameEvents.FREE_SPIN_END,       this._onTopUpEnd,     this);
@@ -702,6 +820,8 @@ export class StickyOverlayController extends Component {
         EventBus.instance.off(GameEvents.TOPUP_COUNT_UPDATED, this._onTopUpCountUpdated, this);
         EventBus.instance.off(GameEvents.CARNIVAL_MATSURI_START, this._onMatsuriHudStart, this);
         EventBus.instance.off(GameEvents.CARNIVAL_MATSURI_END, this._onMatsuriHudEnd, this);
+        EventBus.instance.off(GameEvents.MATSURI_SEED_START, this._onMatsuriSeedStart, this);
+        EventBus.instance.off(GameEvents.MATSURI_SEED_DONE, this._onMatsuriSeedDone, this);
         EventBus.instance.off(GameEvents.TOPUP_END,           this._onTopUpEnd,     this);
         EventBus.instance.off(GameEvents.FREE_SPIN_GOLD_END, this._onTopUpEnd,     this);
         EventBus.instance.off(GameEvents.FREE_SPIN_END,       this._onTopUpEnd,     this);
@@ -792,11 +912,14 @@ export class StickyOverlayController extends Component {
             this._matsuriFlippingKeys.clear();
             // Resume mid-feature: sticky đã có → hiện ngay (không chờ seed orb)
             if (GameData.instance.stickyCells.size > 0) {
+                this._inSeedThrowPhase = false;
+                this._syncFeatureHud();
                 this._refreshAll(false, false);
                 Log.d(`[StickyOverlay] Matsuri resume — show ${GameData.instance.stickyCells.size} stickies`);
                 return;
             }
             // Enter mới: grid trống — Start Gold chỉ hiện khi seed orb land
+            this._inSeedThrowPhase = true;
             this._hideAll();
             Log.d('[StickyOverlay] Matsuri enter — blank overlay (chờ seed)');
             return;
@@ -864,6 +987,8 @@ export class StickyOverlayController extends Component {
         this._enterAnimPlayed = false;
         this._lastFeatureRemain = -1;
         this._featureCollectTotal = 0;
+        this._inSeedThrowPhase = false;
+        this._applyMatsuriFrameNodes();
         // Reset scale / frame / Y về baseline 5×5
         this._resetGridFitLayout();
         const topUpMgr = this.node.getComponentInChildren(TopUpManager);
@@ -1561,14 +1686,14 @@ export class StickyOverlayController extends Component {
         this._setMatsuriCreditLabelVisible(slotNode, false);
 
         const base = this._getBaseScale(SymbolId.STICKY_GREEN);
+        const startS = base * gridMiniGreenReelVisualScale();
         const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
         Tween.stopAllByTarget(slotNode);
-        slotNode.setScale(0.05, 0.05, 1);
+        slotNode.setScale(startS, startS, 1);
         const op = slotNode.getComponent(UIOpacity) ?? slotNode.addComponent(UIOpacity);
         Tween.stopAllByTarget(op);
-        op.opacity = 0;
+        op.opacity = 255;
         SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
-        tween(op).to(Math.max(0.04, 0.1 * m), { opacity: 255 }, { easing: 'sineOut' }).start();
         tween(slotNode)
             .to(Math.max(0.08, 0.22 * m), { scale: new Vec3(base, base, 1) }, { easing: 'backOut' })
             .call(() => {
@@ -1716,7 +1841,9 @@ export class StickyOverlayController extends Component {
         if (isGoldCoin && fromHandoff) {
             // Khớp SymbolView._playLandBounce (sticky đỏ normal)
             const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
-            const startS = TOPUP_STICKY_SYMBOL_SCALE;
+            const startS = symbolId === SymbolId.STICKY_GREEN
+                ? baseScale * gridMiniGreenReelVisualScale()
+                : TOPUP_STICKY_SYMBOL_SCALE;
             const peakS = baseScale * 1.12;
             const growDur = 0.08 * m;
             const holdDur = 0.12 * m;

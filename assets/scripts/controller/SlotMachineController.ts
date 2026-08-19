@@ -842,13 +842,13 @@ export class SlotMachineController extends Component {
     private _onPickGameClose(): void {
         this._isPickGame = false;
         this._pendingPickGameHide = false;
-        if (this._wasActiveBeforePickGame) {
-            this.node.active = true;
-            setNodeOpacity(this.node, 0);
-            fadeNodeOpacity(this.node, 255, this.uiFadeDuration);
-            Log.d('[SlotMachineController] Fade in — Pick Game close');
-        }
+        this._isTopUp = false;
+        this.node.active = true;
+        setNodeOpacity(this.node, 0);
+        fadeNodeOpacity(this.node, 255, this.uiFadeDuration);
+        this._setMainSlotReelsVisible(true);
         this._updateSlotBackgroundSprite();
+        Log.d('[SlotMachineController] Fade in — Pick Game close');
     }
 
     /** Quick stop — người chơi nhấn Spin lại khi reel đang quay → tất cả reel dừng cùng lúc.

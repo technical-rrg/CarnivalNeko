@@ -228,7 +228,7 @@ export const MOCK_SPIN_SCENARIO: MockScenario = 'random';
  *   2  = OneBar (BAR)       3  = DoubleBar (BARBAR)
  *   21 = BlueWild           22 = RedWild              23 = TripleWild
  *   98 = Scatter/Bonus      99 = Empty
- *   PickGame: BasePick=81 Mini=85 Minor=84 Major=83 Grand=82 Upgrade=86
+ *   PickGame: BasePick=81 Mini=85 Minor=84 Major=83 Grand=82 Upgrade=86  (ID Change 260810)
  *   (Lưu ý: 81-84 KHÔNG xuất hiện trên reel strip — là ID ảo trong payout table)
  *
  * ─── Trạng thái xác nhận ─────────────────────────────────────────

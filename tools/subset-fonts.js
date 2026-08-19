@@ -4,6 +4,10 @@
  *
  * Usage:  node tools/subset-fonts.js
  *
+ * Source fonts: FontBase/{src} trước, fallback assets/Font/{src}
+ * Glyphs: locales + LocalizationStringTable.xlsx + prefab/scene _string
+ * Output: assets/Font/{lang}-subset.ttf  +  build/fonts/font_{lang}.woff2
+ *
  * Requirements:
  *   pip install fonttools brotli   (provides pyftsubset + woff2 support)
  */
@@ -16,11 +20,22 @@ const { execSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const ASSETS_DIR = path.join(ROOT, 'assets');
+const FONT_BASE_DIR = path.join(ROOT, 'FontBase');
 const FONT_DIR = path.join(ASSETS_DIR, 'Font');
 const LOCALES_DIR = path.join(ASSETS_DIR, 'scripts', 'data', 'locales');
 const TEMP_DIR = path.join(ROOT, 'temp');
+const XLSX_FILE = path.join(ROOT, 'LocalizationStringTable.xlsx');
 const OUTPUT_DIR = path.join(ROOT, 'build', 'fonts');
 const DEBUG_FILE = path.join(OUTPUT_DIR, 'text_debug.txt');
+
+/** Excel column index → language (khớp convert-localization-xlsx.js) */
+const XLSX_COL_MAP = {
+    2: 'en', 3: 'ko', 4: 'zh-cn', 5: 'zh-tw', 6: 'fil',
+    7: 'ja', 8: 'th', 9: 'sg', 10: 'ms', 11: 'vi',
+};
+
+/** CJK / Thai: giữ hinting để nét ExtraBold không bị gầy ở size UI */
+const KEEP_HINTING_LANGS = new Set(['zh-cn', 'zh-tw', 'ja', 'ko', 'th']);
 
 /**
  * Subset TTF files are copied here so Cocos Creator can import them directly.
@@ -36,7 +51,7 @@ const COMMON_CHARS = '0123456789.,!?-+*/=%:() ';
  * Matches FontManager.ts mapping.
  */
 const LANG_FONT_MAP = {
-    //           src font (in assets/Font/)                           CC TTF subset name           WOFF2 name (web)
+    //           src font (FontBase/ rồi fallback assets/Font/)        CC TTF subset name           WOFF2 name (web)
     en:      { src: 'English.ttf',                               ttf: 'en-subset.ttf',         woff2: 'font_en.woff2'    },
     fil:     { src: 'English.ttf',                               ttf: 'fil-subset.ttf',        woff2: 'font_fil.woff2'   },
     ko:      { src: 'noto-sans-kr-korean-800-normal.ttf',        ttf: 'ko-subset.ttf',         woff2: 'font_ko.woff2'    },
@@ -128,7 +143,38 @@ function collectLocaleTexts() {
         }
     }
 
+    // 1d. Excel nguồn — đảm bảo glyph mới chưa convert vào .ts vẫn được subset
+    collectXlsxTexts(langTexts);
+
     return langTexts;
+}
+
+/** Đọc trực tiếp LocalizationStringTable.xlsx — không phụ thuộc convert .ts */
+function collectXlsxTexts(langTexts) {
+    if (!fs.existsSync(XLSX_FILE)) {
+        console.warn('  ⚠ LocalizationStringTable.xlsx không có — bỏ qua');
+        return;
+    }
+    let XLSX;
+    try {
+        XLSX = require('xlsx');
+    } catch (e) {
+        console.warn('  ⚠ Chưa cài package "xlsx" — bỏ qua Excel:', e.message);
+        return;
+    }
+    const wb = XLSX.readFile(XLSX_FILE);
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
+        header: 1, raw: false, defval: '',
+    });
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row) continue;
+        for (const [col, lang] of Object.entries(XLSX_COL_MAP)) {
+            if (langTexts[lang] === undefined) continue;
+            const val = row[parseInt(col, 10)];
+            if (val) langTexts[lang] += String(val);
+        }
+    }
 }
 
 /** Parse TS locale file and return all string values concatenated */
@@ -148,89 +194,16 @@ function extractTsLocaleValues(content) {
 
 function collectAssetTexts() {
     let allText = '';
-
-    // 2a. TypeScript & JavaScript files — extract string literals
-    const codeFiles = walkDir(ASSETS_DIR, name =>
-        (name.endsWith('.ts') || name.endsWith('.js')) &&
-        !name.endsWith('.d.ts') &&
-        !name.endsWith('.meta')
-    );
-    for (const f of codeFiles) {
-        // Skip locale .ts files (already processed per-language)
-        if (f.includes(path.join('data', 'locales'))) continue;
-        const content = fs.readFileSync(f, 'utf-8');
-        allText += extractStringLiterals(content);
-    }
-
-    // 2b. JSON files in assets (not .meta)
-    const jsonFiles = walkDir(ASSETS_DIR, name =>
-        name.endsWith('.json') && !name.endsWith('.meta')
-    );
-    for (const f of jsonFiles) {
-        // Skip locale json already handled
-        if (f.includes(path.join('data', 'locales'))) continue;
-        try {
-            const content = fs.readFileSync(f, 'utf-8');
-            allText += extractJsonStringValues(content);
-        } catch (e) { /* skip */ }
-    }
-
-    // 2c. .prefab files — extract _string fields
+    // Chỉ lấy text UI trên prefab/scene — KHÔNG quét .ts/.js (log/comment có emoji).
     const prefabFiles = walkDir(ASSETS_DIR, name => name.endsWith('.prefab'));
     for (const f of prefabFiles) {
         allText += extractPrefabSceneStrings(f);
     }
-
-    // 2d. .scene files — extract _string fields
     const sceneFiles = walkDir(ASSETS_DIR, name => name.endsWith('.scene'));
     for (const f of sceneFiles) {
         allText += extractPrefabSceneStrings(f);
     }
-
     return allText;
-}
-
-/** Extract string literals from TypeScript/JS source */
-function extractStringLiterals(code) {
-    const parts = [];
-    // Single-quoted strings
-    const sq = /'((?:[^'\\]|\\.)*)'/g;
-    let m;
-    while ((m = sq.exec(code)) !== null) {
-        parts.push(m[1].replace(/\\n/g, '\n').replace(/\\'/g, "'"));
-    }
-    // Double-quoted strings
-    const dq = /"((?:[^"\\]|\\.)*)"/g;
-    while ((m = dq.exec(code)) !== null) {
-        parts.push(m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'));
-    }
-    // Template literals (backtick) — simple version, no nested
-    const tl = /`([^`]*)`/g;
-    while ((m = tl.exec(code)) !== null) {
-        parts.push(m[1]);
-    }
-    return parts.join('');
-}
-
-/** Extract all string values from JSON content */
-function extractJsonStringValues(content) {
-    try {
-        const data = JSON.parse(content);
-        return collectJsonStrings(data).join('');
-    } catch {
-        return '';
-    }
-}
-
-function collectJsonStrings(obj, result = []) {
-    if (typeof obj === 'string') {
-        result.push(obj);
-    } else if (Array.isArray(obj)) {
-        for (const item of obj) collectJsonStrings(item, result);
-    } else if (obj && typeof obj === 'object') {
-        for (const val of Object.values(obj)) collectJsonStrings(val, result);
-    }
-    return result;
 }
 
 /** Extract "_string" field values from .prefab / .scene (Cocos Creator JSON) */
@@ -289,16 +262,37 @@ function codepointsToUnicodeStr(cps) {
         .join(',');
 }
 
+function resolveSrcFont(fileName) {
+    const candidates = [
+        path.join(FONT_BASE_DIR, fileName),
+        path.join(FONT_DIR, fileName),
+    ];
+    return candidates.find(p => fs.existsSync(p)) || null;
+}
+
+function subsetFlags(lang) {
+    const flags = [
+        '--desubroutinize',
+        '--layout-features=kern,liga,calt,ccmp,mark,mkmk,locl',
+    ];
+    if (!KEEP_HINTING_LANGS.has(lang)) {
+        flags.unshift('--no-hinting');
+    }
+    return flags;
+}
+
 function runSubset(lang, cpSet) {
     const config = LANG_FONT_MAP[lang];
-    const srcFont = path.join(FONT_DIR, config.src);
+    const srcFont = resolveSrcFont(config.src);
     // TTF subset → assets/Font/{lang}-subset.ttf  (for Cocos Creator)
     const outTTF   = path.join(CC_FONT_DIR, config.ttf);
     // WOFF2       → build/fonts/font_{lang}.woff2 (for web deployment)
     const outWOFF2 = path.join(OUTPUT_DIR,  config.woff2);
 
-    if (!fs.existsSync(srcFont)) {
-        console.error(`  ✗ Source font not found: ${srcFont}`);
+    if (!srcFont) {
+        console.error(`  ✗ Source font not found: ${config.src}`);
+        console.error(`     searched: ${path.join(FONT_BASE_DIR, config.src)}`);
+        console.error(`               ${path.join(FONT_DIR, config.src)}`);
         return false;
     }
 
@@ -309,7 +303,8 @@ function runSubset(lang, cpSet) {
     fs.writeFileSync(unicodeFile, unicodes, 'utf-8');
 
     const origStat = fs.statSync(srcFont);
-    console.log(`  → ${lang}: ${cpSet.size} codepoints | src ${(origStat.size / 1024).toFixed(0)}KB`);
+    const srcLabel = path.relative(ROOT, srcFont);
+    console.log(`  → ${lang}: ${cpSet.size} codepoints | src ${srcLabel} (${(origStat.size / 1024).toFixed(0)}KB)`);
 
     // ── 4a. Subset TTF (Cocos Creator) ──────────────────────────────────────
     const cmdTTF = [
@@ -317,9 +312,7 @@ function runSubset(lang, cpSet) {
         `"${srcFont}"`,
         `--unicodes-file="${unicodeFile}"`,
         `--output-file="${outTTF}"`,
-        '--no-hinting',
-        '--desubroutinize',
-        '--layout-features=kern,liga,calt,ccmp,mark,mkmk,locl',
+        ...subsetFlags(lang),
     ].join(' ');
 
     let okTTF = false;
@@ -340,9 +333,7 @@ function runSubset(lang, cpSet) {
         `--unicodes-file="${unicodeFile}"`,
         `--output-file="${outWOFF2}"`,
         '--flavor=woff2',
-        '--no-hinting',
-        '--desubroutinize',
-        '--layout-features=kern,liga,calt,ccmp,mark,mkmk,locl',
+        ...subsetFlags(lang),
     ].join(' ');
 
     let okWOFF2 = false;
@@ -401,8 +392,8 @@ function main() {
         console.log(`  ${lang}: ${text.length} chars raw`);
     }
 
-    // Step 2: Collect shared asset texts
-    console.log('\n[2/4] Scanning asset files (.ts, .js, .json, .prefab, .scene)…');
+    // Step 2: Collect shared UI texts (prefab/scene only)
+    console.log('\n[2/4] Scanning prefab/scene _string fields…');
     const sharedText = collectAssetTexts();
     console.log(`  Shared asset text: ${sharedText.length} chars raw`);
 

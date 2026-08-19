@@ -72,7 +72,6 @@ import { GameData } from '../data/GameData';
 import {
     clientPickToPs,
     psPickToClient,
-    psPickIdleId,
     resolvePickState,
     JP_TYPE_TO_TIER_NAME,
     PICK_GAME_CELL_COUNT,
@@ -641,12 +640,6 @@ class MockNetworkAdapter implements INetworkAdapter {
             Log.d(`[MockAdapter] sendPickRequest → built fresh PickGameState (grid len=${pickState.grid.length})`);
         }
 
-        // Build PickGame array (15 PS IDs) — cùng shape real API sẽ trả
-        const pickGameIds: number[] = [];
-        for (let i = 0; i < pickState.grid.length; i++) {
-            pickGameIds.push(clientPickToPs(pickState.grid[i]));
-        }
-
         const revealed = (pickState.revealed ?? []).concat(pickIndex);
         pickState.revealed = revealed;
 
@@ -659,7 +652,7 @@ class MockNetworkAdapter implements INetworkAdapter {
             pickState.wonTier = JP_TYPE_TO_TIER_NAME[resolved.paidTier];
         }
 
-        // PickWin: meter tier trả thưởng; Grand×2 → nhân đôi
+        // CN V1.0.2: Mini 10x / Minor 20x / Major 50x / Grand 300x (× TotalBet); GrandUpgrade ×2
         let winCash = 0;
         if (resolved.isJackpot) {
             const meter = data.getJackpotWinAmount(resolved.paidTier);
@@ -677,16 +670,32 @@ class MockNetworkAdapter implements INetworkAdapter {
             if (resolved.doubleGrand) winCash *= 2;
         }
 
+        // CNPickResponse: -1 = unselected; positive = revealed PS ID
+        const pickGameIds: number[] = [];
+        for (let i = 0; i < PICK_GAME_CELL_COUNT; i++) {
+            pickGameIds.push(
+                revealed.includes(i) ? clientPickToPs(pickState.grid[i] ?? 0) : -1,
+            );
+        }
+        const pickResults = clientPickToPs(pickState.grid[pickIndex]);
+        const jackpotName = resolved.isJackpot
+            ? (JP_TYPE_TO_TIER_NAME[resolved.paidTier] ?? '')
+            : '';
+
         Log.e(
-            `[MockPick] pick=${pickIndex} upgrade=${resolved.upgradeCount}`
+            `[MockPick] pick=${pickIndex} result=${pickResults} upgrade=${resolved.upgradeCount}`
             + ` armed=${resolved.upgradeArmed} jackpot=${resolved.isJackpot}`
-            + ` paid=${JackpotType[resolved.paidTier]} x2=${resolved.doubleGrand} win=${winCash}`,
+            + ` name=${jackpotName || 'n/a'} paid=${JackpotType[resolved.paidTier]}`
+            + ` x2=${resolved.doubleGrand} win=${winCash}`,
         );
 
         return {
             PickGame: pickGameIds,
-            IsJackpot: resolved.isJackpot,
-            JackpotIndex: resolved.jackpotIndex,
+            PickResults: pickResults,
+            PickStage: revealed.length,
+            IsJackpot: false,
+            JackpotIndex: -1,
+            JackpotName: jackpotName || undefined,
             NextStage: resolved.isJackpot ? SlotStageType.PICK_END : SlotStageType.PICK,
             PickWin: winCash,
             UpgradeCount: resolved.upgradeCount,
@@ -856,6 +865,16 @@ class MockNetworkAdapter implements INetworkAdapter {
  *   JavaScript Number chỉ chính xác đến 53-bit.
  *   Nếu giá trị vượt Number.MAX_SAFE_INTEGER, cần dùng BigInt/string.
  */
+/** PS named fields in Enter can be number or string (“82”). */
+function toPsId(raw: any): number | null {
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (typeof raw === 'string' && raw.trim() !== '') {
+        const n = Number(raw.trim());
+        return Number.isFinite(n) ? n : null;
+    }
+    return null;
+}
+
 class RealNetworkAdapter implements INetworkAdapter {
 
     /** Khi true: hết retry → block toàn bộ request, chờ reload */
@@ -1244,7 +1263,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             DoubleGrand: pickRes.DoubleGrand ?? pickRes.doubleGrand,
         };
         Log.e(
-            `[Pick] ACK IsJackpot=${raw.IsJackpot} JackpotIndex=${raw.JackpotIndex}` +
+            `[Pick] ACK PickResults=${raw.PickResults ?? 'n/a'} PickStage=${raw.PickStage ?? '?'}` +
             ` JackpotName=${raw.JackpotName ?? 'n/a'} NextStage=${raw.NextStage} PickWin=${raw.PickWin ?? 0}`,
         );
         ResponseLogger.log('Pick', raw);
@@ -2490,20 +2509,24 @@ class RealNetworkAdapter implements INetworkAdapter {
         if (Array.isArray(raw)) {
             const grid: number[] = new Array(PICK_GAME_CELL_COUNT).fill(SymbolId.JP_IDLE);
             const revealed: number[] = [];
-            const idlePs = psPickIdleId();
-            if (raw.length > 0 && typeof raw[0] === 'number') {
+            const first = raw[0];
+            const isIdList = first == null
+                || typeof first === 'number'
+                || (typeof first === 'string' && toPsId(first) != null);
+            if (isIdList) {
                 for (let i = 0; i < Math.min(raw.length, PICK_GAME_CELL_COUNT); i++) {
-                    const ps = raw[i] as number;
-                    if (ps === -1) continue;
+                    const ps = toPsId(raw[i]);
+                    if (ps == null || ps === -1) continue;
                     grid[i] = psPickToClient(ps);
-                    if (ps !== idlePs) revealed.push(i);
+                    revealed.push(i);
                 }
             } else {
                 for (const item of raw) {
                     if (item == null || item.Index == null) continue;
-                    const ps = item.SymbolId ?? item.symbolId ?? -1;
+                    const ps = toPsId(item.SymbolId ?? item.symbolId) ?? -1;
+                    if (ps === -1) continue;
                     grid[item.Index] = psPickToClient(ps);
-                    if (ps !== -1 && ps !== idlePs) revealed.push(item.Index);
+                    revealed.push(item.Index);
                 }
             }
             return { grid, revealed };
@@ -2944,10 +2967,9 @@ class RealNetworkAdapter implements INetworkAdapter {
 
         for (const [fields, clientId] of psSymbolFields) {
             for (const field of fields) {
-                const psId = ps[field];
-                if (typeof psId === 'number') {
+                const psId = toPsId(ps[field]);
+                if (psId != null) {
                     dynMap[psId] = clientId;
-                    // NOTE: no break — map ALL fields in group (e.g. StickyYellowSymbolID AND FreeSpinTrailsymbolID both → STICKY_YELLOW)
                 }
             }
         }
@@ -3013,8 +3035,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             Log.e('[PS:NormalMap] CN 1–6 Low, 11–15 High, 21 Wild');
         }
 
-        // ═══ Pick Game — 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade ═══
-        // Named MiniJackpotID… đã map ở trên; block này chỉ fill khi PS thiếu field.
+        // ═══ Pick Game — ID Change 260810: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade ═══
         {
             const _pickSymbols: Record<number, number> = {
                 81: SymbolId.JP_IDLE,
@@ -3026,10 +3047,10 @@ class RealNetworkAdapter implements INetworkAdapter {
             };
             for (const [psId, clientId] of Object.entries(_pickSymbols)) {
                 const id = parseInt(psId, 10);
-                if (!(id in dynMap)) dynMap[id] = clientId as number;
+                dynMap[id] = clientId as number;
             }
             Log.e(
-                `[PS:PickMap] Idle=81 Grand=82 Major=83 Minor=84 Mini=85 Upgrade=86` +
+                `[PS:PickMap] Idle=81 Grand=82 Major=83 Minor=84 Mini=85 Upgrade=86 (ID Change 260810)` +
                 ` | dyn Mini=${Object.entries(dynMap).find(([, v]) => v === SymbolId.JP_MINI)?.[0] ?? '?'}` +
                 ` Grand=${Object.entries(dynMap).find(([, v]) => v === SymbolId.JP_GRAND)?.[0] ?? '?'}`,
             );

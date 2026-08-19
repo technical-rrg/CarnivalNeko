@@ -20,7 +20,7 @@ import { GameEvents } from '../core/GameEvents';
 import { Log } from '../core/Logger';
 import { TopupReelType, SymbolId } from '../data/SlotTypes';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
-import { MATSURI_COL_COUNT, MATSURI_MIN_ROWS, clampMatsuriRows } from '../data/MatsuriGridUtil';
+import { MATSURI_COL_COUNT, MATSURI_MIN_ROWS, clampMatsuriRows, matsuriCellSize } from '../data/MatsuriGridUtil';
 
 const { ccclass, property } = _decorator;
 
@@ -76,7 +76,11 @@ export class TopUpManager extends Component {
 
     /** Áp cell size cho toàn pool reel (5×5). */
     applyGridCellSize(size: number): void {
-        for (const reel of this._poolReels) {
+        if (this._poolReels.length === 0 && this.reels.length > 0) {
+            this._poolReels = this.reels.slice();
+        }
+        const list = this._poolReels.length > 0 ? this._poolReels : this.reels;
+        for (const reel of list) {
             reel?.setGridCellSize(size);
         }
     }
@@ -183,7 +187,8 @@ export class TopUpManager extends Component {
             this._rowCount = target;
             this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
             this._distributeFramesFromSlotMachine();
-            Log.d(`[TopUpManager] ensureRowCount pool → 5×${target} (${this.reels.length} active / ${this._poolReels.length} pool)`);
+            this.applyGridCellSize(matsuriCellSize(target));
+            Log.d(`[TopUpManager] ensureRowCount pool → 5×${target} cell=${matsuriCellSize(target)} (${this.reels.length} active / ${this._poolReels.length} pool)`);
             return;
         }
 
@@ -194,6 +199,7 @@ export class TopUpManager extends Component {
             this._rowCount = target;
             this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
             this._applyCellVisibility();
+            this.applyGridCellSize(matsuriCellSize(target));
             return;
         }
 
@@ -214,6 +220,7 @@ export class TopUpManager extends Component {
             this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
             this._distributeFramesFromSlotMachine();
             this._applyCellVisibility();
+            this.applyGridCellSize(matsuriCellSize(target));
             Log.d(`[TopUpManager] ensureRowCount shrink → 5×${target} (${this.reels.length} cells)`);
             return;
         }
@@ -264,6 +271,7 @@ export class TopUpManager extends Component {
         this._seqOrder = Array.from({ length: this.cellCount }, (_, i) => i);
         this._distributeFramesFromSlotMachine();
         this._applyCellVisibility();
+        this.applyGridCellSize(matsuriCellSize(target));
         Log.e(`[TopUpManager] ensureRowCount expand → 5×${target} (${this.reels.length} cells) spacingY=${spacingY}`);
     }
 

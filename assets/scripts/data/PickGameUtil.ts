@@ -1,12 +1,9 @@
 /**
  * PickGameUtil — Carnival Neko Jackpot Feature (Pick Game).
  *
- * Doc: 5×3 = 15 ô; match 3 JP; 3 Upgrade → nâng tier (Grand → ×2).
- * Map PS ↔ client dùng chung cho MockAdapter + Real API parse.
- *
- * PS Pick IDs (Carnival Neko — ID mới):
+ * API V1.0.2 flow + ID change 260810 (khớp game cũ):
  *   81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
- * Ưu tiên GameData.psToClientMap (từ MiniJackpotID… trên Enter) khi có.
+ * (API guide cũ: 82 Mini … 85 Grand — đã remap 2026.08.10)
  */
 
 import { JackpotType, SymbolId } from './SlotTypes';
@@ -17,10 +14,7 @@ export const PICK_GAME_COLS = 5;
 export const PICK_GAME_ROWS = 3;
 export const PICK_GAME_CELL_COUNT = PICK_GAME_COLS * PICK_GAME_ROWS; // 15
 
-/**
- * Default PS Pick IDs — Carnival Neko (ID mới sau remap).
- * 82=Grand, 83=Major, 84=Minor, 85=Mini (khác thứ tự ascending cũ).
- */
+/** Default PS Pick IDs — sau Jackpot Symbol ID Change 260810. */
 export const PS_PICK = {
     IDLE: 81,
     GRAND: 82,
@@ -53,6 +47,17 @@ export const TIER_NAME_TO_TYPE: Record<PickTierName, JackpotType> = {
     MAJOR: JackpotType.MAJOR,
     GRAND: JackpotType.GRAND,
 };
+
+/** CNPickResponse.JackpotName: “MINI”/“MINOR”/“MAJOR”/“GRAND” (empty nếu chưa match). */
+export function parseCnJackpotName(raw: unknown): JackpotType {
+    const name = String(raw ?? '').trim().toUpperCase();
+    if (!name) return JackpotType.NONE;
+    if (name.includes('GRAND')) return JackpotType.GRAND;
+    if (name.includes('MAJOR')) return JackpotType.MAJOR;
+    if (name.includes('MINOR')) return JackpotType.MINOR;
+    if (name.includes('MINI')) return JackpotType.MINI;
+    return JackpotType.NONE;
+}
 
 export const JP_TYPE_TO_TIER_NAME: Partial<Record<JackpotType, PickTierName>> = {
     [JackpotType.MINI]: 'MINI',

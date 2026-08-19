@@ -1,14 +1,10 @@
 /**
- * PickGamePopup — Carnival Neko Jackpot Feature (Pick Game).
+ * PickGamePopup — Carnival Neko Jackpot Feature (API V1.0.2).
  *
- * Design:
- *   - Grid 5×3 = 15 coin
- *   - Flip → Mini / Minor / Major / Grand / Upgrade
- *   - Match 3 JP → Jackpot popup (tier trả thưởng)
- *   - 3 Upgrade trước → nâng 1 bậc (Grand → ×2), feature tiếp tục
- *
- * API-ready: mọi pick đều qua NetworkManager.sendPickRequest
- * (MockAdapter hoặc RealAdapter). UI chỉ render theo ServerPickResponse.
+ *   - 15 ô; /Pick mỗi lần chọn 1 ô (PickIndex 0–14)
+ *   - CNPickResponse: PickGame[-1|PS], PickResults, PickWin, JackpotName, NextStage
+ *   - Match 3 JP → PICK_END + JackpotName/PickWin (server đã gồm upgrade nếu có)
+ *   - 3 Upgrade → pick tiếp (không kết thúc)
  */
 
 import {
@@ -17,13 +13,13 @@ import {
 } from 'cc';
 import { EventBus }      from '../core/EventBus';
 import { GameEvents }    from '../core/GameEvents';
-import { PickGameState, JackpotType, SymbolId } from '../data/SlotTypes';
+import { PickGameState, JackpotType, SymbolId, SlotStageType } from '../data/SlotTypes';
 import {
     psPickToClient,
-    psPickIdleId,
     clientSymToJackpotType,
     isPickUpgradeSymbol,
-    JACKPOT_INDEX_TO_TYPE,
+    resolvePickState,
+    parseCnJackpotName,
     PICK_GAME_CELL_COUNT,
 } from '../data/PickGameUtil';
 import { GameData }      from '../data/GameData';
@@ -73,7 +69,7 @@ export class PickGamePopup extends Component {
 
     @property({
         type: SpriteAtlas,
-        tooltip: 'SymbolPack — frame 81 idle, 82–86 jackpot tiers (runtime fill frameJp*).',
+        tooltip: 'SymbolPack — frame 81 idle, 82 Grand … 85 Mini, 86 Upgrade (ID Change 260810).',
     })
     symbolAtlas: SpriteAtlas | null = null;
 
@@ -266,46 +262,70 @@ export class PickGamePopup extends Component {
             const resp = await NetworkManager.instance.sendPickRequest(index);
 
             const pickWinAmt = this._extractPickWin(resp);
-            const needClaim = resp.NextStage === 102 || resp.NextStage >= 100;
-            // CN: IsJackpot luôn false — thắng khi PickWin > 0 / JackpotName / PICK_END
-            const won = !!resp.IsJackpot
-                || pickWinAmt > 0
-                || !!(resp.JackpotName && String(resp.JackpotName).trim())
-                || needClaim;
+            const paidTier = parseCnJackpotName(resp.JackpotName);
+            const isPickEnd = resp.NextStage === SlotStageType.PICK_END;
+            // CNPickResponse: IsJackpot luôn false, JackpotIndex luôn −1.
+            // Thắng khi PickWin>0 / JackpotName / NextStage=PICK_END(102).
+            const won = pickWinAmt > 0 || paidTier !== JackpotType.NONE || isPickEnd;
 
-            Log.d(`[PickGamePopup] PICK #${index} IsJackpot=${resp.IsJackpot} JP=${resp.JackpotIndex}`
-                + ` Name=${resp.JackpotName ?? 'n/a'} Upgrade=${resp.UpgradeCount ?? '?'}`
-                + ` UpgradeDone=${!!resp.IsUpgradeComplete} DoubleGrand=${!!resp.DoubleGrand}`
-                + ` PickWin=${pickWinAmt} won=${won} NextStage=${resp.NextStage}`);
+            Log.d(`[PickGamePopup] PICK #${index} Result=${resp.PickResults ?? '?'} Stage=${resp.PickStage ?? '?'}`
+                + ` Name=${resp.JackpotName ?? 'n/a'} PickWin=${pickWinAmt}`
+                + ` NextStage=${resp.NextStage} won=${won}`);
 
-            if (this._pickState && resp.PickGame) {
-                // Đồng bộ grid từ server; -1 / Idle = chưa lộ → giữ local (mock prefill)
+            if (this._pickState && Array.isArray(resp.PickGame)) {
+                // -1 = chưa chọn; số dương = PS ID đã lộ
                 for (let i = 0; i < resp.PickGame.length; i++) {
-                    const serverSym = resp.PickGame[i];
-                    if (serverSym === -1 || serverSym === psPickIdleId()) continue;
-                    this._pickState.grid[i] = psPickToClient(serverSym);
+                    const ps = Number(resp.PickGame[i]);
+                    if (!Number.isFinite(ps) || ps === -1) continue;
+                    this._pickState.grid[i] = psPickToClient(ps);
                 }
             }
 
-            // Ô vừa pick: lấy từ response, fallback local grid
-            const serverSym = resp.PickGame?.[index];
-            if (serverSym != null && serverSym !== -1 && this._pickState) {
-                this._pickState.grid[index] = psPickToClient(serverSym);
+            // PickResults = symbol ô vừa pick (Table 23)
+            const pickResultPs = Number(resp.PickResults);
+            if (Number.isFinite(pickResultPs) && pickResultPs > 0 && this._pickState) {
+                this._pickState.grid[index] = psPickToClient(pickResultPs);
             }
 
             this._revealCoin(index, () => {
-                if (resp.IsUpgradeComplete && !this._upgradeArmed) {
+                const wasArmed = this._upgradeArmed;
+                const resolved = this._pickState
+                    ? resolvePickState(
+                        this._pickState.grid,
+                        Array.from(this._revealedSet),
+                        wasArmed,
+                    )
+                    : null;
+
+                // 3 Upgrade → celebrate rồi pick tiếp (NextStage vẫn PICK).
+                if (resolved?.upgradeArmed || resp.IsUpgradeComplete) {
                     this._upgradeArmed = true;
-                    if (this._pickState) this._pickState.upgradeArmed = true;
-                    EventBus.instance.emit(GameEvents.PICK_GAME_UPGRADE_COMPLETE, resp.UpgradeCount ?? 3);
+                    if (this._pickState) {
+                        this._pickState.upgradeArmed = true;
+                        this._pickState.upgradeCount = resolved?.upgradeCount
+                            ?? resp.UpgradeCount
+                            ?? this._pickState.upgradeCount;
+                    }
+                }
+
+                const upgradeJustDone = !wasArmed && this._upgradeArmed;
+                if (upgradeJustDone && !this._matched) {
+                    EventBus.instance.emit(
+                        GameEvents.PICK_GAME_UPGRADE_COMPLETE,
+                        resolved?.upgradeCount ?? resp.UpgradeCount ?? 3,
+                    );
                     this._playUpgradeCelebrate(() => {
                         if (!this._matched) this._setButtonsInteractable(true);
                     });
                 }
 
-                if (won && !this._matched) {
+                // 3 Upgrade ≠ win. Win chỉ khi server báo PickWin / JackpotName / PICK_END.
+                const isWin = won && !this._matched && !upgradeJustDone;
+                if (isWin) {
                     this._matched = true;
-                    this._wonTier = this._resolveWonTier(resp);
+                    this._wonTier = paidTier !== JackpotType.NONE
+                        ? paidTier
+                        : this._resolveWonTier(resp);
                     this._doubleGrand = !!resp.DoubleGrand
                         || /grand\s*x\s*2|grandupgrade|×\s*2/i.test(String(resp.JackpotName ?? ''));
                     this._serverPickWinAmount = pickWinAmt;
@@ -316,19 +336,18 @@ export class PickGamePopup extends Component {
                         this._pickState.wonTier = JackpotType[this._wonTier] as any;
                         this._pickState.doubleGrand = this._doubleGrand;
                     }
-                    Log.d(`[PickGamePopup] JACKPOT paid=${JackpotType[this._wonTier]} x2=${this._doubleGrand} win=${pickWinAmt}`);
+                    Log.d(`[PickGamePopup] JACKPOT paid=${JackpotType[this._wonTier]}`
+                        + ` win=${pickWinAmt} name=${resp.JackpotName ?? 'n/a'}`);
                     EventBus.instance.emit(GameEvents.PICK_GAME_MATCH_FOUND, this._wonTier);
                     this._setButtonsInteractable(false);
-                    // Chờ ô cuối In xong → pulse 3 ô (spine chỉ có In/Loop, không có win)
-                    // rồi mới JACKPOT_TRIGGER — tránh cắt anim ô cuối.
                     this._playWinAnimation(this._wonTier, () => {
                         this.scheduleOnce(this._emitJackpot, this.jackpotTriggerDelay);
                     });
-                } else if (!resp.IsUpgradeComplete && !this._matched) {
+                } else if (!upgradeJustDone && !this._matched) {
                     this._setButtonsInteractable(true);
                 }
 
-                if (needClaim) {
+                if (isPickEnd) {
                     EventBus.instance.emit(GameEvents.PICK_GAME_NEED_CLAIM);
                 }
             });
@@ -363,7 +382,12 @@ export class PickGamePopup extends Component {
         this._matched = false;
         this._wonTier = JackpotType.NONE;
         this._doubleGrand = !!state.doubleGrand;
-        this._upgradeArmed = !!state.upgradeArmed;
+        const resumeResolved = resolvePickState(state.grid, state.revealed ?? [], !!state.upgradeArmed);
+        this._upgradeArmed = resumeResolved.upgradeArmed;
+        if (this._upgradeArmed) {
+            state.upgradeArmed = true;
+            state.upgradeCount = resumeResolved.upgradeCount;
+        }
         this._inEntry = true;
         this._pickBlocked = false;
         this._serverPickWinAmount = 0;
@@ -831,17 +855,10 @@ export class PickGamePopup extends Component {
         return Number.isFinite(value) && value > 0 ? value : 0;
     }
 
-    /** CN: ưu tiên JackpotName → JackpotIndex → đếm 3-match trên grid. */
+    /** CN V1.0.2: JackpotName là tier trả thưởng. Không dùng JackpotIndex (luôn −1). */
     private _resolveWonTier(resp: any): JackpotType {
-        const name = String(resp?.JackpotName ?? resp?.jackpotName ?? '').toLowerCase();
-        if (name.includes('grand')) return JackpotType.GRAND;
-        if (name.includes('major')) return JackpotType.MAJOR;
-        if (name.includes('minor')) return JackpotType.MINOR;
-        if (name.includes('mini')) return JackpotType.MINI;
-
-        if (resp?.JackpotIndex != null && resp.JackpotIndex >= 0) {
-            return JACKPOT_INDEX_TO_TYPE[resp.JackpotIndex] ?? JackpotType.MINI;
-        }
+        const fromName = parseCnJackpotName(resp?.JackpotName ?? resp?.jackpotName);
+        if (fromName !== JackpotType.NONE) return fromName;
 
         if (this._pickState?.grid) {
             const counts: Partial<Record<JackpotType, number>> = {};

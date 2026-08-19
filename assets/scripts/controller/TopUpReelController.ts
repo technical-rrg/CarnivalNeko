@@ -29,9 +29,16 @@ export const TOPUP_STICKY_SYMBOL_SCALE = 0.85;
 
 /** Ô reel = 130; symbol thường gói gọn trong 127×127. */
 export const GRID_MINI_SYMBOL_SIZE = 127;
-/** Đồng vàng / xanh — size cứng, khác symbol thường. */
+/** Đồng vàng trên reel — size overlay baseline. */
 export const GRID_MINI_COIN_SIZE = 200;
+/** Đồng xanh trên GridMiniReel — nhỏ hơn để gọn trong ô mask; overlay zoom full khi land. */
+export const GRID_MINI_GREEN_COIN_SIZE = 165;
 export const GRID_MINI_SYMBOL_SCALE = 1;
+
+/** Tỉ lệ visual đồng xanh reel → overlay full (content size ratio). */
+export function gridMiniGreenReelVisualScale(): number {
+    return GRID_MINI_GREEN_COIN_SIZE / GRID_MINI_COIN_SIZE;
+}
 
 export function isGridMiniCoinSymbol(symbolId: number): boolean {
     return symbolId === SymbolId.STICKY_YELLOW || symbolId === SymbolId.STICKY_GREEN;
@@ -105,7 +112,6 @@ export class TopUpReelController extends Component {
     /** Cập nhật kích thước ô grid (182 cho 5×3, 126 cho 5×4/5×5). */
     setGridCellSize(size: number): void {
         const cell = Math.max(1, Math.round(size));
-        if (cell === this._gridCellSize && this.symbolHeight === cell) return;
         this._gridCellSize = cell;
         this.symbolHeight = cell;
         this._applyGridCellSymbolFit();
@@ -528,7 +534,7 @@ export class TopUpReelController extends Component {
             ?? node.getComponent(SymbolView)?.symbolId
             ?? -1;
         if (isGridMiniCoinSymbol(sid)) {
-            const coin = this._gridCoinFitSize();
+            const coin = this._gridCoinFitSize(sid);
             ut.setContentSize(coin, coin);
             return;
         }
@@ -546,8 +552,12 @@ export class TopUpReelController extends Component {
         return Math.max(1, Math.round(this._gridCellSize * GRID_MINI_SYMBOL_SIZE / MATSURI_CELL_SIZE));
     }
 
-    private _gridCoinFitSize(): number {
-        return Math.max(1, Math.round(this._gridCellSize * GRID_MINI_COIN_SIZE / MATSURI_CELL_SIZE));
+    private _gridCoinFitSize(symbolId?: number): number {
+        const sid = symbolId ?? -1;
+        const base = sid === SymbolId.STICKY_GREEN
+            ? GRID_MINI_GREEN_COIN_SIZE
+            : GRID_MINI_COIN_SIZE;
+        return Math.max(1, Math.round(this._gridCellSize * base / MATSURI_CELL_SIZE));
     }
 
     /** Ô / mask theo matsuriCellSize; symbol content giữ tỉ lệ baseline 130. */

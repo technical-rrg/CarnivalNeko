@@ -45,6 +45,7 @@ import {
     MATSURI_GOLD_SYMBOL,
     MATSURI_SPIN_COUNT,
     clampMatsuriRows,
+    matsuriCellSize,
     parseCnStickyCells,
     pickMatsuriStartCoinCells,
     lookupCnStickyCredit,
@@ -2619,10 +2620,14 @@ export class GameManager extends Component {
 
         // Ultra+/Supreme/Ultimate: Matsuri cleanup đã trì hoãn → chạy khi Pick đóng
         // (TOPUP_END hiện lại main reels + unload sticky; mode → normal; BG normal)
+        const stillInMatsuri = data.currentMode === 'matsuri';
         const deferredMatsuriWin = this._deferredMatsuriTopUpEndWin;
         this._deferredMatsuriTopUpEndWin = null;
-        if (deferredMatsuriWin != null) {
-            Log.e(`[DEBUG-PICK] _onPickGameClose → deferred Matsuri TOPUP_END totalWin=${deferredMatsuriWin}`);
+        if (deferredMatsuriWin != null || stillInMatsuri) {
+            Log.e(
+                `[DEBUG-PICK] _onPickGameClose → restore normal after Matsuri/Pick` +
+                ` deferredWin=${deferredMatsuriWin ?? 'n/a'} stillMatsuri=${stillInMatsuri ? 1 : 0}`,
+            );
             data.currentMode = 'normal';
             data.respinRemaining = 0;
             data.respinTotalWin = 0;
@@ -2633,10 +2638,14 @@ export class GameManager extends Component {
             data.stickyCells.clear();
             data.pendingCarnivalMatsuri = null;
             data.topUpDisplayedEachWin = 0;
+            data.pickGameState = null;
+            if (data.lastSpinResponse) {
+                data.lastSpinResponse.nextStage = SlotStageType.SPIN;
+                data.lastSpinResponse.pickGame = undefined;
+            }
             this._topUpStickySnapshot.clear();
             this._topUpRemainBeforeSpin = 0;
-            EventBus.instance.emit(GameEvents.TOPUP_END, deferredMatsuriWin);
-            EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB_DONE);
+            EventBus.instance.emit(GameEvents.TOPUP_END, deferredMatsuriWin ?? 0);
         }
 
         // Restore game state bị block bởi _transitionStage(POT_WIN)
@@ -3973,6 +3982,7 @@ export class GameManager extends Component {
         overlay?.ensureRowCount(rows, topUpMgr);
         // Overlay inactive sau 5×3: scene getComponentInChildren có thể miss TM — luôn gọi trực tiếp.
         topUpMgr?.ensureRowCount(rows);
+        topUpMgr?.applyGridCellSize(matsuriCellSize(rows));
         // Giữ cache trỏ đúng instance vừa resize (guard _areSlotReelsSettled dùng chung).
         if (topUpMgr) this._cachedTopUpMgr = topUpMgr;
     }

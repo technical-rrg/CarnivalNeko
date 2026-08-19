@@ -20,7 +20,7 @@
  *   → await Base → GameRoot active ngay (không qua Guide)
  */
 
-import { _decorator, Component, Node, sp, assetManager, UIOpacity } from 'cc';
+import { _decorator, Component, Node, UIOpacity } from 'cc';
 import { EventBus }                from '../core/EventBus';
 import { GameEvents }              from '../core/GameEvents';
 import { GameData }                from '../data/GameData';
@@ -30,12 +30,9 @@ import { TransitionLoader }        from './TransitionLoader';
 import { TransitionController }    from './TransitionController';
 import { BroadcastPopupLoader }    from './BroadcastPopupLoader';
 import { DebbugManagerLoader }     from './DebbugManagerLoader';
-import { OrientationLayout }       from './OrientationLayout';
 import { GuideShellLoader }        from '../core/GuideShellLoader';
 import { GameManager }             from '../manager/GameManager';
 import { SKIP_GUIDE_TRANSITION }   from '../data/ServerConfig';
-
-const LOGO_SKELETON_PATH = 'newSpine/Anim-TitleGame/TitleGame';
 
 const { ccclass, property } = _decorator;
 
@@ -214,8 +211,6 @@ export class GameEntryController extends Component {
             this.sharedNode = sharedFromShell;
         }
         this._reparentSharedNode();
-        // Reparent Logo TRƯỚC dismiss Guide — tái sử dụng spine TitleGame từ GuideView
-        this._adoptGuideLogo(GuideShellLoader.logoNode);
 
         // ★ Dưới màn đen: warm GameRoot + BG — chưa FadeIn
         Log.d('[GameEntryController] enterFromExternalGuide — prep under black (no FadeIn yet)');
@@ -433,7 +428,6 @@ export class GameEntryController extends Component {
         Log.d('[GameEntryController] GUIDE_COMPLETE → gameGuide.active=false → _showGameRoot()');
         if (this.gameGuide) this.gameGuide.active = false;
         this._reparentSharedNode();
-        this._adoptGuideLogo(GuideShellLoader.logoNode ?? this.gameGuide?.getChildByName('Logo') ?? null);
         this._showGameRoot();
         EventBus.instance.emit(GameEvents.GAME_ENTRY_EFFECT);
     }
@@ -461,13 +455,6 @@ export class GameEntryController extends Component {
         if (this.sharedNode) {
             this.sharedNode.active = true;
             Log.d('[GameEntryController] GameRoot active → sharedNode.active = true');
-        }
-
-        // Resume / skip-intro: Logo placeholder chưa có skeleton → lazy load
-        const logo = this.gameRoot.getChildByName('Logo');
-        const skel = logo?.getComponent(sp.Skeleton);
-        if (logo && skel && !skel.skeletonData) {
-            void this._ensureLogoSkeleton(logo);
         }
 
         if (reveal) this._setGameRootOpacity(255);
@@ -499,7 +486,6 @@ export class GameEntryController extends Component {
         GameData.instance.isGuideShowing = false;
         if (this.gameGuide) this.gameGuide.active = false;
         this._reparentSharedNode();
-        this._adoptGuideLogo(GuideShellLoader.logoNode);
         this._showGameRoot(false, false);
 
         // GameManager nghe GUIDE_COMPLETE → GAME_READY
@@ -572,73 +558,5 @@ export class GameEntryController extends Component {
         this.sharedNode.setParent(this.gameRoot, false);
         this.sharedNode.setSiblingIndex(1);
         Log.d('[GameEntryController] sharedNode đã được chuyển sang GameRoot');
-    }
-
-    /**
-     * Tái sử dụng Logo spine từ GuideView → slot Logo trên GameRoot.
-     * Base.Logo để skeletonData=null (không kéo TitleGame vào deps Base).
-     */
-    private _adoptGuideLogo(logoFromGuide: Node | null): void {
-        if (!this.gameRoot?.isValid) return;
-
-        const placeholder = this.gameRoot.getChildByName('Logo');
-
-        if (logoFromGuide?.isValid) {
-            if (placeholder?.isValid && placeholder !== logoFromGuide) {
-                const srcOl = placeholder.getComponent(OrientationLayout);
-                const dstOl = logoFromGuide.getComponent(OrientationLayout);
-                if (srcOl && dstOl) dstOl.copyFrom(srcOl);
-
-                const sib = placeholder.getSiblingIndex();
-                placeholder.destroy();
-                logoFromGuide.setParent(this.gameRoot, false);
-                logoFromGuide.setSiblingIndex(sib);
-            } else if (logoFromGuide.parent !== this.gameRoot) {
-                logoFromGuide.setParent(this.gameRoot, false);
-            }
-
-            logoFromGuide.name = 'Logo';
-            logoFromGuide.active = true;
-            const skel = logoFromGuide.getComponent(sp.Skeleton);
-            if (skel?.skeletonData) {
-                const anim = skel.defaultAnimation || 'animation';
-                skel.setAnimation(0, anim, true);
-            }
-            Log.d('[GameEntryController] Adopted Guide Logo spine → GameRoot');
-            return;
-        }
-
-        // Skip intro / không có Guide shell — lazy load TitleGame vào placeholder
-        void this._ensureLogoSkeleton(placeholder);
-    }
-
-    private _ensureLogoSkeleton(logo: Node | null): Promise<void> {
-        if (!logo?.isValid) return Promise.resolve();
-        const skel = logo.getComponent(sp.Skeleton);
-        if (!skel) return Promise.resolve();
-        if (skel.skeletonData) {
-            skel.setAnimation(0, skel.defaultAnimation || 'animation', true);
-            return Promise.resolve();
-        }
-
-        const bundle = assetManager.getBundle('MainBundle');
-        if (!bundle) {
-            Log.w('[GameEntryController] MainBundle missing — cannot load Logo spine');
-            return Promise.resolve();
-        }
-
-        return new Promise((resolve) => {
-            bundle.load(LOGO_SKELETON_PATH, sp.SkeletonData, (err, data) => {
-                if (err || !data || !skel.isValid) {
-                    Log.w('[GameEntryController] Logo SkeletonData load failed', err);
-                    resolve();
-                    return;
-                }
-                skel.skeletonData = data;
-                skel.setAnimation(0, 'animation', true);
-                Log.d('[GameEntryController] Logo SkeletonData lazy-loaded (skip-intro path)');
-                resolve();
-            });
-        });
     }
 }

@@ -516,6 +516,8 @@ export interface MatchedLinePay {
     matchedSymbols: number[];
     containsWild: boolean;
     reelCnt: number;
+    /** Server MatchedSymbolsCount — 3/4/5-of-a-kind (ReelCnt thường = 0). */
+    matchedSymbolsCount?: number;
     matchedSymbolsIndices: Array<{ Item1: number; Item2: number }> | null;
 }
 

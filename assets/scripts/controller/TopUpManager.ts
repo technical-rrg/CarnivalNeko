@@ -74,6 +74,13 @@ export class TopUpManager extends Component {
     get cellCount(): number { return COLUMN_COUNT * this._rowCount; }
     get isSpinning(): boolean { return this._isSpinning; }
 
+    /** Áp cell size cho toàn pool reel (5×5). */
+    applyGridCellSize(size: number): void {
+        for (const reel of this._poolReels) {
+            reel?.setGridCellSize(size);
+        }
+    }
+
     private _isSpinning: boolean = false;
     /** Thứ tự quay theo col-major index 0..cellCount-1 */
     private _seqOrder: number[] = [];

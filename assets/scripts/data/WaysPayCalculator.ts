@@ -68,19 +68,6 @@ export class WaysPayCalculator {
             if (win) wins.push(win);
         }
 
-        // ══ DEBUG LOG ══
-        console.log(
-            `%c[WaysPayCalc] grid=${reelCount}×${(grid[0]??[]).length} | wildId=${wildId} | isFreeSpin=${isFreeSpin} | totalBet=${totalBet}\n` +
-            `  col0=[${col0.join(',')}] → targets=[${[...targets].join(',')}]\n` +
-            `  grid: ${grid.map((c, i) => `R${i}=[${c.join(',')}]`).join(' | ')}\n` +
-            `  WINS (${wins.length}): ${wins.map(w =>
-                `{sym=${w.symbolId}, reels=${w.reelCount}, ways=${w.ways}, payout=${w.payout.toFixed(3)},` +
-                ` gridCells=[${w.cells.map(c => `r${c.reel}g${c.row}→d${2-c.row}`).join(',')}]}`
-            ).join('\n        ')}`,
-            'color:#ff0;font-weight:bold'
-        );
-        // ══════════════
-
         return wins;
     }
 

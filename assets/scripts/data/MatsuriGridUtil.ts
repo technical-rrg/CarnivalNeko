@@ -22,8 +22,57 @@ export const MATSURI_COL_COUNT = 5;
 export const MATSURI_SPIN_COUNT = 3;
 export const MATSURI_MIN_ROWS = 3;
 export const MATSURI_MAX_ROWS = 5;
-/** Size 1 ô GridMiniReel / coin slot (px). FrameFront 5×5 trừ đúng 1 ô khi 5×4, 2 ô khi 5×3. */
+/** @deprecated Baseline cũ 130px — dùng {@link matsuriCellSize}. */
 export const MATSURI_CELL_SIZE = 130;
+
+/** Ô grid Matsuri 5×4 / 5×5 (px). */
+export const MATSURI_CELL_SIZE_DENSE = 126;
+/** Ô grid Matsuri 5×3 (px). */
+export const MATSURI_CELL_SIZE_LARGE = 182;
+
+/** Tâm vùng grid (StickyOverlay local) — khớp node Rect5×N trên Prefab. */
+export const MATSURI_RECT_CENTER: Readonly<Record<number, { x: number; y: number }>> = {
+    5: { x: -0.5611111111111124, y: -32.91277777777777 },
+    4: { x: -0.561, y: 29.893 },
+    3: { x: 0, y: -11.132777777777779 },
+};
+
+/** Offset parent GridMiniReel / Array (StickyOverlay local). */
+export const MATSURI_GRID_PARENT = {
+    miniReel: { x: -230.843, y: 15.096 },
+    array: { x: -7.473, y: -24.6605 },
+} as const;
+
+export function matsuriCellSize(rows?: number): number {
+    return clampMatsuriRows(rows ?? MATSURI_MIN_ROWS) === MATSURI_MIN_ROWS
+        ? MATSURI_CELL_SIZE_LARGE
+        : MATSURI_CELL_SIZE_DENSE;
+}
+
+/** Tâm ô (col, poolRow) trong không gian StickyOverlay. poolRow 0 = hàng trên. */
+export function matsuriGridCellCenter(rows: number, col: number, poolRow: number): { x: number; y: number } {
+    const r = clampMatsuriRows(rows);
+    const cell = matsuriCellSize(r);
+    const rect = MATSURI_RECT_CENTER[r];
+    const gridW = MATSURI_COL_COUNT * cell;
+    const gridH = r * cell;
+    return {
+        x: rect.x - gridW * 0.5 + cell * 0.5 + col * cell,
+        y: rect.y + gridH * 0.5 - cell * 0.5 - poolRow * cell,
+    };
+}
+
+/** Local pos trong GridMiniReel hoặc Array. */
+export function matsuriGridCellLocal(
+    parent: keyof typeof MATSURI_GRID_PARENT,
+    rows: number,
+    col: number,
+    poolRow: number,
+): { x: number; y: number } {
+    const center = matsuriGridCellCenter(rows, col, poolRow);
+    const offset = MATSURI_GRID_PARENT[parent];
+    return { x: center.x - offset.x, y: center.y - offset.y };
+}
 
 export function clampMatsuriRows(rows: number): number {
     const n = Math.floor(rows);

@@ -17,11 +17,19 @@
  *   khi LONG_SPIN_TRIGGERED. Có thể gán sẵn longSpinVFXNode trong Editor (optional).
  */
 
-import { _decorator, Component, Node, Sprite, SpriteFrame, screen, Prefab, instantiate, Vec3, tween, Tween, Camera, Canvas } from 'cc';
+import {
+    _decorator, Component, Node, Sprite, SpriteAtlas, SpriteFrame,
+    screen, Prefab, instantiate, Vec3, tween, Tween, Camera, Canvas,
+} from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { SpinResponse, SymbolId, isFreeSpinTierReelIndex } from '../data/SlotTypes';
 import { GameData } from '../data/GameData';
+import {
+    buildSymbolFramesFromAtlas,
+    loadSymbolPackAtlas,
+    resolveSymbolPackAtlas,
+} from '../data/SymbolPackUtil';
 import { ReelController } from './ReelController';
 import { SymbolView } from './SymbolView';
 import { WaysPayDisplay } from './WaysPayDisplay';
@@ -147,13 +155,15 @@ export class SlotMachineController extends Component {
     creditLabelPrefab: Prefab | null = null;
 
     @property({
+        type: SpriteAtlas,
+        tooltip: 'SymbolPack atlas — frame name = PS ID (1, 11, 21, 45, 46, 82, …).\n'
+               + 'Runtime build symbolFrames[] indexed by SymbolId.',
+    })
+    symbolAtlas: SpriteAtlas | null = null;
+
+    @property({
         type: [SpriteFrame],
-        tooltip: 'SpriteFrame cho từng Symbol — kéo 1 lần, áp dụng cho mọi SymbolView.\n'
-               + '[0]=ps_01(8) [1]=ps_02(9) [2]=ps_03(J) [3]=ps_04(Q) [4]=ps_05(K) [5]=ps_06(A)\n'
-               + '[6]=ps_11(Raccoon) [7]=ps_12(Fish) [8]=ps_13(Crane) [9]=ps_14(Fox) [10]=ps_15(Neko)\n'
-               + '[11]=ps_21(Wild) [13]=ps_45(Gold) [14]=ps_44(Green)\n'
-               + '[16]=ps_81(Idle) [17]=ps_85(Mini) [18]=ps_84(Minor) [19]=ps_83(Major) [20]=ps_82(Grand)\n'
-               + '[21]=trail_normal [22]=ps_41 [23]=ps_43 [24]=ps_42 [25]=ps_86(Upgrade)',
+        tooltip: 'Fallback thủ công khi không gán symbolAtlas — để trống, dùng SymbolPack.',
     })
     symbolFrames: SpriteFrame[] = [];
 
@@ -448,8 +458,8 @@ export class SlotMachineController extends Component {
             this.longSpinVFXNode.active = false;
         }
 
-        // Phân phối symbolFrames sớm trong onLoad() — trước khi bất kỳ event nào
-        // (ENTER_SUCCESS, RESUME_NORMAL_SPIN) fire và gọi setSymbols() trên reels.
+        // Build symbolFrames từ SymbolPack rồi phân phối sớm — trước ENTER_SUCCESS / RESUME.
+        this._initSymbolFramesFromAtlas();
         this._distributeFramesToSymbolViews();
     }
 
@@ -525,6 +535,33 @@ export class SlotMachineController extends Component {
                 }
             }
         }
+    }
+
+    /** Lấy frame từ SymbolPack theo PS ID (hỗ trợ tên "21" hoặc "21.png"). */
+    private _initSymbolFramesFromAtlas(): void {
+        const atlas = resolveSymbolPackAtlas(this.symbolAtlas);
+        if (atlas) {
+            this.symbolAtlas = atlas;
+            this.symbolFrames = buildSymbolFramesFromAtlas(atlas);
+            return;
+        }
+        if (this.symbolFrames.length > 0) return;
+
+        loadSymbolPackAtlas(
+            (loaded) => {
+                this.symbolAtlas = loaded;
+                this.symbolFrames = buildSymbolFramesFromAtlas(loaded);
+                this._distributeFramesToSymbolViews();
+                if (this.applyInitialSymbols()) return;
+                const reelCount = this.reels.length;
+                const safeFallback = Array.from({ length: reelCount }, (_, i) => i <= 1 ? i : 0);
+                const indices = this.initialCenterIndices.length >= reelCount
+                    ? this.initialCenterIndices
+                    : safeFallback;
+                this.setInitialSymbols(indices);
+            },
+            (err) => Log.e('[SlotMachine] load SymbolPack failed', err),
+        );
     }
 
     /** Ghi symbolFrames + blurFrames vào từng SymbolView trên mọi reel.

@@ -63,10 +63,10 @@ export class LanguageChange extends Component {
     private _applyText() {
         if (!this.translationKey) return;
         const text = L(this.translationKey);
-        if (this._label) {
+        if (this._richText) {
+            this._richText.string = text.replace(/\r\n|\n/g, '<br/>');
+        } else if (this._label) {
             this._label.string = text;
-        } else if (this._richText) {
-            this._richText.string = text;
         }
     }
 

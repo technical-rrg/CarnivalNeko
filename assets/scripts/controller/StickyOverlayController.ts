@@ -25,7 +25,7 @@
 
 import {
     _decorator, Component, Node, Sprite, SpriteFrame, UIOpacity, UITransform,
-    tween, Vec3, Tween, instantiate, Size, Widget,
+    tween, Vec3, Tween, instantiate,
 } from 'cc';
 import { EventBus }     from '../core/EventBus';
 import { GameEvents }   from '../core/GameEvents';
@@ -41,12 +41,13 @@ import { GRID_MINI_COIN_SIZE, TOPUP_STICKY_SYMBOL_SCALE } from './TopUpReelContr
 import { TopUpTransitionPopup, TransitionMode } from './TopUpTransitionPopup';
 import {
     MATSURI_COL_COUNT,
+    MATSURI_CELL_SIZE,
     MATSURI_GOLD_SYMBOL,
     MATSURI_MIN_ROWS,
     MATSURI_SPIN_COUNT,
     clampMatsuriRows,
-    matsuriGridFrameHeightShrink,
-    matsuriGridYOffset,
+    matsuriCellSize,
+    matsuriGridCellLocal,
     lookupCnStickyCredit,
 } from '../data/MatsuriGridUtil';
 
@@ -129,6 +130,15 @@ export class StickyOverlayController extends Component {
         tooltip: '3 ô remain (trái → phải). Mỗi ô: sprite Empty + child Fill. Gán từ Editor.',
     })
     spinRemainSlots: Node[] = [];
+
+    @property({ type: SpriteFrame, tooltip: 'FramFront — grid 5×3 (Reelframe_Freespin_5x3).' })
+    featureFrame5x3: SpriteFrame | null = null;
+
+    @property({ type: SpriteFrame, tooltip: 'FramFront — grid 5×4 (Reelframe_Freespin_5x4).' })
+    featureFrame5x4: SpriteFrame | null = null;
+
+    @property({ type: SpriteFrame, tooltip: 'FramFront — grid 5×5 (Reelframe_Freespin_5x5).' })
+    featureFrame5x5: SpriteFrame | null = null;
 
     /**
      * Wire SlotMachineController từ code (lazy-load Prefab không serialize cross-prefab refs).
@@ -271,19 +281,13 @@ export class StickyOverlayController extends Component {
     private _poolCoinSlots: Node[] = [];
     private static readonly POOL_ROWS = 5;
 
-    /** Baseline layout (prefab 5×5 + FrameFront) — capture 1 lần trước khi fit. */
+    /** Baseline layout — capture 1 lần trước khi fit. */
     private _baseRootPos: Vec3 | null = null;
-    private _frameBaseSizes: Map<Node, Size> = new Map();
-    private _frameBasePos: Map<Node, Vec3> = new Map();
-    private _frameNodes: Node[] = [];
     private _frontFrameNode: Node | null = null;
-    private _fillBackNode: Node | null = null;
     private _arrayNode: Node | null = null;
     private _gridNode: Node | null = null;
-    private _gridBasePos: Vec3 | null = null;
-    /** FramFront/Top — HUD luôn dính mép trên khung, không dịch theo số hàng. */
+    /** FramFront/Top — HUD trên khung. */
     private _featureTopNode: Node | null = null;
-    private _featureTopBasePos: Vec3 | null = null;
 
     private _lastFeatureRemain = -1;
     private _featureCollectTotal = 0;
@@ -416,163 +420,119 @@ export class StickyOverlayController extends Component {
 
     /**
      * Fit layout theo số hàng:
-     *  - FrameFront / fill / mask: trừ height 130 mỗi hàng ẩn (baseline 5×5) — size không đổi logic
-     *  - Root dịch Y để canh giữa (5×4 −65, 5×3 −130), không pin mép trên
-     *  - Root luôn scale 1
+     *  - FramFront: đổi sprite Reelframe_Freespin_5×N
+     *  - GridMiniReel + Array: canh giữa Rect5×N, cell 182 (5×3) / 126 (5×4|5×5)
+     *  - Root StickyOverlay giữ nguyên (Widget prefab đã canh)
      */
     private _applyGridFitScale(rows: number): void {
         this._ensureLayoutBaselines();
         const r = clampMatsuriRows(rows);
-        const shrink = matsuriGridFrameHeightShrink(r);
 
-        this._resizeFrameAndCenterGrid(r, shrink);
+        this._applyFeatureFrame(r);
+        this._layoutMatsuriGrid(r);
+        this._syncGridRectNodes(r);
 
         this.node.setScale(1, 1, 1);
-        if (this._baseRootPos) {
-            const midY = matsuriGridYOffset(r);
-            this.node.setPosition(
-                this._baseRootPos.x,
-                this._baseRootPos.y + midY,
-                this._baseRootPos.z,
-            );
-        }
 
         this.alignPositionsFromTopUpManager();
-        Log.d(`[StickyOverlay] grid fit 5×${r} scale=1 shrink=${shrink} midY=${matsuriGridYOffset(r)}`);
+        Log.d(`[StickyOverlay] grid fit 5×${r} cell=${matsuriCellSize(r)}`);
     }
 
-    /**
-     * FrameFront / FillBack / Array: đổi size + dịch Y để mép trên đứng yên.
-     * Top HUD: luôn dính mép trên FrameFront (không đổi world Y).
-     * Grid: không dịch — pool giữ hàng trên, hàng ẩn ở dưới.
-     */
-    private _resizeFrameAndCenterGrid(_rows: number, shrink: number): void {
-        this._shrinkHeightPinTop(this._frontFrameNode, shrink);
-        this._shrinkHeightPinTop(this._fillBackNode, shrink);
-        this._shrinkHeightPinTop(this._arrayNode, shrink);
-        this._pinFeatureTopToFrameFront();
-
-        if (this._gridNode && this._gridBasePos) {
-            this._gridNode.setPosition(this._gridBasePos);
-        }
-        for (const n of this._frameNodes) {
-            this._shrinkHeightPinTop(n, shrink);
-        }
-    }
-
-    /** Tắt Widget để layout code không bị ghi đè (FrameFront CENTER / Top TOP ALWAYS). */
-    private _disableWidget(n: Node | null): void {
-        const w = n?.getComponent(Widget);
-        if (w) w.enabled = false;
-    }
-
-    /**
-     * Co height từ mép dưới. Node neo giữa phải +Y = shrink * anchorY
-     * thì mép trên (và child Top) không nhảy khi 5×3 ↔ 5×4 ↔ 5×5.
-     */
-    private _shrinkHeightPinTop(n: Node | null, shrink: number): void {
-        if (!n) return;
-        const base = this._frameBaseSizes.get(n);
-        const basePos = this._frameBasePos.get(n);
-        const ut = n.getComponent(UITransform);
-        if (!base || !basePos || !ut) return;
-        this._disableWidget(n);
-        ut.setContentSize(base.width, Math.max(1, base.height - shrink));
-        const dy = shrink * ut.anchorPoint.y;
-        n.setPosition(basePos.x, basePos.y + dy, basePos.z);
-    }
-
-    /** Top luôn cách mép trên FrameFront đúng offset prefab 5×5. */
-    private _pinFeatureTopToFrameFront(): void {
+    /** Đổi sprite FramFront theo 5×3 / 5×4 / 5×5 — giữ Widget, không dịch root. */
+    private _applyFeatureFrame(rows: number): void {
         const frame = this._frontFrameNode;
-        const top = this._featureTopNode;
-        if (!frame || !top || !this._featureTopBasePos) return;
-        this._disableWidget(top);
-        const frameUt = frame.getComponent(UITransform);
-        const baseSize = this._frameBaseSizes.get(frame);
-        if (!frameUt || !baseSize) {
-            top.setPosition(this._featureTopBasePos);
-            return;
+        if (!frame) return;
+
+        const spriteFrame = this._featureFrameForRows(rows);
+        if (!spriteFrame) return;
+
+        const sprite = frame.getComponent(Sprite);
+        const ut = frame.getComponent(UITransform);
+        if (sprite) {
+            sprite.spriteFrame = spriteFrame;
+            sprite.sizeMode = Sprite.SizeMode.RAW;
         }
-        const baseTopLocal = baseSize.height * (1 - frameUt.anchorPoint.y);
-        const nowTopLocal = frameUt.contentSize.height * (1 - frameUt.anchorPoint.y);
-        const p = this._featureTopBasePos;
-        top.setPosition(p.x, p.y + (nowTopLocal - baseTopLocal), p.z);
+        if (ut) {
+            const w = spriteFrame.originalSize?.width ?? spriteFrame.width;
+            const h = spriteFrame.originalSize?.height ?? spriteFrame.height;
+            ut.setContentSize(w, h);
+        }
+    }
+
+    private _featureFrameForRows(rows: number): SpriteFrame | null {
+        const r = clampMatsuriRows(rows);
+        if (r === 3) return this.featureFrame5x3;
+        if (r === 4) return this.featureFrame5x4;
+        return this.featureFrame5x5;
+    }
+
+    /** Canh pool 5×5 reel + coin slot vào giữa Rect5×N tương ứng. */
+    private _layoutMatsuriGrid(rows: number): void {
+        const r = clampMatsuriRows(rows);
+        const cellSize = matsuriCellSize(r);
+        const poolRows = StickyOverlayController.POOL_ROWS;
+        const gridNode = this._gridNode;
+        const arrayNode = this._arrayNode;
+
+        for (let col = 0; col < MATSURI_COL_COUNT; col++) {
+            for (let poolRow = 0; poolRow < poolRows; poolRow++) {
+                const idx = col * poolRows + poolRow;
+                const reelLocal = matsuriGridCellLocal('miniReel', r, col, poolRow);
+                const arrayLocal = matsuriGridCellLocal('array', r, col, poolRow);
+
+                const reelNode = gridNode?.children[idx] ?? gridNode?.getChildByName(String(idx));
+                if (reelNode) {
+                    reelNode.setPosition(reelLocal.x, reelLocal.y, reelNode.position.z);
+                }
+
+                const arraySlot = arrayNode?.children[idx] ?? arrayNode?.getChildByName(String(idx));
+                if (arraySlot) {
+                    arraySlot.setPosition(arrayLocal.x, arrayLocal.y, arraySlot.position.z);
+                }
+
+                const poolSlot = this._poolCoinSlots[idx];
+                if (poolSlot?.isValid && poolSlot.parent === arrayNode) {
+                    poolSlot.setPosition(arrayLocal.x, arrayLocal.y, poolSlot.position.z);
+                }
+            }
+        }
+
+        const topUpMgr = this._getTopUpManager();
+        topUpMgr?.applyGridCellSize(cellSize);
+    }
+
+    /** Bật đúng Rect5×N, tắt 2 Rect còn lại (debug/canhvùng grid trên Prefab). */
+    private _syncGridRectNodes(rows: number): void {
+        const r = clampMatsuriRows(rows);
+        for (const n of [3, 4, 5] as const) {
+            const rect = this.node.getChildByName(`Rect5x${n}`);
+            if (rect?.isValid) rect.active = n === r;
+        }
     }
 
     private _ensureLayoutBaselines(): void {
         if (!this._baseRootPos) {
             this._baseRootPos = this.node.position.clone();
         }
-        if (this._frameNodes.length > 0 || this._frontFrameNode) return;
+        if (this._gridNode && this._arrayNode && this._frontFrameNode) return;
 
-        const capture = (n: Node | null) => {
-            if (!n) return null;
-            const ut = n.getComponent(UITransform);
-            if (!ut) return null;
-            this._frameBaseSizes.set(n, new Size(ut.contentSize.width, ut.contentSize.height));
-            this._frameBasePos.set(n, n.position.clone());
-            return n;
-        };
+        this._frontFrameNode = this.node.getChildByName('FramFront')
+            ?? this.node.getChildByName('FrameFront');
 
-        for (const name of ['FillBlackFrame-001', 'FillBlackFrame']) {
-            const n = capture(this.node.getChildByName(name));
-            if (n) this._frameNodes.push(n);
-        }
-
-        this._fillBackNode = capture(this.node.getChildByName('FillBack'));
-        if (this._fillBackNode) {
-            const sprite = this._fillBackNode.getComponent(Sprite);
-            if (sprite) {
-                sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-                sprite.type = Sprite.Type.SLICED;
-            }
-        }
-
-        this._arrayNode = capture(this.node.getChildByName('Array'));
-
-        this._frontFrameNode = capture(this.node.getChildByName('FramFront'))
-            ?? capture(this.node.getChildByName('FrameFront'));
         if (this._frontFrameNode) {
-            const sprite = this._frontFrameNode.getComponent(Sprite);
-            if (sprite) {
-                sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-                sprite.type = Sprite.Type.SLICED;
-            }
-            this._disableWidget(this._frontFrameNode);
             const top = this._frontFrameNode.getChildByName('Top')
                 ?? this.node.getChildByName('Top');
-            if (top) {
-                this._featureTopNode = top;
-                this._featureTopBasePos = top.position.clone();
-                this._disableWidget(top);
-            }
+            if (top) this._featureTopNode = top;
         }
 
-        const grid = this.node.getChildByName('GridMiniReel');
-        if (grid) {
-            this._gridNode = grid;
-            this._gridBasePos = grid.position.clone();
-        }
+        this._arrayNode = this.node.getChildByName('Array');
+        this._gridNode = this.node.getChildByName('GridMiniReel');
     }
 
     private _resetGridFitLayout(): void {
         this.node.setScale(1, 1, 1);
         if (this._baseRootPos) {
             this.node.setPosition(this._baseRootPos);
-        }
-        for (const [n, base] of this._frameBaseSizes) {
-            const ut = n.getComponent(UITransform);
-            if (ut) ut.setContentSize(base.width, base.height);
-            const pos = this._frameBasePos.get(n);
-            if (pos) n.setPosition(pos);
-        }
-        if (this._gridNode && this._gridBasePos) {
-            this._gridNode.setPosition(this._gridBasePos);
-        }
-        if (this._featureTopNode && this._featureTopBasePos) {
-            this._disableWidget(this._featureTopNode);
-            this._featureTopNode.setPosition(this._featureTopBasePos);
         }
     }
 
@@ -1420,7 +1380,8 @@ export class StickyOverlayController extends Component {
             sprite.sizeMode = Sprite.SizeMode.CUSTOM;
             sprite.spriteFrame = frame;
             const ut = slotNode.getComponent(UITransform);
-            if (ut) ut.setContentSize(GRID_MINI_COIN_SIZE, GRID_MINI_COIN_SIZE);
+            const coinSize = Math.round(matsuriCellSize(this._rowCount) * GRID_MINI_COIN_SIZE / MATSURI_CELL_SIZE);
+            if (ut) ut.setContentSize(coinSize, coinSize);
         }
 
         // ★ Giữ nguyên scale cho coin đã có (existing) — new coin set base scale qua _playCoinBounce.

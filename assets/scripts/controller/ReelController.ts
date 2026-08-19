@@ -37,6 +37,11 @@ const { ccclass, property } = _decorator;
 
 enum ReelState { IDLE, LAUNCHING, SPINNING, DECELERATING, SETTLING }
 
+/** Node symbol nằm ngoài ReelMask (buffer wrap khi spin). */
+const BUFFER_NODE_INDICES = [0, 4];
+/** Node symbol trong vùng hiển thị 3 hàng. */
+const VISIBLE_NODE_INDICES = [1, 2, 3];
+
 @ccclass('ReelController')
 export class ReelController extends Component {
 
@@ -209,6 +214,16 @@ export class ReelController extends Component {
 
         Log.d(`${this._logPrefix} h=${this.symbolHeight} restY=[${ys.map(y=>y.toFixed(0))}] top=${this._topEdge.toFixed(0)} bot=${this._bottomEdge.toFixed(0)}`);
 
+        // Idle ban đầu: ẩn buffer ngoài mask (tránh lòi cạnh symbol size lớn).
+        this._setOutsideReelSymbolsVisible(false);
+    }
+
+    /** Ẩn/hiện ExtraTop1 + ExtraBot1 (ngoài ReelMask). Chỉ bật lại khi spin. */
+    private _setOutsideReelSymbolsVisible(visible: boolean): void {
+        for (const idx of BUFFER_NODE_INDICES) {
+            const node = this.symbolNodes[idx];
+            if (node?.isValid) node.active = visible;
+        }
     }
 
     // ─── UPDATE ───
@@ -246,6 +261,8 @@ export class ReelController extends Component {
             this.symbolNodes[i].setPosition(this._restPositions[i]);
             this._nodeY[i] = this._restPositions[i].y;
         }
+        // Buffer cần hiện lại để wrap mượt khi cuộn.
+        this._setOutsideReelSymbolsVisible(true);
 
         for (const n of this.symbolNodes) n.emit('spin-start');
 
@@ -363,6 +380,7 @@ export class ReelController extends Component {
             this._nodeY[i] = this._restPositions[i].y;
             this.symbolNodes[i].emit('spin-stop');
         }
+        this._setOutsideReelSymbolsVisible(false);
     }
 
     /**
@@ -423,6 +441,7 @@ export class ReelController extends Component {
             this.symbolNodes[i].emit('spin-stop');
             this.symbolNodes[i].emit('symbol-changed', syms[i]);
         }
+        this._setOutsideReelSymbolsVisible(false);
     }
 
     /**
@@ -617,12 +636,6 @@ export class ReelController extends Component {
         // → SymbolView giữ blur cho đến lúc đó, sau đó mới hiện ảnh thật.
         this._state = ReelState.DECELERATING;
 
-        // NOTE: buffer nodes hidden during decel for visual clarity — uncomment when ready
-        // const bufferIndices = [0, 4];
-        // for (const idx of bufferIndices) {
-        //     if (this.symbolNodes[idx]) this.symbolNodes[idx].active = false;
-        // }
-
         Log.d(`${this._logPrefix} velocityDecel center=${centerIndex} midY=${midCurrent.toFixed(0)} dist=${dist.toFixed(0)} spd=${currentSpeed} dur=${this._decelAdaptedDuration.toFixed(3)}s`);
 
         this.onDecelStart?.(this._decelAdaptedDuration);
@@ -800,14 +813,13 @@ export class ReelController extends Component {
         this._isQuickStopping = false;
         this.onBounceStart?.();
         let done = 0;
-        const visibleIndices = [1, 2, 3];
+        const visibleIndices = VISIBLE_NODE_INDICES;
         for (const i of visibleIndices) {
             this._emitStickyResultLanded(i, syms[i]);
         }
 
-        // Snap buffer nodes instantly
-        const bufferIndices = [0, 4];
-        for (const idx of bufferIndices) {
+        // Snap buffer nodes instantly, rồi ẩn — tránh lòi cạnh symbol size lớn ngoài mask.
+        for (const idx of BUFFER_NODE_INDICES) {
             const buf = this.symbolNodes[idx];
             if (buf?.isValid && this._restPositions[idx]) {
                 buf.setPosition(this._restPositions[idx]);
@@ -815,8 +827,9 @@ export class ReelController extends Component {
                 buf.emit('reel-settled');
             }
         }
+        this._setOutsideReelSymbolsVisible(false);
 
-        const validVisible = visibleIndices.filter((i) => this.symbolNodes[i]?.isValid && this._restPositions[i]);
+        const validVisible = VISIBLE_NODE_INDICES.filter((i) => this.symbolNodes[i]?.isValid && this._restPositions[i]);
         const fireStopComplete = () => {
             if (this._stopCompleteFired) return;
             this._stopCompleteFired = true;
@@ -837,6 +850,7 @@ export class ReelController extends Component {
                 if (node?.isValid) node.emit('reel-settled');
             }
             this._state = ReelState.IDLE;
+            this._setOutsideReelSymbolsVisible(false);
             this.onStopComplete?.();
         };
 

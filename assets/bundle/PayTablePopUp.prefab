@@ -326,7 +326,7 @@
         "__id__": 167
       }
     ],
-    "_active": false,
+    "_active": true,
     "_components": [
       {
         "__id__": 317
@@ -400,7 +400,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": 376.10576,
+      "y": 376.105,
       "z": 0
     },
     "_lrot": {
@@ -440,8 +440,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 187.1484375,
-      "height": 50.4
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -544,8 +544,8 @@
     "posY": 376.105,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 187.1484375,
-    "height": 50.4,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -7240,8 +7240,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 100,
-      "height": 100
+      "width": 940,
+      "height": 1080
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -7436,8 +7436,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 186.2890625,
-      "height": 50.4
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -7537,11 +7537,11 @@
   {
     "__type__": "OrientationLayoutData",
     "posX": 0,
-    "posY": 375.562,
+    "posY": 376.10576,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 186.2890625,
-    "height": 50.4,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -8411,8 +8411,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 265.33203125,
-      "height": 50.4
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -8512,11 +8512,11 @@
   {
     "__type__": "OrientationLayoutData",
     "posX": 0,
-    "posY": 375.562,
+    "posY": 376.10576,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 265.33203125,
-    "height": 50.4,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -9797,8 +9797,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 662.3828125,
-      "height": 50.4
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -9898,11 +9898,11 @@
   {
     "__type__": "OrientationLayoutData",
     "posX": 0,
-    "posY": 375.562,
+    "posY": 376.10576,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 662.3828125,
-    "height": 50.4,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -11736,8 +11736,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 941.3427734375,
-      "height": 50.4
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -11837,11 +11837,11 @@
   {
     "__type__": "OrientationLayoutData",
     "posX": 2.936,
-    "posY": 375.562,
+    "posY": 376.10576,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 1188.5603125,
-    "height": 87.981,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -12663,8 +12663,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 747.5466875,
-      "height": 95.187
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -12764,11 +12764,11 @@
   {
     "__type__": "OrientationLayoutData",
     "posX": 0,
-    "posY": 375.562,
+    "posY": 376.10576,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 747.5466875,
-    "height": 95.187,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -13658,8 +13658,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 332.71484375,
-      "height": 100.8
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -13759,11 +13759,11 @@
   {
     "__type__": "OrientationLayoutData",
     "posX": 0,
-    "posY": 375.562,
+    "posY": 376.10576,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 332.71484375,
-    "height": 100.8,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -14259,7 +14259,7 @@
     "_string": "All <img src=\"45\" width=70 height=70 offset=-10/> appearing on screen are held for the remainder of the feature. Positions containing a\nheld <img src=\"45\" width=70 height=70 offset=-10/> will display a credit prize of x 0.3 - x 50 based on the current bet. If the Matsuri\nFeature was triggered from the Ultra Matsuri, Supreme Matsuri, or Ultimate Matsuri, then Mini\nor Minor may be displayed instead of a credit prize.\n\nDuring each Matsuri Feature spin, any <img src=\"44\"width=70 height=70 offset=-10> that lands on screen will award the sum of the awards\ndisplayed on all <img src=\"45\" width=70 height=70 offset=-10/> and the number of spins remaining is reset to 3.",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
-    "_fontSize": 26,
+    "_fontSize": 30,
     "_fontColor": {
       "__type__": "cc.Color",
       "r": 255,
@@ -14650,8 +14650,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 582.2509765625,
-      "height": 100.8
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -14718,8 +14718,8 @@
     "posY": 375.562,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 582.2509765625,
-    "height": 100.8,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -15609,8 +15609,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 1102.048015625,
-      "height": 85.173
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -15710,11 +15710,11 @@
   {
     "__type__": "OrientationLayoutData",
     "posX": 0,
-    "posY": 375.562,
+    "posY": 376.10576,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 1102.048015625,
-    "height": 85.173,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,
@@ -16533,8 +16533,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 423.671875,
-      "height": 50.4
+      "width": 1300,
+      "height": 150
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -16634,11 +16634,11 @@
   {
     "__type__": "OrientationLayoutData",
     "posX": 0,
-    "posY": 375.562,
+    "posY": 376.10576,
     "anchorX": 0.5,
     "anchorY": 0.5,
-    "width": 423.671875,
-    "height": 50.4,
+    "width": 1300,
+    "height": 150,
     "scaleX": 1,
     "scaleY": 1,
     "scaleZ": 1,

@@ -22,6 +22,8 @@
 
 import {
     SpinResponse,
+    MatchedLinePay,
+    WaysPayWin,
     ServerSession,
     ServerEnterResponse,
     ServerSpinResponse,
@@ -125,6 +127,101 @@ export class ServerApiError extends Error {
         this.serverCode = serverCode;
         this.alreadyHandled = alreadyHandled;
     }
+}
+
+const _SPIN_LOG_EPS = 1e-6;
+
+/** Server Payout là multiplier (× totalBet) hay tiền tuyệt đối. */
+function _detectServerPayoutUnit(payouts: number[], totalBet: number, totalWin: number): 'mult' | 'money' | 'mixed' {
+    if (payouts.length === 0 || totalWin <= 0) return 'money';
+    const sum = payouts.reduce((a, b) => a + b, 0);
+    if (Math.abs(sum - totalWin) < _SPIN_LOG_EPS) return 'money';
+    if (totalBet > 0 && Math.abs(sum * totalBet - totalWin) < _SPIN_LOG_EPS) return 'mult';
+    if (payouts.length === 1 && totalBet > 0) {
+        const p = payouts[0];
+        if (Math.abs(p - totalWin) < _SPIN_LOG_EPS) return 'money';
+        if (Math.abs(p * totalBet - totalWin) < _SPIN_LOG_EPS) return 'mult';
+    }
+    return 'mixed';
+}
+
+function _fmt4(n: number): string {
+    return Number.isFinite(n) ? n.toFixed(4) : '?';
+}
+
+/** Log đầy đủ kết quả spin — tag [SPIN-RESULT] nằm trong Logger whitelist. */
+function logSpinResultSummary(opts: {
+    source: 'server' | 'mock';
+    totalBet: number;
+    totalWin: number;
+    matchedLinePays: MatchedLinePay[];
+    waysPayWins?: WaysPayWin[];
+    featureMultiple?: number;
+}): void {
+    const { source, totalBet, totalWin, matchedLinePays, waysPayWins, featureMultiple } = opts;
+    const lineWin = matchedLinePays.length;
+    const winMult = totalBet > 0 ? totalWin / totalBet : 0;
+    const perLineMult = lineWin > 0 ? winMult / lineWin : 0;
+    const featMult = featureMultiple ?? 1;
+    const rawPayouts = matchedLinePays.map(lp => lp.payout);
+    const payoutUnit = _detectServerPayoutUnit(rawPayouts, totalBet, totalWin);
+
+    const lineParts = matchedLinePays.map((lp, i) => {
+        const psSym = lp.matchedSymbols?.[0] ?? '?';
+        const match = lp.matchedSymbolsCount ?? (lp.reelCnt > 0 ? lp.reelCnt : '?');
+        const asMult = payoutUnit === 'money'
+            ? (totalBet > 0 ? lp.payout / totalBet : 0)
+            : lp.payout;
+        const asMoney = payoutUnit === 'money'
+            ? lp.payout
+            : lp.payout * totalBet;
+        return (
+            `L${i + 1}[payIdx=${lp.payLineIndex} psSym=${psSym} match=${match} reelCnt=${lp.reelCnt}` +
+            ` payoutRaw=${lp.payout} serverMult=${_fmt4(asMult)} lineMoney=${_fmt4(asMoney)} wild=${lp.containsWild ? 1 : 0}]`
+        );
+    });
+
+    const sumLineMoney = rawPayouts.reduce((s, p) => {
+        return s + (payoutUnit === 'money' ? p : p * totalBet);
+    }, 0);
+    const sumLineMult = rawPayouts.reduce((s, p) => {
+        return s + (payoutUnit === 'money' && totalBet > 0 ? p / totalBet : p);
+    }, 0);
+    const sumCheck = Math.abs(sumLineMoney - totalWin) < _SPIN_LOG_EPS ? 'OK' : 'MISMATCH';
+
+    const ways = waysPayWins ?? [];
+    const totalClientWays = ways.reduce((s, w) => s + w.ways, 0);
+    const clientCalcWin = ways.reduce((s, w) => s + w.payout, 0);
+    const clientCheck = totalWin > 0 && ways.length > 0
+        ? (Math.abs(clientCalcWin - totalWin) < _SPIN_LOG_EPS ? 'OK' : 'MISMATCH')
+        : (totalWin <= 0 && ways.length === 0 ? 'OK' : ways.length === 0 ? 'n/a' : 'MISMATCH');
+
+    const waysParts = ways.map(w => {
+        const symMult = (totalBet > 0 && w.ways > 0) ? w.payout / totalBet / w.ways : 0;
+        return (
+            `sym${w.symbolId} ways=${w.ways} reels=${w.reelCount}` +
+            ` win=${_fmt4(w.payout)} symMult=${_fmt4(symMult)}`
+        );
+    });
+
+    let msg =
+        `[SPIN-RESULT] ${source} | lineWin=${lineWin} totalWin=${totalWin} totalBet=${totalBet}` +
+        ` winMult=${_fmt4(winMult)} perLineMult=${_fmt4(perLineMult)} featureMult=${featMult}` +
+        ` payoutUnit=${payoutUnit}`;
+
+    if (lineParts.length > 0) msg += ` | server: ${lineParts.join(' ')}`;
+    if (rawPayouts.length > 0) {
+        msg += ` | sumLineMult=${_fmt4(sumLineMult)} sumLineMoney=${_fmt4(sumLineMoney)}` +
+            ` vsTotalWin=${sumCheck}`;
+    }
+    if (waysParts.length > 0) {
+        msg += ` | clientWays(total=${totalClientWays} calcWin=${_fmt4(clientCalcWin)} vsServer=${clientCheck}):` +
+            ` ${waysParts.join(' ')}`;
+    } else {
+        msg += ` | clientWays: (none)`;
+    }
+
+    Log.e(msg);
 }
 
 // ─── MSGPACK: Packr tương thích C# MessagePack ───────────────────────────────
@@ -360,8 +457,15 @@ class MockNetworkAdapter implements INetworkAdapter {
     private _buyQueueIdx: number = 0;
     /** Backup queue state để restore sau khi buy free spin kết thúc */
 
-    /** Log gauge từ mock SpinResponse (stickyAccumulated / stickyEarned). */
     private _finishMockSpin(resp: SpinResponse): SpinResponse {
+        logSpinResultSummary({
+            source: 'mock',
+            totalBet: resp.totalBet,
+            totalWin: resp.totalWin,
+            matchedLinePays: resp.matchedLinePays ?? [],
+            waysPayWins: resp.waysPayWins,
+            featureMultiple: resp.featureMultiple,
+        });
         return resp;
     }
     private _savedQueueIdx: number = 0;
@@ -479,13 +583,11 @@ class MockNetworkAdapter implements INetworkAdapter {
         if (this._buyQueue.length > 0 && this._buyQueueIdx < this._buyQueue.length) {
             const resp = this._buyQueue[this._buyQueueIdx];
             this._buyQueueIdx++;
-            Log.d(`[MockAdapter] BuyFreeSpin #${this._buyQueueIdx}/${this._buyQueue.length} — nextStage=${resp.nextStage}, remain=${resp.remainFreeSpinCount}`);
             if (this._buyQueueIdx >= this._buyQueue.length) {
-                Log.d('[MockAdapter] Buy Free Spin queue hết — reset');
                 this._buyQueue = [];
                 this._buyQueueIdx = 0;
             }
-            return resp;
+            return this._finishMockSpin(resp);
         }
 
         // ★ KHI DANG FREE SPIN: luôn dùng generateSpinResponse để đảm bảo nextStage đúng
@@ -493,18 +595,14 @@ class MockNetworkAdapter implements INetworkAdapter {
         // Queue từ MOCK_SPIN_SCENARIO có thể chứa nextStage=SPIN (no_win/normal_win/jackpot...)
         // → nếu dùng queue trong free spin sẽ gây thoát free spin mode sớm/sai.
         if (isFreeSpin) {
-            const resp = MockDataProvider.generateSpinResponse(true);
-            Log.d(`[MockAdapter] FreeSpin (generateResponse) — nextStage=${resp.nextStage}, remain=${resp.remainFreeSpinCount}, win=${resp.totalWin}`);
-            return resp;
+            return this._finishMockSpin(MockDataProvider.generateSpinResponse(true));
         }
 
         // ★ TopUp / Re-Spin: KHÔNG dùng queue — luôn generateRespin() để đảm bảo
         // nextStage=TOPUP_SPIN/TOPUP_SPIN_END đúng và stickyCells được tạo đúng.
         // Queue chứa NORMAL spin responses (nextStage=SPIN) sẽ làm TopUp freeze.
         if (GameData.instance.currentMode === 'respin' || GameData.instance.currentMode === 'matsuri') {
-            const resp = MockDataProvider.generateSpinResponse(false);
-            Log.d(`[MockAdapter] ${GameData.instance.currentMode} — nextStage=${resp.nextStage}, remain=${resp.remainRespinCount}, win=${resp.totalWin}`);
-            return resp;
+            return this._finishMockSpin(MockDataProvider.generateSpinResponse(false));
         }
 
         // Normal spin: dùng queue nếu có, fallback random
@@ -1027,31 +1125,6 @@ class RealNetworkAdapter implements INetworkAdapter {
             SlotId: ServerConfig.SLOT_ID,
         };
 
-        // ═══ LOG REQUEST (FreeSpin / Matsuri: endpoint + DebugArray + mode) ═══
-        const clientMode = data.currentMode;
-        Log.e(
-            `[SPIN-REQ] isFreeSpin=${_isFreeSpin} mode=${clientMode}` +
-            ` | Endpoint=${ServerConfig.getEndpoint(ServerConfig.API.SPIN)}` +
-            ` | BetIndex=${requestData.BetIndex}` +
-            ` | CoinValueIndex=${requestData.CoinValueIndex}` +
-            ` | DebugArray=${JSON.stringify(requestData.DebugArray)}` +
-            ` | Seq=${data.currentSeq}` +
-            ` | cnApiFeatureType=${data.cnApiFeatureType}` +
-            ` | remainRespin=${data.respinRemaining}`,
-        );
-        // Alias tag carnival → luôn thấy trong Preview whitelist
-        if (clientMode === 'matsuri' || clientMode === 'respin') {
-            Log.e(
-                `[CarnivalMatsuri] SPIN-REQ Seq=${data.currentSeq}` +
-                ` DebugArray=${JSON.stringify(requestData.DebugArray)}` +
-                ` featureType=${data.cnApiFeatureType} remain=${data.respinRemaining}`,
-            );
-        }
-
-        if (debugRands) {
-            Log.e(`[SPIN-REQ] Force DebugRands=${JSON.stringify(debugRands)}`);
-        }
-
         const encrypted = this._encryptAES256(JSON.stringify(requestData), session.aky);
         const packet = this._buildPacket(
             ServerConfig.API.SPIN,
@@ -1093,28 +1166,15 @@ class RealNetworkAdapter implements INetworkAdapter {
         // Update jackpot values from Before/After (PascalCase per AckSpin doc)
         // raw.Before = pool lúc bắt đầu spin (dùng làm prize khi trúng progressive)
         // raw.After  = { MINI: n, MINOR: n, MAJOR: n, GRAND: n } — meter sau spin
-        const prevJackpot = data.jackpotValues?.slice?.() ?? [];
         const jackpotBefore = _normalizeJackpotValues(raw.Before);
         if (jackpotBefore) {
             data.jackpotValuesBefore = jackpotBefore;
-            Log.e(`[Jackpot] Spin Before=[${jackpotBefore.join(',')}]`);
-        } else if (raw.Before) {
-            Log.e(`[Jackpot] Spin Before parse fail raw.Before=${JSON.stringify(raw.Before)}`);
         }
 
         const jackpotAfter = _normalizeJackpotValues(raw.After);
         if (jackpotAfter) {
-            const changed = jackpotAfter.some((v, i) => v !== prevJackpot[i]);
             data.jackpotValues = jackpotAfter;
-            Log.e(
-                `[Jackpot] Spin After=[${jackpotAfter.join(',')}] prev=[${prevJackpot.join(',')}]` +
-                ` changed=${changed} Before=${raw.Before == null ? 'null' : JSON.stringify(raw.Before)}`
-            );
             EventBus.instance.emit(GameEvents.JACKPOT_VALUES_UPDATED, jackpotAfter);
-        } else if (raw.After) {
-            Log.e(`[Jackpot] Spin After parse fail raw.After=${JSON.stringify(raw.After)}`);
-        } else {
-            Log.e('[Jackpot] Spin — server không gửi After');
         }
 
         // Convert server format → internal SpinResponse
@@ -1126,49 +1186,15 @@ class RealNetworkAdapter implements INetworkAdapter {
             throw convertErr;
         }
 
-        // ═══ SPIN LOG ═══
         const res = raw.Res;
-        const rawRands = res.Rands as number[];
-        const matchedLines = res.MatchedLinePays || [];
-        Log.e(
-            `[SPIN-RESP] Rands=[${rawRands.join(',')}] TotalWin=$${res.TotalWin} Balance=$${raw.RemainCash} WinGrade=${res.WinGrade ?? 'null'}` +
-            (matchedLines.length > 0
-                ? ` Lines=[${matchedLines.map((l: any) => `L${l.PayLineIndex}:$${l.Payout}`).join(',')}]`
-                : ' (no wins)')
-        );
-
-        // ─── DEBUG: Rands → raw PS strip window (row -1, 0, +1 per reel) ───
-        {
-            const strips = GameData.instance.rawPsStrips;
-            const clientStrips = GameData.instance.config.reelStrips;
-            const symName = (clientId: number) => {
-                if (clientId === -1) return 'EMPTY';
-                if (clientId === -2 || clientId === undefined) return '???';
-                return Object.keys(SymbolId).find(n => (SymbolId as any)[n] === clientId) ?? `?${clientId}`;
-            };
-            if (strips && strips.length > 0 && rawRands.length === strips.length) {
-                const rows: string[] = ['TOP r+1', 'MID r  ', 'BOT r-1'];
-                const offsets = [1, 0, -1];
-                Log.e(`[SPIN-REEL] Rands=[${rawRands.join(',')}]`);
-                for (let off = 0; off < offsets.length; off++) {
-                    const cells = rawRands.map((rand, reel) => {
-                        const strip = strips[reel];
-                        if (!strip || strip.length === 0) return `R${reel}:?`;
-                        const idx = ((rand + offsets[off]) % strip.length + strip.length) % strip.length;
-                        const psId = strip[idx];
-                        const clientStrip = clientStrips[reel];
-                        const clientId = clientStrip ? clientStrip[idx] : -2;
-                        return `${psId}(${symName(clientId)})`;
-                    });
-                    Log.e(`[SPIN-REEL] ${rows[off]}: ${cells.map((c, i) => `Reel${i}=${c}`).join(' | ')}`);
-                }
-            } else {
-                Log.e(`[SPIN-REEL] strips.length=${strips?.length ?? 'N/A'} rands.length=${rawRands.length} — mismatch or not loaded`);
-            }
-        }
-
-        // ═══ DEBUG MULTIPLIER ═══
-        // Log.d(`%c[MULTIPLIER DEBUG] FeatureMultiple=${result.featureMultiple} (từ server: FreeSpinMultiplier=${raw.Res.FreeSpinMultiplier} | FeatureMultiple=${raw.Res.FeatureMultiple} | MysteryMultiple=${raw.Res.MysteryMultiple})`, 'color:#f80;font-weight:bold');
+        logSpinResultSummary({
+            source: 'server',
+            totalBet: res.TotalBet ?? result.totalBet,
+            totalWin: res.TotalWin ?? result.totalWin,
+            matchedLinePays: result.matchedLinePays ?? [],
+            waysPayWins: result.waysPayWins,
+            featureMultiple: result.featureMultiple,
+        });
 
         return result;
     }
@@ -2080,102 +2106,11 @@ class RealNetworkAdapter implements INetworkAdapter {
                 payout: lp.Payout,
                 matchedSymbols: lp.MatchedSymbols as number[],
                 containsWild: lp.ContainsWild,
-                reelCnt: lp.ReelCnt ?? 3,
+                reelCnt: lp.ReelCnt > 0 ? lp.ReelCnt : (lp.MatchedSymbolsCount ?? 0),
+                matchedSymbolsCount: lp.MatchedSymbolsCount,
                 matchedSymbolsIndices: indices,
             };
         });
-
-        Log.e(
-            `[SV-ERR] SERVER-RAW ReelIndex=${res.ReelIndex} Rands=${JSON.stringify(res.Rands)}` +
-            ` TotalBet=${res.TotalBet} TotalWin=${res.TotalWin} NextStage=${res.NextStage}` +
-            ` RemainFreeSpin=${res.RemainFreeSpinCount ?? 'null'} RemainFeatureSpin=${(res as any).RemainFeatureSpinCount ?? 'null'} WinGrade=${res.WinGrade ?? 'null'}` +
-            ` MatchedLinePays=${JSON.stringify((res.MatchedLinePays || []).map((lp: any) => ({
-                PayLineIndex: lp.PayLineIndex,
-                Payout: lp.Payout,
-                MatchedSymbols: lp.MatchedSymbols,
-                ContainsWild: lp.ContainsWild,
-                ReelCnt: lp.ReelCnt,
-            })))}`
-        );
-
-        // ─── CN Sticky debug (Green/Gold Matsuri) ───
-        // Log này luôn in (qua SV-ERR whitelist) để xác định field name thực tế server trả về.
-        {
-            const anyRes = res as any;
-            const knownSticky = {
-                StickyCells:    anyRes.StickyCells,
-                StickyList:     anyRes.StickyList,
-                CollectSymbols: anyRes.CollectSymbols,
-                RedCount:       anyRes.RedCount,
-                StickyRedCount: anyRes.StickyRedCount,
-                RedReels:       anyRes.RedReels,
-                NextStage:      anyRes.NextStage,
-                RemainReSpinCount: anyRes.RemainReSpinCount,
-                RemainRespinCount: anyRes.RemainRespinCount,
-                RemainFeatureSpinCount: anyRes.RemainFeatureSpinCount,
-                TopupReel: anyRes.TopupReel,
-                NormalSpinLinkReel: anyRes.NormalSpinLinkReel,
-                NoramlSpinLinkReel: anyRes.NoramlSpinLinkReel,
-            };
-            // In tất cả key của res để không bỏ sót field lạ
-            const allKeys = Object.keys(anyRes).filter(k =>
-                !['Rands','MatchedLinePays','TotalBet','TotalWin','UpdateCash',
-                  'NextStage','ReelIndex','RemainFreeSpinCount','WinGrade',
-                  'FreeSpinMultiplier','FeatureMultiple','FeatureSpinTotalWin'].includes(k)
-            );
-            Log.e(`[SV-ERR] GoF sticky fields: ${JSON.stringify(knownSticky)}` +
-                  `\n  extra keys in res: [${allKeys.join(', ')}]`);
-        }
-
-        // ═══ PURCHASE DEBUG — kiểm tra ReelIndex server trả có khớp với isPurchaseReelActive ═══
-        // if (data.isPurchaseReelActive && res.ReelIndex !== 2) {
-        //     Log.e(
-        //         `%c[PURCHASE-MISMATCH] isPurchaseReelActive=true BUT server ReelIndex=${res.ReelIndex} (expected 2!)` +
-        //         ` → client sẽ override dùng purchaseReelStrips`,
-        //         'color:#f00;font-weight:bold;font-size:14px'
-        //     );
-        // }
-        // Log.e(
-        //     `[SPIN-RESULT-REEL] ReelIndex=${res.ReelIndex} isPurchaseActive=${data.isPurchaseReelActive}` +
-        //     ` Rands=[${res.Rands}] → client sẽ dùng strip: ${res.ReelIndex === 2 ? 'Purchase' : res.ReelIndex === 1 ? 'FreeSpin' : (data.isPurchaseReelActive ? 'Purchase(override)' : 'Normal')}`
-        // );
-
-        // ═══ PURCHASE STRIP POSITION DEBUG — in symbol tại vị trí rand ═══
-        // if (data.isPurchaseReelActive || res.ReelIndex === 2) {
-        //     const SN = ['7','77','777','BAR','BB','3X','BNS','R⚡','B⚡'];
-        //     const fmtS = (id: number) => id < 0 ? '___' : (SN[id] ?? `?${id}`);
-        //     const strips = data.config.purchaseReelStrips;
-        //     const rawStrips = data.rawPsPurchaseReelStrips;
-        //     const normalStrips = data.config.reelStrips;
-        //     const rands = res.Rands as number[];
-        //     for (let c = 0; c < 3; c++) {
-        //         const strip = strips[c] ?? [];
-        //         const rawStrip = rawStrips[c] ?? [];
-        //         const nStrip = normalStrips[c] ?? [];
-        //         const len = strip.length;
-        //         const nLen = nStrip.length;
-        //         const center = ((rands[c] % len) + len) % len;
-        //         const topIdx = ((center - 1) % len + len) % len;
-        //         const botIdx = (center + 1) % len;
-        //         // Normal strip with same rand (for comparison)
-        //         const nCenter = ((rands[c] % nLen) + nLen) % nLen;
-        //         const nTopIdx = ((nCenter - 1) % nLen + nLen) % nLen;
-        //         const nBotIdx = (nCenter + 1) % nLen;
-        //         Log.e(
-        //             `[PURCHASE-STRIP-POS] Reel${c}: rand=${rands[c]}` +
-        //             ` | PURCHASE(len=${len}) center=${center}: top[${topIdx}]=${fmtS(strip[topIdx])}(raw:${rawStrip[topIdx]})` +
-        //             ` mid[${center}]=${fmtS(strip[center])}(raw:${rawStrip[center]})` +
-        //             ` bot[${botIdx}]=${fmtS(strip[botIdx])}(raw:${rawStrip[botIdx]})` +
-        //             ` | NORMAL(len=${nLen}) center=${nCenter}: top[${nTopIdx}]=${fmtS(nStrip[nTopIdx])}` +
-        //             ` mid[${nCenter}]=${fmtS(nStrip[nCenter])}` +
-        //             ` bot[${nBotIdx}]=${fmtS(nStrip[nBotIdx])}`
-        //         );
-        //     }
-        //     // Check: is purchaseStrip === normalStrip (reference equality)?
-        //     const sameRef = strips === normalStrips;
-        //     const sameLen = strips.length === normalStrips.length && strips.every((s, i) => s.length === normalStrips[i]?.length);
-        //     Log.e(`[PURCHASE-STRIP-CHECK] sameReference=${sameRef} sameLengths=${sameLen}`);
-        // }
 
         // Rands dùng trực tiếp cho Normal/FreeSpin.
         // TopUp cần đủ 5 rands vì visual đang quay 5 reel bằng respinReelStrips.
@@ -2185,31 +2120,6 @@ class RealNetworkAdapter implements INetworkAdapter {
             ? this._normalizeTopupRands(res.Rands as number[])
             : (res.Rands as number[]);
 
-        // ═══ TOPUP FULL SERVER DUMP ═══
-        if (isTopUpMode) {
-            Log.e(`[NM-TOPUP] ══ _convertSpinResponse (TopUp) ══`);
-            Log.e(`[NM-TOPUP] currentMode="${data.currentMode}" ReelIndex=${res.ReelIndex} isTopUpMode=${isTopUpMode}`);
-            Log.e(`[NM-TOPUP] RAW res.Rands: ${JSON.stringify(res.Rands)}`);
-            Log.e(`[NM-TOPUP] Normalized rands (5-reel): [${rands.join(',')}]`);
-            Log.e(`[NM-TOPUP] res.TopupReel: ${JSON.stringify((res as any).TopupReel)}`);
-            Log.e(`[NM-TOPUP] res.NormalSpinLinkReel: ${JSON.stringify((res as any).NormalSpinLinkReel)}`);
-            Log.e(`[NM-TOPUP] res.NoramlSpinLinkReel: ${JSON.stringify((res as any).NoramlSpinLinkReel)}`);
-            Log.e(`[NM-TOPUP] res.RemainFeatureSpinCount: ${(res as any).RemainFeatureSpinCount}`);
-            Log.e(`[NM-TOPUP] res.RemainReSpinCount: ${(res as any).RemainReSpinCount}`);
-            Log.e(`[NM-TOPUP] res.TotalWin: ${res.TotalWin} res.FeatureSpinTotalWin: ${(res as any).FeatureSpinTotalWin}`);
-            Log.e(`[TOPUP-CREDIT][NET] rawTotals TotalWin=${res.TotalWin} FeatureSpinTotalWin=${(res as any).FeatureSpinTotalWin ?? 'n/a'} RemainFeatureSpinCount=${(res as any).RemainFeatureSpinCount ?? 'n/a'} RemainReSpinCount=${(res as any).RemainReSpinCount ?? 'n/a'}`);
-            // Log ALL keys in res to catch any unknown field names
-            try {
-                const resKeys = Object.keys(res as object);
-                Log.e(`[NM-TOPUP] ALL res keys (${resKeys.length}): ${resKeys.join(', ')}`);
-                // Log any key that contains "reel" or "link" or "spin" or "sticky" case-insensitive
-                const interestingKeys = resKeys.filter(k => /reel|link|spin|sticky|rand|remain|topup/i.test(k));
-                if (interestingKeys.length) {
-                    Log.e(`[NM-TOPUP] Interesting keys+values: ${interestingKeys.map(k => `${k}=${JSON.stringify((res as any)[k])}`).join(' | ')}`);
-                }
-            } catch (_) {}
-        }
-        // ═══ END TOPUP FULL SERVER DUMP ═══
         // Secret Treasure: FS tiers dùng ReelIndex 2–6 (không chỉ legacy 1).
         // TopUp (respin) cũng có thể ReelIndex=2 → không được coi là Free Spin.
         const reelIdx = (res.ReelIndex as number) ?? 0;

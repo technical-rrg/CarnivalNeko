@@ -25,7 +25,7 @@
 
 import {
     _decorator, Component, Node, Vec3, tween,
-    Color, Sprite, instantiate, ParticleSystem, UIOpacity, UITransform,
+    Color, Sprite, instantiate, ParticleSystem, UIOpacity, UITransform, Camera,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -42,6 +42,9 @@ import {
 import { CarnivalPotBoard } from './CarnivalPotBoard';
 
 const { ccclass, property } = _decorator;
+
+/** Camera 3D vẽ particle trail (layer DEFAULT). Mặc định scene: pos (960,540) gốc trái canvas 1920×1080. */
+const PARTICLE_3D_CAMERA_NAME = 'Particle3DCamera';
 
 @ccclass('CarnivalTrailController')
 export class CarnivalTrailController extends Component {
@@ -134,6 +137,7 @@ export class CarnivalTrailController extends Component {
         if (this.particleTemplate?.isValid) {
             this.particleTemplate.active = false;
         }
+        this._syncParticle3DCamera();
         Log.e(
             `[CarnivalTrail] ready | reels=${this.reels?.length ?? 0}` +
             ` pots=B${!!this.bluePot}/R${!!this.redPot}/G${!!this.greenPot}` +
@@ -144,6 +148,10 @@ export class CarnivalTrailController extends Component {
     onDestroy(): void {
         EventBus.instance.offTarget(this);
         this._clearParticles();
+    }
+
+    lateUpdate(): void {
+        if (this._activeParticles.length > 0) this._syncParticle3DCamera();
     }
 
     private _autoWireIfNeeded(): void {
@@ -184,6 +192,7 @@ export class CarnivalTrailController extends Component {
         this._pending = [...(payload?.trails ?? [])];
         this._started = true;
         this._flyingCount = 0;
+        this._syncParticle3DCamera();
         Log.e(`[CarnivalTrail] START count=${this._pending.length} → ${this._pending.map(t => `r${t.reel}row${t.row}:${TrailColor[t.color]}`).join(', ')}`);
     }
 
@@ -314,10 +323,20 @@ export class CarnivalTrailController extends Component {
         this._ensureVisible(particle);
         this._activeParticles.push(particle);
 
-        const start = new Vec3();
-        const end = new Vec3();
-        symbolNode.getWorldPosition(start);
-        pot.getWorldPosition(end);
+        this._syncParticle3DCamera();
+        this.node.updateWorldTransform();
+        symbolNode.updateWorldTransform();
+        pot.updateWorldTransform();
+
+        const selfUT = this.node.getComponent(UITransform);
+        const start = selfUT
+            ? selfUT.convertToNodeSpaceAR(symbolNode.getWorldPosition())
+            : symbolNode.worldPosition.clone();
+        const end = selfUT
+            ? selfUT.convertToNodeSpaceAR(pot.getWorldPosition())
+            : pot.worldPosition.clone();
+        start.z = 0;
+        end.z = 0;
 
         const apexH = Math.max(20, this.apexHeight);
         const dx = end.x - start.x;
@@ -337,7 +356,7 @@ export class CarnivalTrailController extends Component {
         const cp2X = end.x + side * bulge * 0.2;
         const cp2Y = end.y + apexH;
 
-        this._setWorldPosUnderSelf(particle, start);
+        particle.setPosition(start);
         particle.setScale(this.flyScale, this.flyScale, 1);
 
         Log.e(
@@ -370,7 +389,7 @@ export class CarnivalTrailController extends Component {
             pos.x = uu * u * start.x + 3 * uu * t * cp1X + 3 * u * tt * cp2X + tt * t * end.x;
             pos.y = uu * u * start.y + 3 * uu * t * cp1Y + 3 * u * tt * cp2Y + tt * t * end.y;
             pos.z = 0;
-            this._setWorldPosUnderSelf(particle, pos);
+            particle.setPosition(pos);
         };
 
         updatePos(0);
@@ -379,7 +398,7 @@ export class CarnivalTrailController extends Component {
         tween(flyProxy)
             .delay(launchDelay)
             .call(() => {
-                if (particle.isValid) this._setWorldPosUnderSelf(particle, start);
+                if (particle.isValid) particle.setPosition(start);
             })
             .to(moveDur, { t: 1 }, {
                 easing: 'linear',
@@ -487,14 +506,30 @@ export class CarnivalTrailController extends Component {
         return Math.random() < 0.5 ? -1 : 1;
     }
 
-    private _setWorldPosUnderSelf(node: Node, world: Vec3): void {
-        const ut = this.node.getComponent(UITransform);
-        if (ut) {
-            const local = ut.convertToNodeSpaceAR(world);
-            node.setPosition(local);
-        } else {
-            node.setWorldPosition(world);
-        }
+    /**
+     * Particle3DCamera mặc định (960, 540) — tâm 1920×1080 gốc TRÁI.
+     * Camera UI ở (0, 0) — tâm SlotMachine. Portrait không sync → trail lệch mép trái.
+     */
+    private _syncParticle3DCamera(): void {
+        const scene = this.node.scene;
+        if (!scene) return;
+        const cameras = scene.getComponentsInChildren(Camera);
+        const particleCam = cameras.find(c => c.node.name === PARTICLE_3D_CAMERA_NAME);
+        if (!particleCam?.isValid) return;
+        const uiCam = cameras.find(c =>
+            c.enabled
+            && c.node.name !== PARTICLE_3D_CAMERA_NAME
+            && (c.visibility & this.node.layer) !== 0,
+        );
+        if (!uiCam?.isValid) return;
+        particleCam.projection = uiCam.projection;
+        particleCam.fov = uiCam.fov;
+        particleCam.orthoHeight = uiCam.orthoHeight;
+        particleCam.near = uiCam.near;
+        particleCam.far = uiCam.far;
+        particleCam.viewport = uiCam.viewport;
+        particleCam.node.setWorldPosition(uiCam.node.worldPosition);
+        particleCam.node.setWorldRotation(uiCam.node.worldRotation);
     }
 
     private _activateTree(node: Node): void {

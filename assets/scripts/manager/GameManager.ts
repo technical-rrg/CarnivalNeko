@@ -25,6 +25,8 @@ import { WalletManager } from './WalletManager';
 import { BetManager } from './BetManager';
 import { SoundManager } from './SoundManager';
 import { DebugManager } from './DebugManager';
+import { DebugLanguageSwitcher } from '../controller/DebugLanguageSwitcher';
+import { isDebugToolsEnabled } from '../core/DebugEnv';
 import { PROGRESSIVE_WIN_THRESHOLDS, ProgressiveWinTier } from '../controller/ProgressiveWinPopup';
 import { USE_REAL_API } from '../data/ServerConfig';
 import { MockDataProvider } from '../data/MockDataProvider';
@@ -53,13 +55,19 @@ const { ccclass, property } = _decorator;
 
 const BG_BUNDLE = 'MainBundle';
 /** [0]=portrait, [1]=landscape — paths inside MainBundle (SpriteFrame sub-asset). */
+type BackgroundMode = 'normal' | 'feature' | 'pickgame';
+
 const NORMAL_BG_PATHS = [
-    'newTextures/mainUI/Bg-maingame-portrait/spriteFrame',
-    'newTextures/mainUI/Bg-maingame-landscape/spriteFrame',
+    'newTextures/mainUI/Bg-normal-portrait/spriteFrame',
+    'newTextures/mainUI/Bg-normal-landscape/spriteFrame',
 ] as const;
-const FREESPIN_BG_PATHS = [
-    'newTextures/mainUI/Bg-freespins-portrait/spriteFrame',
-    'newTextures/mainUI/Bg-freespins-landscape/spriteFrame',
+const FEATURE_BG_PATHS = [
+    'newTextures/mainUI/Bg-feature-portrait/spriteFrame',
+    'newTextures/mainUI/Bg-feature-landscape/spriteFrame',
+] as const;
+const PICKGAME_BG_PATHS = [
+    'newTextures/mainUI/Bg-pickgame-portrait/spriteFrame',
+    'newTextures/mainUI/Bg-pickgame-landscape/spriteFrame',
 ] as const;
 
 const truncateMoney3 = (value: number): number => {
@@ -122,11 +130,14 @@ export class GameManager extends Component {
     })
     uiFadeDuration: number = DEFAULT_UI_FADE_DURATION;
 
-    @property({ type: SpriteFrame, tooltip: 'Background sprites NORMAL SPIN — [0]=portrait, [1]=landscape' })
+    @property({ type: SpriteFrame, tooltip: 'Background sprites NORMAL — [0]=portrait, [1]=landscape' })
     backgroundSprites: SpriteFrame[] = [];
 
-    @property({ type: SpriteFrame, tooltip: 'Background sprites FREE SPIN — [0]=portrait, [1]=landscape' })
-    freeSpinBackgroundSprites: SpriteFrame[] = [];
+    @property({ type: SpriteFrame, tooltip: 'Background sprites FEATURE — [0]=portrait, [1]=landscape' })
+    featureBackgroundSprites: SpriteFrame[] = [];
+
+    @property({ type: SpriteFrame, tooltip: 'Background sprites PICK GAME — [0]=portrait, [1]=landscape' })
+    pickGameBackgroundSprites: SpriteFrame[] = [];
 
     @property({ type: Node, tooltip: 'PayOut Display - hiển thị khi Normal Spin' })
     payOutDisplay: Node | null = null;
@@ -296,6 +307,7 @@ export class GameManager extends Component {
 
         // Khởi tạo DebugManager sớm để keyboard shortcuts (F1-F7) hoạt động ngay từ đầu
         DebugManager.instance.toString();
+        if (isDebugToolsEnabled()) DebugLanguageSwitcher.mount();
         // Khởi tạo AutoSpinManager sớm để ENTER_SUCCESS listener được đăng ký trước khi login xong.
         // Dùng toString() để tránh build optimizer tree-shake biểu thức không có side-effect.
         AutoSpinManager.instance.toString();
@@ -2531,6 +2543,7 @@ export class GameManager extends Component {
         Log.e('[DEBUG-PICK] _openPickGameNow → PICK_GAME_OPEN');
         this._isPickGameActive = true;
         this._pickGameBgPending = true;
+        this._prefetchPickGameBackground();
         this._gameState = GameState.POPUP;
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
         EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
@@ -3932,9 +3945,19 @@ export class GameManager extends Component {
         const isPortrait = size.height > size.width;
         const primary = isPortrait ? 0 : 1;
         const secondary = isPortrait ? 1 : 0;
-        void this._loadBackgroundSprite(FREESPIN_BG_PATHS[primary], true, primary);
-        void this._loadBackgroundSprite(FREESPIN_BG_PATHS[secondary], true, secondary);
-    }
+        void this._loadBackgroundSprite(FEATURE_BG_PATHS[primary], 'feature', primary);
+        void this._loadBackgroundSprite(FEATURE_BG_PATHS[secondary], 'feature', secondary);
+    };
+
+    /** Cache BG Pick Game (cả 2 orientation) — không gán lên backgroundNode. */
+    private _prefetchPickGameBackground = (): void => {
+        const size = screen.windowSize;
+        const isPortrait = size.height > size.width;
+        const primary = isPortrait ? 0 : 1;
+        const secondary = isPortrait ? 1 : 0;
+        void this._loadBackgroundSprite(PICKGAME_BG_PATHS[primary], 'pickgame', primary);
+        void this._loadBackgroundSprite(PICKGAME_BG_PATHS[secondary], 'pickgame', secondary);
+    };
 
     /** Prefab StickyOverlay 5×5 — bật đúng số hàng (3|4|5). */
     private _applyStickyOverlayRowCount(rows: number): void {
@@ -3974,7 +3997,8 @@ export class GameManager extends Component {
             payout:                l.Payout                ?? l.payout                ?? 0,
             matchedSymbols:        l.MatchedSymbols        ?? l.matchedSymbols        ?? [],
             containsWild:          l.ContainsWild          ?? l.containsWild          ?? false,
-            reelCnt:               l.ReelCnt               ?? l.reelCnt               ?? 0,
+            reelCnt:               (l.ReelCnt > 0 ? l.ReelCnt : (l.MatchedSymbolsCount ?? l.matchedSymbolsCount)) ?? l.reelCnt ?? 0,
+            matchedSymbolsCount:   l.MatchedSymbolsCount   ?? l.matchedSymbolsCount,
             matchedSymbolsIndices: l.MatchedSymbolsIndices ?? l.matchedSymbolsIndices ?? null,
         }));
 
@@ -4954,20 +4978,20 @@ export class GameManager extends Component {
     }
 
     /**
-     * Cập nhật background sprite theo orientation + spin mode (Normal/Free Spin).
-     * Chỉ load đúng 1 ảnh mỗi lần — portrait HOẶC landscape, normal HOẶC freespin.
+     * Cập nhật background sprite theo orientation + game mode (Normal / Feature / Pick Game).
+     * Chỉ load đúng 1 ảnh mỗi lần — portrait HOẶC landscape, theo mode hiện tại.
      * prefetchBackground() gọi khi GuideView hiện (GameRoot warm, opacity=0).
      */
     private _updateBackgroundSprite(): void {
         if (!this._bgLoadAllowed) return;
         if (!this.backgroundNode) return;
 
-        const isFeatureMode = this._isFreeSpin() || this._isTopUp() || this._isMatsuri() || this._isPickGameActive;
+        const mode = this._resolveBackgroundMode();
         const size = screen.windowSize;
         const isPortrait = size.height > size.width;
         const idx = isPortrait ? 0 : 1;
-        const paths = isFeatureMode ? FREESPIN_BG_PATHS : NORMAL_BG_PATHS;
-        const arr = isFeatureMode ? this.freeSpinBackgroundSprites : this.backgroundSprites;
+        const paths = this._backgroundPathsForMode(mode);
+        const arr = this._backgroundCacheForMode(mode);
 
         const cached = arr[idx] ?? null;
         if (cached) {
@@ -4975,9 +4999,31 @@ export class GameManager extends Component {
             return;
         }
 
-        void this._loadBackgroundSprite(paths[idx], isFeatureMode, idx).then((sf) => {
+        void this._loadBackgroundSprite(paths[idx], mode, idx).then((sf) => {
             this._applyBackgroundSprite(sf);
         });
+    }
+
+    private _resolveBackgroundMode(): BackgroundMode {
+        if (this._isPickGameActive) return 'pickgame';
+        if (this._isFreeSpin() || this._isTopUp() || this._isMatsuri()) return 'feature';
+        return 'normal';
+    }
+
+    private _backgroundPathsForMode(mode: BackgroundMode): readonly string[] {
+        switch (mode) {
+            case 'pickgame': return PICKGAME_BG_PATHS;
+            case 'feature': return FEATURE_BG_PATHS;
+            default: return NORMAL_BG_PATHS;
+        }
+    }
+
+    private _backgroundCacheForMode(mode: BackgroundMode): SpriteFrame[] {
+        switch (mode) {
+            case 'pickgame': return this.pickGameBackgroundSprites;
+            case 'feature': return this.featureBackgroundSprites;
+            default: return this.backgroundSprites;
+        }
     }
 
     /** ★ Prefetch BG khi GuideView hiện (GameRoot warm) — gán sprite trước khi user Continue. */
@@ -5000,9 +5046,9 @@ export class GameManager extends Component {
         const secondaryIdx = isPortrait ? 1 : 0;
 
         // Prefetch chiều kia nền — không block
-        void this._loadBackgroundSprite(NORMAL_BG_PATHS[secondaryIdx], false, secondaryIdx);
+        void this._loadBackgroundSprite(NORMAL_BG_PATHS[secondaryIdx], 'normal', secondaryIdx);
 
-        const sf = await this._loadBackgroundSprite(NORMAL_BG_PATHS[primaryIdx], false, primaryIdx);
+        const sf = await this._loadBackgroundSprite(NORMAL_BG_PATHS[primaryIdx], 'normal', primaryIdx);
         this._applyBackgroundSprite(sf);
         return sf;
     }
@@ -5067,10 +5113,10 @@ export class GameManager extends Component {
 
     private _loadBackgroundSprite(
         path: string,
-        isFeature: boolean,
+        mode: BackgroundMode,
         idx: number,
     ): Promise<SpriteFrame | null> {
-        const arr = isFeature ? this.freeSpinBackgroundSprites : this.backgroundSprites;
+        const arr = this._backgroundCacheForMode(mode);
         const cached = arr[idx] ?? null;
         if (cached) return Promise.resolve(cached);
 

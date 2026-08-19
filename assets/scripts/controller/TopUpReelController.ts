@@ -88,6 +88,8 @@ export class TopUpReelController extends Component {
     @property({ tooltip: 'Thời gian rơi xuống trong launch bounce (giây)' })
     launchBounceDownDuration: number = 0.25;
 
+    private _gridCellSize = MATSURI_CELL_SIZE;
+
     /** Được inject từ TopUpManager (lấy từ SlotMachineController) */
     symbolFrames: SpriteFrame[] = [];
 
@@ -99,6 +101,25 @@ export class TopUpReelController extends Component {
 
     /** Trạng thái khóa — reel đã dừng ở ô có đồng xu thì không quay nữa */
     isLocked: boolean = false;
+
+    /** Cập nhật kích thước ô grid (182 cho 5×3, 126 cho 5×4/5×5). */
+    setGridCellSize(size: number): void {
+        const cell = Math.max(1, Math.round(size));
+        if (cell === this._gridCellSize && this.symbolHeight === cell) return;
+        this._gridCellSize = cell;
+        this.symbolHeight = cell;
+        this._applyGridCellSymbolFit();
+        if (this.symbolNodes.length === 3) {
+            const mid = this.symbolNodes[1];
+            const midX = mid?.position.x ?? 0;
+            const midZ = mid?.position.z ?? 0;
+            this.symbolNodes[0]?.setPosition(midX, cell, midZ);
+            this.symbolNodes[1]?.setPosition(midX, 0, midZ);
+            this.symbolNodes[2]?.setPosition(midX, -cell, midZ);
+        }
+        this._restY = this.symbolNodes.map(n => n.position.y);
+        this._snapToRestPositions();
+    }
 
     /** Reset reel về trạng thái ban đầu (dùng khi kết thúc TopUp / chuyển mode) */
     reset(): void {
@@ -507,21 +528,31 @@ export class TopUpReelController extends Component {
             ?? node.getComponent(SymbolView)?.symbolId
             ?? -1;
         if (isGridMiniCoinSymbol(sid)) {
-            ut.setContentSize(GRID_MINI_COIN_SIZE, GRID_MINI_COIN_SIZE);
+            const coin = this._gridCoinFitSize();
+            ut.setContentSize(coin, coin);
             return;
         }
         const frame = sp.spriteFrame;
         if (!frame) {
-            ut.setContentSize(GRID_MINI_SYMBOL_SIZE, GRID_MINI_SYMBOL_SIZE);
+            const sym = this._gridSymbolFitSize();
+            ut.setContentSize(sym, sym);
             return;
         }
-        const fit = fitSpriteFrameInSquare(frame, GRID_MINI_SYMBOL_SIZE);
+        const fit = fitSpriteFrameInSquare(frame, this._gridSymbolFitSize());
         ut.setContentSize(fit.width, fit.height);
     }
 
-    /** Ô / mask = 130; symbol content ≤ 127, giữ tỉ lệ. */
+    private _gridSymbolFitSize(): number {
+        return Math.max(1, Math.round(this._gridCellSize * GRID_MINI_SYMBOL_SIZE / MATSURI_CELL_SIZE));
+    }
+
+    private _gridCoinFitSize(): number {
+        return Math.max(1, Math.round(this._gridCellSize * GRID_MINI_COIN_SIZE / MATSURI_CELL_SIZE));
+    }
+
+    /** Ô / mask theo matsuriCellSize; symbol content giữ tỉ lệ baseline 130. */
     private _applyGridCellSymbolFit(): void {
-        const cell = MATSURI_CELL_SIZE;
+        const cell = this._gridCellSize;
         const rootUt = this.node.getComponent(UITransform);
         if (rootUt) rootUt.setContentSize(cell, cell);
 

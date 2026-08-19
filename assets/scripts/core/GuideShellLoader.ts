@@ -33,13 +33,6 @@ export class GuideShellLoader {
             ?? root.getChildByName('sharedNode');
     }
 
-    /** Logo spine (TitleGame) trên Guide — reparent sang GameRoot Logo slot. */
-    static get logoNode(): Node | null {
-        const root = GuideShellLoader.instance;
-        if (!root) return null;
-        return root.getChildByName('Logo');
-    }
-
     static preload(bundle?: AssetManager.Bundle | null): Promise<Prefab | null> {
         if (GuideShellLoader._cachedPrefab?.isValid) {
             return Promise.resolve(GuideShellLoader._cachedPrefab);

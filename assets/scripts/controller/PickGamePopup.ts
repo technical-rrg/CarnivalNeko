@@ -13,7 +13,7 @@
 
 import {
     _decorator, Component, Node, Label, tween, Vec3, Tween,
-    Sprite, SpriteFrame, sp, Layout, Button, Color, Prefab, UITransform,
+    Sprite, SpriteFrame, SpriteAtlas, sp, Layout, Button, Color, Prefab, UITransform,
 } from 'cc';
 import { EventBus }      from '../core/EventBus';
 import { GameEvents }    from '../core/GameEvents';
@@ -38,6 +38,11 @@ import {
     setNodeOpacity,
     DEFAULT_UI_FADE_DURATION,
 } from '../core/OpacityFadeUtil';
+import {
+    buildJackpotPickFrames,
+    loadSymbolPackAtlas,
+    resolveSymbolPackAtlas,
+} from '../data/SymbolPackUtil';
 
 const { ccclass, property } = _decorator;
 
@@ -67,32 +72,38 @@ export class PickGamePopup extends Component {
     spineJpUpgrade: sp.SkeletonData | null = null;
 
     @property({
+        type: SpriteAtlas,
+        tooltip: 'SymbolPack — frame 81 idle, 82–86 jackpot tiers (runtime fill frameJp*).',
+    })
+    symbolAtlas: SpriteAtlas | null = null;
+
+    @property({
         type: SpriteFrame,
-        tooltip: 'SpriteFrame Upgrade (ps_86) — dùng tạm khi chưa có spine.',
+        tooltip: 'SpriteFrame Upgrade (ps_86) — fallback; thường lấy từ SymbolPack.',
     })
     frameJpUpgrade: SpriteFrame | null = null;
 
     @property({
         type: SpriteFrame,
-        tooltip: 'SpriteFrame Mini (ps_85) — dùng tạm khi chưa có spine.',
+        tooltip: 'SpriteFrame Mini (ps_85) — fallback; thường lấy từ SymbolPack.',
     })
     frameJpMini: SpriteFrame | null = null;
 
     @property({
         type: SpriteFrame,
-        tooltip: 'SpriteFrame Minor (ps_84) — dùng tạm khi chưa có spine.',
+        tooltip: 'SpriteFrame Minor (ps_84) — fallback; thường lấy từ SymbolPack.',
     })
     frameJpMinor: SpriteFrame | null = null;
 
     @property({
         type: SpriteFrame,
-        tooltip: 'SpriteFrame Major (ps_83) — dùng tạm khi chưa có spine.',
+        tooltip: 'SpriteFrame Major (ps_83) — fallback; thường lấy từ SymbolPack.',
     })
     frameJpMajor: SpriteFrame | null = null;
 
     @property({
         type: SpriteFrame,
-        tooltip: 'SpriteFrame Grand (ps_82) — dùng tạm khi chưa có spine.',
+        tooltip: 'SpriteFrame Grand (ps_82) — fallback; thường lấy từ SymbolPack.',
     })
     frameJpGrand: SpriteFrame | null = null;
 
@@ -164,6 +175,8 @@ export class PickGamePopup extends Component {
     private _pickBlocked: boolean = false;
     private _serverPickWinAmount: number = 0;
     private _lastRevealedIndex: number = -1;
+    private _frameIdle: SpriteFrame | null = null;
+    private _symbolPackReady = false;
 
     onLoad(): void {
         this.node.active = false;
@@ -172,6 +185,43 @@ export class PickGamePopup extends Component {
         bus.on(GameEvents.JACKPOT_END,             this._onJackpotEnd,       this);
         bus.on(GameEvents.TOPUP_TRANSITION_DONE,   this._onTransitionDone,   this);
         this._initCoinFontDemo();
+        this._initSymbolPackFrames();
+    }
+
+    /** Load jp frames + coin back idle từ SymbolPack. */
+    private _initSymbolPackFrames(onReady?: () => void): void {
+        const apply = (atlas: SpriteAtlas) => {
+            this.symbolAtlas = atlas;
+            const jp = buildJackpotPickFrames(atlas);
+            this._frameIdle = jp.idle;
+            this.frameJpMini = jp.mini ?? this.frameJpMini;
+            this.frameJpMinor = jp.minor ?? this.frameJpMinor;
+            this.frameJpMajor = jp.major ?? this.frameJpMajor;
+            this.frameJpGrand = jp.grand ?? this.frameJpGrand;
+            this.frameJpUpgrade = jp.upgrade ?? this.frameJpUpgrade;
+            this._symbolPackReady = true;
+            this._applyIdleCoinBacks();
+            onReady?.();
+        };
+
+        const atlas = resolveSymbolPackAtlas(this.symbolAtlas);
+        if (atlas) {
+            apply(atlas);
+            return;
+        }
+        loadSymbolPackAtlas(
+            apply,
+            (err) => Log.e('[PickGamePopup] load SymbolPack failed', err),
+        );
+    }
+
+    private _applyIdleCoinBacks(): void {
+        if (!this._frameIdle) return;
+        for (const coin of this.coinNodes) {
+            const back = coin?.getChildByName('CoinBack');
+            const spr = back?.getComponent(Sprite);
+            if (spr) spr.spriteFrame = this._frameIdle;
+        }
     }
 
     /** CoinFont demo trên prefab — set số mẫu để xem font trong Editor / runtime. */
@@ -321,6 +371,15 @@ export class PickGamePopup extends Component {
 
         if (this.coinFontDemo?.isValid) this.coinFontDemo.active = false;
 
+        if (!this._symbolPackReady) {
+            this._initSymbolPackFrames(() => this._continueOpenPickGame(state));
+            return;
+        }
+        this._applyIdleCoinBacks();
+        this._continueOpenPickGame(state);
+    }
+
+    private _continueOpenPickGame(state: PickGameState): void {
         this._ensureCoinGridLayout();
         this._wireCoinButtons();
 
@@ -444,7 +503,11 @@ export class PickGamePopup extends Component {
 
         const back  = node.getChildByName('CoinBack');
         const front = node.getChildByName('CoinFront');
-        if (back) back.active = true;
+        if (back) {
+            back.active = true;
+            const spr = back.getComponent(Sprite);
+            if (spr && this._frameIdle) spr.spriteFrame = this._frameIdle;
+        }
         if (front) {
             front.active = false;
             const sk = front.getComponent(sp.Skeleton);

@@ -12,18 +12,12 @@ export const GUIDE_PORTRAIT_PATHS = [
     'newTextures/guide/Verticle/Guide1/spriteFrame',
     'newTextures/guide/Verticle/Guide2/spriteFrame',
     'newTextures/guide/Verticle/Guide3/spriteFrame',
-    'newTextures/guide/Verticle/Guide4/spriteFrame',
-    'newTextures/guide/Verticle/Guide5/spriteFrame',
-    'newTextures/guide/Verticle/Guide6/spriteFrame',
 ] as const;
 
 export const GUIDE_LANDSCAPE_PATHS = [
     'newTextures/guide/Guide1/spriteFrame',
     'newTextures/guide/Guide2/spriteFrame',
     'newTextures/guide/Guide3/spriteFrame',
-    'newTextures/guide/Guide4/spriteFrame',
-    'newTextures/guide/Guide5/spriteFrame',
-    'newTextures/guide/Guide6/spriteFrame',
 ] as const;
 
 export interface GuideFrames {

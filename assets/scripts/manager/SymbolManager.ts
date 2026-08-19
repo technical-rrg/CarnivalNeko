@@ -5,23 +5,8 @@
  *   - Client SymbolId (0–25): dùng bởi SymbolView, GameData mock strips
  *   - PS Symbol ID:            dùng bởi server API
  *
- * Quy ước đặt tên file hình riêng lẻ (trước khi pack atlas):
- *
- *   assets/bundle/newTextures/symbols/reel/
- *     ps_01.png  (Low 8)    ps_02.png  (Low 9)    ps_03.png  (Low J)
- *     ps_04.png  (Low Q)    ps_05.png  (Low K)    ps_06.png  (Low A)
- *     ps_11.png  (Raccoon)  ps_12.png  (Fish)     ps_13.png  (Crane)
- *     ps_14.png  (Fox)     ps_15.png  (Golden Neko)
- *     ps_21.png  (Wild)
- *     ps_41.png  (Trail Blue)  ps_42.png  (Trail Green)  ps_43.png  (Trail Red)
- *     ps_44.png  (Sticky Green) ps_45.png (Sticky Gold)
- *
- *   assets/bundle/newTextures/symbols/pickgame/
- *     ps_81.png  (Base Pick / Idle)
- *     ps_82.png  (Grand)  ps_83.png  (Major)  ps_84.png  (Minor)
- *     ps_85.png  (Mini)   ps_86.png  (Upgrade Coin)
- *
- * Trong Editor: kéo SpriteFrame vào SlotMachineController.symbolFrames theo Client SymbolId (index 0..24).
+ * Sprite frame names trong SymbolPack atlas (ps_01, ps_11, … ps_86).
+ * Reel / Pick Game load qua SlotMachineController.symbolAtlas + SymbolPackUtil.
  */
 
 import { SpriteFrame, resources } from 'cc';

@@ -236,16 +236,16 @@ export class LocalizationManager {
 
     /**
      * Chuyển ngôn ngữ. Tất cả component đang listen LANGUAGE_CHANGED sẽ tự cập nhật.
+     * @param persist  false = chỉ đổi trong session (debug overlay). true = ghi localStorage.
      */
-    setLanguage(code: LanguageCode): void {
+    setLanguage(code: LanguageCode, persist: boolean = true): void {
         if (!LOCALE_MODULES[code]) {
             Log.w(`[i18n] Unknown language: ${code}, fallback to 'en'`);
             code = 'en';
         }
         this._currentLang = code;
         this._currentData = this._buildMergedData(code);
-        // Persist (Cocos Creator localStorage)
-        if (typeof localStorage !== 'undefined') {
+        if (persist && typeof localStorage !== 'undefined') {
             localStorage.setItem('supernova_lang', code);
         }
         EventBus.instance.emit(GameEvents.LANGUAGE_CHANGED, code);

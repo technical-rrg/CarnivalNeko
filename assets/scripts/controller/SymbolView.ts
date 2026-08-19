@@ -6,10 +6,9 @@
  * Chỉ kéo 1 lần vào SlotMachineController → symbolFrames / blurFrames.
  * SlotMachineController.start() tự phân phối xuống tất cả SymbolView.
  *
- * ─── TÊN FILE ẢNH (riêng lẻ, theo PS ID) ───
- *   assets/bundle/newTextures/symbols/reel/ps_01..ps_06, ps_11..ps_15, ps_21, ps_41..ps_43
- *   assets/bundle/newTextures/symbols/pickgame/ps_81..ps_86
- * Trong Editor: kéo vào SlotMachineController.symbolFrames theo Client SymbolId index.
+ * ─── SYMBOL ATLAS ───
+ *   assets/bundle/newTextures/symbols/SymbolPack (SpriteAtlas)
+ * SlotMachineController / PickGamePopup load atlas runtime qua SymbolPackUtil.
  */
 
 import { _decorator, Component, Sprite, SpriteFrame, Label, LabelOutline, Color, Node, Tween, tween, Vec3, instantiate } from 'cc';

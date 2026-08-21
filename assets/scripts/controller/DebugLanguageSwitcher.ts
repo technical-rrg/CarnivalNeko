@@ -6,12 +6,12 @@
  * listen LANGUAGE_CHANGED tự refresh. Reload game thì về ngôn ngữ ban đầu
  * (DEV_FORCE_LANG / URL `gl` / en).
  *
- * Hiện khi ENABLE_DEBUG_TOOLS = true. Click chip góc trên-trái để mở list.
+ * Hiện chỉ khi Preview trong Cocos Editor. Build release → ẩn hoàn toàn.
  */
 
 import {
     _decorator, Component, Node, Label, Button, Color, Graphics,
-    UITransform, Widget, BlockInputEvents, director, Canvas,
+    UITransform, Widget, BlockInputEvents, director, Canvas, Director,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -20,7 +20,7 @@ import {
     LanguageCode,
     SUPPORTED_LANGUAGES,
 } from '../core/LocalizationManager';
-import { isDebugToolsEnabled } from '../core/DebugEnv';
+import { isEditorPreview } from '../core/DebugEnv';
 import { Log } from '../core/Logger';
 
 const { ccclass } = _decorator;
@@ -45,37 +45,40 @@ export class DebugLanguageSwitcher extends Component {
     private _listNode: Node | null = null;
     private _rowLabels: Label[] = [];
 
-    /** Gọi 1 lần từ GameManager — no-op nếu debug tools tắt. */
+    /** Gọi 1 lần — no-op ngoài Editor / Preview (BUILD=false). */
     static mount(): void {
         if (DebugLanguageSwitcher._mounted) return;
-        if (!isDebugToolsEnabled()) return;
+        if (!isEditorPreview()) return;
         DebugLanguageSwitcher._mounted = true;
 
         const host = new Node('DebugLanguageSwitcher');
-        const scene = director.getScene();
-        if (scene) scene.addChild(host);
         host.addComponent(DebugLanguageSwitcher);
+        director.addPersistRootNode(host);
     }
 
     onLoad(): void {
+        director.on(Director.EVENT_AFTER_SCENE_LAUNCH, this._attachToCanvas, this);
         EventBus.instance.on(GameEvents.GAME_READY, this._attachToCanvas, this);
         EventBus.instance.on(GameEvents.LANGUAGE_CHANGED, this._refreshLabels, this);
-        this.scheduleOnce(() => this._attachToCanvas(), 0.2);
+        this.scheduleOnce(() => this._attachToCanvas(), 0);
+        this.scheduleOnce(() => this._attachToCanvas(), 0.5);
     }
 
     onDestroy(): void {
+        director.off(Director.EVENT_AFTER_SCENE_LAUNCH, this._attachToCanvas, this);
         EventBus.instance.offTarget(this);
         DebugLanguageSwitcher._mounted = false;
     }
 
     private _attachToCanvas(): void {
-        if (!this.isValid) return;
+        if (!this.isValid || !isEditorPreview()) return;
         const canvas = director.getScene()?.getComponentInChildren(Canvas);
         if (!canvas?.node?.isValid) return;
 
         if (this.node.parent !== canvas.node) {
             canvas.node.addChild(this.node);
         }
+        this.node.active = true;
         this.node.setSiblingIndex(canvas.node.children.length - 1);
         this._buildUi();
     }

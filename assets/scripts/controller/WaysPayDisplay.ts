@@ -2,7 +2,6 @@
  * WaysPayDisplay — Highlight ô symbol thắng (Ways Pay + Line Pay).
  *
  * Dùng Spine skeleton loop trên overlay nodes. Pool lazy: tạo khi cần, reuse khi return.
- * Tạm tắt khi USE_SPINE_HIGHLIGHT = false (SymbolHighlighter zoom-nhún thay thế).
  *
  * FLOW:
  *   1. WIN_SHOW_ALL_WAYS / WIN_SHOW_ALL_LINES → hiện TOÀN BỘ ô thắng
@@ -30,6 +29,7 @@ import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
 import { MatchedLinePay, WaysPayWin } from '../data/SlotTypes';
+import { Log } from '../core/Logger';
 import { ReelController } from './ReelController';
 import { SymbolHighlighter, USE_SPINE_HIGHLIGHT } from './SymbolHighlighter';
 import { SymbolView } from './SymbolView';
@@ -104,9 +104,7 @@ export class WaysPayDisplay extends Component {
         bus.on(GameEvents.FREE_SPIN_START,    this._onFeatureStart, this);
         bus.on(GameEvents.FREE_SPIN_GOLD_START, this._onFeatureStart, this);
         bus.on(GameEvents.TOPUP_START,         this._onFeatureStart, this);
-        // Carnival Feature entry (có thể kèm lineWin cùng spin)
-        bus.on(GameEvents.CARNIVAL_POT_BURST,      this._onFeatureStart, this);
-        bus.on(GameEvents.MATSURI_START_POPUP,     this._onFeatureStart, this);
+        // Carnival Feature entry (sau Press to Start)
         bus.on(GameEvents.CARNIVAL_MATSURI_START,  this._onFeatureStart, this);
         bus.on(GameEvents.FREE_SPIN_END,       this._onFeatureEnd,   this);
         bus.on(GameEvents.FREE_SPIN_GOLD_END, this._onFeatureEnd,   this);
@@ -144,33 +142,53 @@ export class WaysPayDisplay extends Component {
      * @param duration (không dùng trực tiếp — WinPresenter quản lý timer)
      */
     private _onShowAllWays(ways: WaysPayWin[], _duration?: number): void {
-        if (!this._ready) return;
-        void this._applyCellsWhenSpinesReady(this._collectWayCells(ways));
+        if (!this._ready) {
+            Log.d(`[WinHL] WaysPay SHOW_ALL_WAYS skip — not ready`);
+            return;
+        }
+        const cells = this._collectWayCells(ways);
+        Log.d(`[WinHL] WaysPay SHOW_ALL_WAYS ways=${ways?.length ?? 0} cells=${cells.size}`);
+        void this._applyCellsWhenSpinesReady(cells);
     }
 
     /**
      * Cycle từng way riêng lẻ: chỉ giữ ô của way này (diff — không destroy/recreate ô còn lại).
      */
     private _onCycleOneWay(way: WaysPayWin): void {
-        if (!this._ready) return;
-        void this._applyCellsWhenSpinesReady(this._collectWayCells([way]));
+        if (!this._ready) {
+            Log.d(`[WinHL] WaysPay CYCLE_ONE_WAY skip — not ready`);
+            return;
+        }
+        const cells = this._collectWayCells([way]);
+        Log.d(`[WinHL] WaysPay CYCLE_ONE_WAY sym=${way?.symbolId} cells=${cells.size} [${[...cells].join('|')}]`);
+        void this._applyCellsWhenSpinesReady(cells);
     }
 
     /** Real API line win: hiện union ô thắng của mọi MatchedLinePay. */
     private _onShowAllLines(lines: MatchedLinePay[], _duration?: number): void {
-        if (!this._ready) return;
-        void this._applyCellsWhenSpinesReady(this._collectLineCells(lines));
+        if (!this._ready) {
+            Log.d(`[WinHL] WaysPay SHOW_ALL_LINES skip — not ready`);
+            return;
+        }
+        const cells = this._collectLineCells(lines);
+        Log.d(`[WinHL] WaysPay SHOW_ALL_LINES lines=${lines?.length ?? 0} cells=${cells.size}`);
+        void this._applyCellsWhenSpinesReady(cells);
     }
 
     /** Cycle từng line (UI_UPDATE_WIN_LABEL): chỉ giữ ô của line hiện tại. */
     private _onCycleOneLine(linePay: MatchedLinePay): void {
-        if (!this._ready || !linePay) return;
-        void this._applyCellsWhenSpinesReady(this._collectLineCells([linePay]));
+        if (!this._ready || !linePay) {
+            Log.d(`[WinHL] WaysPay CYCLE_ONE_LINE skip — ready=${this._ready} line=${!!linePay}`);
+            return;
+        }
+        const cells = this._collectLineCells([linePay]);
+        Log.d(`[WinHL] WaysPay CYCLE_ONE_LINE pl=#${linePay.payLineIndex} cells=${cells.size} [${[...cells].join('|')}]`);
+        void this._applyCellsWhenSpinesReady(cells);
     }
 
     /**
-     * Chờ SymbolSpine prefab (đặc biệt Wild/11) sẵn sàng rồi mới bật underlay —
-     * đồng bộ với SymbolHighlighter để tránh highlight hiện trước spine symbol.
+     * Chờ win-spine SkeletonData sẵn sàng rồi mới bật underlay —
+     * đồng bộ với SymbolHighlighter để tránh highlight hiện trước anim symbol.
      */
     private async _applyCellsWhenSpinesReady(wanted: Set<string>): Promise<void> {
         const gen = this._applyGen;
@@ -266,6 +284,7 @@ export class WaysPayDisplay extends Component {
 
     /** Reset khi spin mới bắt đầu / WIN_HIGHLIGHT_CLEAR */
     private _onSpinStart(): void {
+        Log.d(`[WinHL] WaysPay CLEAR overlays (spinStart/highlightClear)`);
         this._invalidatePendingApply();
         this._returnAll();
         this._restoreVisibleSprites();

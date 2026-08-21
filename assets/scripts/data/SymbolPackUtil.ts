@@ -5,6 +5,7 @@
 
 import { assetManager, SpriteAtlas, SpriteFrame } from 'cc';
 import { CLIENT_TO_PS, SymbolId } from './SlotTypes';
+import { clientPickToPs } from './PickGameUtil';
 
 export const SYMBOL_ATLAS_UUID = '8dbe097e-d812-4920-ac55-b5f62456e3b2';
 export const SYMBOL_ATLAS_PATH = 'newTextures/symbols/SymbolPack';
@@ -75,14 +76,14 @@ export interface JackpotPickFrames {
     upgrade: SpriteFrame | null;
 }
 
-/** Pick Game coin back (81) + tier sprites (82–86). */
+/** Pick Game frames theo PS ID (82 Grand, 83 Major, 84 Minor, 85 Mini). */
 export function buildJackpotPickFrames(atlas: SpriteAtlas): JackpotPickFrames {
     return {
-        idle: getSymbolPackFrame(atlas, 81),
-        mini: getSymbolPackFrame(atlas, 85),
-        minor: getSymbolPackFrame(atlas, 84),
-        major: getSymbolPackFrame(atlas, 83),
-        grand: getSymbolPackFrame(atlas, 82),
-        upgrade: getSymbolPackFrame(atlas, 86),
+        idle: getSymbolPackFrame(atlas, clientPickToPs(SymbolId.JP_IDLE)),
+        mini: getSymbolPackFrame(atlas, clientPickToPs(SymbolId.JP_MINI)),
+        minor: getSymbolPackFrame(atlas, clientPickToPs(SymbolId.JP_MINOR)),
+        major: getSymbolPackFrame(atlas, clientPickToPs(SymbolId.JP_MAJOR)),
+        grand: getSymbolPackFrame(atlas, clientPickToPs(SymbolId.JP_GRAND)),
+        upgrade: getSymbolPackFrame(atlas, clientPickToPs(SymbolId.JP_UPGRADE)),
     };
 }

@@ -1,0 +1,279 @@
+
+Anim_Border_Win.png
+size: 1909,1656
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+Borderwin_00
+  rotate: false
+  xy: 563, 285
+  size: 261, 274
+  orig: 303, 307
+  offset: 20, 19
+  index: -1
+Borderwin_01
+  rotate: true
+  xy: 559, 23
+  size: 260, 274
+  orig: 303, 307
+  offset: 21, 20
+  index: -1
+Borderwin_02
+  rotate: false
+  xy: 835, 12
+  size: 264, 272
+  orig: 303, 307
+  offset: 21, 21
+  index: -1
+Borderwin_03
+  rotate: true
+  xy: 847, 1116
+  size: 269, 271
+  orig: 303, 307
+  offset: 18, 21
+  index: -1
+Borderwin_04
+  rotate: false
+  xy: 1120, 1116
+  size: 271, 269
+  orig: 303, 307
+  offset: 18, 21
+  index: -1
+Borderwin_05
+  rotate: true
+  xy: 1095, 839
+  size: 275, 267
+  orig: 303, 307
+  offset: 15, 22
+  index: -1
+Borderwin_06
+  rotate: true
+  xy: 552, 561
+  size: 277, 267
+  orig: 303, 307
+  offset: 14, 22
+  index: -1
+Borderwin_07
+  rotate: true
+  xy: 1101, 6
+  size: 278, 266
+  orig: 303, 307
+  offset: 13, 23
+  index: -1
+Borderwin_08
+  rotate: true
+  xy: 1364, 836
+  size: 278, 266
+  orig: 303, 307
+  offset: 12, 24
+  index: -1
+Borderwin_09
+  rotate: false
+  xy: 565, 1116
+  size: 279, 265
+  orig: 303, 307
+  offset: 11, 24
+  index: -1
+Borderwin_10
+  rotate: true
+  xy: 1369, 12
+  size: 278, 266
+  orig: 303, 307
+  offset: 11, 23
+  index: -1
+Borderwin_11
+  rotate: false
+  xy: 1131, 1388
+  size: 281, 266
+  orig: 303, 307
+  offset: 10, 23
+  index: -1
+Borderwin_12
+  rotate: false
+  xy: 1414, 1389
+  size: 280, 265
+  orig: 303, 307
+  offset: 12, 23
+  index: -1
+Borderwin_13
+  rotate: false
+  xy: 278, 31
+  size: 279, 267
+  orig: 303, 307
+  offset: 14, 21
+  index: -1
+Borderwin_14
+  rotate: false
+  xy: 567, 1383
+  size: 278, 271
+  orig: 303, 307
+  offset: 14, 18
+  index: -1
+Borderwin_15
+  rotate: true
+  xy: 2, 246
+  size: 277, 274
+  orig: 303, 307
+  offset: 15, 16
+  index: -1
+Borderwin_16
+  rotate: true
+  xy: 553, 840
+  size: 274, 275
+  orig: 303, 307
+  offset: 17, 14
+  index: -1
+Borderwin_17
+  rotate: false
+  xy: 278, 840
+  size: 273, 277
+  orig: 303, 307
+  offset: 17, 13
+  index: -1
+Borderwin_18
+  rotate: false
+  xy: 280, 561
+  size: 270, 277
+  orig: 303, 307
+  offset: 18, 12
+  index: -1
+Borderwin_19
+  rotate: false
+  xy: 1090, 561
+  size: 267, 276
+  orig: 303, 307
+  offset: 18, 12
+  index: -1
+Borderwin_20
+  rotate: false
+  xy: 1633, 564
+  size: 267, 276
+  orig: 303, 307
+  offset: 18, 12
+  index: -1
+Borderwin_21
+  rotate: true
+  xy: 1632, 1123
+  size: 264, 275
+  orig: 303, 307
+  offset: 19, 12
+  index: -1
+Borderwin_22
+  rotate: false
+  xy: 830, 840
+  size: 263, 274
+  orig: 303, 307
+  offset: 19, 13
+  index: -1
+Borderwin_23
+  rotate: false
+  xy: 826, 286
+  size: 266, 273
+  orig: 303, 307
+  offset: 16, 14
+  index: -1
+Borderwin_24
+  rotate: false
+  xy: 1094, 286
+  size: 270, 273
+  orig: 303, 307
+  offset: 14, 15
+  index: -1
+Borderwin_25
+  rotate: false
+  xy: 1359, 562
+  size: 272, 272
+  orig: 303, 307
+  offset: 14, 16
+  index: -1
+Borderwin_26
+  rotate: false
+  xy: 1366, 292
+  size: 275, 268
+  orig: 303, 307
+  offset: 13, 17
+  index: -1
+Borderwin_27
+  rotate: true
+  xy: 821, 561
+  size: 277, 267
+  orig: 303, 307
+  offset: 12, 18
+  index: -1
+Borderwin_28
+  rotate: true
+  xy: 1643, 283
+  size: 279, 262
+  orig: 303, 307
+  offset: 11, 19
+  index: -1
+Borderwin_29
+  rotate: true
+  xy: 1637, 2
+  size: 279, 258
+  orig: 303, 307
+  offset: 11, 21
+  index: -1
+Borderwin_30
+  rotate: true
+  xy: 1632, 842
+  size: 279, 265
+  orig: 303, 307
+  offset: 12, 20
+  index: -1
+Borderwin_31
+  rotate: true
+  xy: 2, 805
+  size: 279, 274
+  orig: 303, 307
+  offset: 12, 15
+  index: -1
+Borderwin_32
+  rotate: true
+  xy: 2, 525
+  size: 278, 276
+  orig: 303, 307
+  offset: 13, 14
+  index: -1
+Borderwin_33
+  rotate: false
+  xy: 2, 1372
+  size: 277, 282
+  orig: 303, 307
+  offset: 13, 13
+  index: -1
+Borderwin_34
+  rotate: false
+  xy: 2, 1086
+  size: 273, 284
+  orig: 303, 307
+  offset: 16, 12
+  index: -1
+Borderwin_35
+  rotate: true
+  xy: 281, 1383
+  size: 271, 284
+  orig: 303, 307
+  offset: 16, 11
+  index: -1
+Borderwin_36
+  rotate: true
+  xy: 847, 1387
+  size: 267, 282
+  orig: 303, 307
+  offset: 18, 12
+  index: -1
+Borderwin_37
+  rotate: true
+  xy: 281, 1119
+  size: 262, 282
+  orig: 303, 307
+  offset: 19, 13
+  index: -1
+Borderwin_38
+  rotate: true
+  xy: 280, 300
+  size: 259, 281
+  orig: 303, 307
+  offset: 22, 14
+  index: -1

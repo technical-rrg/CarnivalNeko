@@ -8,7 +8,8 @@
  *  B) GREEN LAND (COLLECT)
  *     nhún sticky vàng → clone vàng hút tiền về UI tổng
  *     → đồng thời nhún các Green (trước khi lật)
- *     → flip Green→Gold + hiện CreditLabel
+ *     → flip Green đó → Gold + CreditLabel
+ *     → Green kế (đã thành Yellow nên bị hút lại)
  *
  * INSPECTOR: seedSourceNode / seedOrbTemplate / collectTargetNode
  * TIMING: const bên dưới là mốc Normal. Quick/Turbo nhân getTimingMultiplier()
@@ -134,6 +135,8 @@ export class MatsuriEffect extends Component {
     private _seedBusy = false;
     private _collectBusy = false;
     private _collectCells: StickyCell[] = [];
+    /** Sequential: chỉ nhún Green đang tới lượt. null = mọi Green trên lưới. */
+    private _bounceGreenCells: StickyCell[] | null = null;
     private _totalBaseScale = new Vec3(1, 1, 1);
     private _activeClones: Node[] = [];
     private _activeOrbs: Node[] = [];
@@ -521,7 +524,11 @@ export class MatsuriEffect extends Component {
     //  COLLECT — Green land → bay Gold về UI
     // ═══════════════════════════════════════════════════════════════════════════
 
-    private _onCollectStart(payload: { goldCells?: StickyCell[] }): void {
+    private _onCollectStart(payload: {
+        goldCells?: StickyCell[];
+        bounceGreens?: StickyCell[];
+        flipGreenKey?: string;
+    }): void {
         if (this._collectBusy) {
             return;
         }
@@ -553,6 +560,9 @@ export class MatsuriEffect extends Component {
 
         this._collectBusy = true;
         this._collectCells = cells;
+        this._bounceGreenCells = (payload?.bounceGreens?.length ?? 0) > 0
+            ? this._sortLeftRightTopBottom(payload!.bounceGreens!)
+            : null;
         void this._runCollectSequence();
     }
 
@@ -570,6 +580,7 @@ export class MatsuriEffect extends Component {
         }
         this._stopGreenCollectBounce();
         this._collectBusy = false;
+        this._bounceGreenCells = null;
         this._cleanupClones();
         try {
             EventBus.instance.emit(GameEvents.MATSURI_COLLECT_DONE);
@@ -579,6 +590,7 @@ export class MatsuriEffect extends Component {
     }
 
     private _getGreenStickyCells(): StickyCell[] {
+        if (this._bounceGreenCells) return this._bounceGreenCells;
         const greens: StickyCell[] = [];
         for (const cell of GameData.instance.stickyCells.values()) {
             if (cell.symbolId === SymbolId.STICKY_GREEN) greens.push(cell);

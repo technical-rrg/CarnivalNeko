@@ -3,6 +3,7 @@
  *
  * Prefab: assets/bundle/MatsuriStartPopup.prefab (load qua PopupLoader).
  * Tap anywhere / Press to Start → MATSURI_START_POPUP_CLOSED → GameManager enter.
+ * Tự đóng sau 30s kể từ lúc mở nếu người chơi chưa bấm.
  */
 
 import {
@@ -18,6 +19,9 @@ import { CarnivalFeatureKind, CarnivalFeatureTrigger } from '../data/SlotTypes';
 import { SoundManager } from '../manager/SoundManager';
 
 const { ccclass, property } = _decorator;
+
+/** Thời gian chờ tối đa trước khi tự vào feature (giây). */
+const AUTO_CLOSE_SECONDS = 30;
 
 function shortFeatureName(kind: CarnivalFeatureKind): string {
     switch (kind) {
@@ -61,7 +65,8 @@ export class MatsuriStartPopup extends Component {
     private _isOpen = false;
     private _feature: CarnivalFeatureTrigger | null = null;
     private _built = false;
-    private _boundPress = () => this._onPressStart();
+    private _boundPress = () => this._closeAndEnter(true);
+    private _autoCloseCb = () => this._closeAndEnter(false);
 
     onLoad(): void {
         this._ensureUi();
@@ -72,6 +77,7 @@ export class MatsuriStartPopup extends Component {
     }
 
     onDestroy(): void {
+        this._cancelAutoClose();
         this._unbindInput();
         EventBus.instance.offTarget(this);
     }
@@ -152,7 +158,18 @@ export class MatsuriStartPopup extends Component {
         // Bind sau 1 frame — tránh tap “lọt” từ burst/pot
         this.scheduleOnce(() => this._bindInput(), 0.15);
 
-        Log.d(`[MatsuriStartPopup] show "${feature.featureName}" 5x${rows}`);
+        this._scheduleAutoClose();
+
+        Log.d(`[MatsuriStartPopup] show "${feature.featureName}" 5x${rows} — auto-close ${AUTO_CLOSE_SECONDS}s`);
+    }
+
+    private _scheduleAutoClose(): void {
+        this._cancelAutoClose();
+        this.scheduleOnce(this._autoCloseCb, AUTO_CLOSE_SECONDS);
+    }
+
+    private _cancelAutoClose(): void {
+        this.unschedule(this._autoCloseCb);
     }
 
     private _playPanelScaleIn(): void {
@@ -208,31 +225,34 @@ export class MatsuriStartPopup extends Component {
     }
 
     private _onGlobalTouch = (_e: EventTouch): void => {
-        this._onPressStart();
+        this._closeAndEnter(true);
     };
 
     private _onGlobalMouse = (_e: EventMouse): void => {
-        this._onPressStart();
+        this._closeAndEnter(true);
     };
 
-    private _onPressStart(): void {
+    private _closeAndEnter(fromUserInput: boolean): void {
         if (!this._isOpen) return;
         this._isOpen = false;
+        this._cancelAutoClose();
         this._unbindInput();
 
         const feature = this._feature;
         this._feature = null;
 
-        SoundManager.instance?.playButtonClick();
+        if (fromUserInput) {
+            SoundManager.instance?.playButtonClick();
+        }
         EventBus.instance.emit(GameEvents.POPUP_CLOSED);
         if (this.hintLabel) Tween.stopAllByTarget(this.hintLabel.node);
 
         // Emit ngay — không chờ tween (tránh miss enter TopUp)
         if (feature) {
-            Log.e(`[MatsuriStartPopup] PRESS → enter "${feature.featureName}"`);
+            Log.e(`[MatsuriStartPopup] ${fromUserInput ? 'PRESS' : 'AUTO'} → enter "${feature.featureName}"`);
             EventBus.instance.emit(GameEvents.MATSURI_START_POPUP_CLOSED, feature);
         } else {
-            Log.w('[MatsuriStartPopup] PRESS nhưng feature=null');
+            Log.w('[MatsuriStartPopup] close nhưng feature=null');
         }
 
         // Chỉ Panel scale-out → xong mới tắt Overlay

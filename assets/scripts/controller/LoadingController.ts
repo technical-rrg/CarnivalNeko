@@ -23,6 +23,8 @@ import { CdnAssetManager } from '../core/CdnAssetManager';
 import { LocalizationManager } from '../core/LocalizationManager';
 import { FontManager } from '../manager/FontManager';
 import { Log } from '../core/Logger';
+import { DebugLanguageSwitcher } from './DebugLanguageSwitcher';
+import { isEditorPreview } from '../core/DebugEnv';
 import { GuideFrameLoader } from '../core/GuideFrameLoader';
 import { GuideShellLoader } from '../core/GuideShellLoader';
 import { GameEntryController } from './GameEntryController';
@@ -200,6 +202,7 @@ export class LoadingController extends Component {
         // ★ Khởi tạo ngôn ngữ sớm nhất có thể — trước khi bất kỳ Label nào render.
         //   Đọc DEV_FORCE_LANG (từ ServerConfig) hoặc localStorage 'supernova_lang'.
         LocalizationManager.instance.loadSavedLanguage();
+        if (isEditorPreview()) DebugLanguageSwitcher.mount();
 
         // ★ Bắt đầu tải font + CDN + MainBundle ngay — song song với login ở start().
         this._earlyLoadFont();

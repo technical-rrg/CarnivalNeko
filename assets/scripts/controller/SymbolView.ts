@@ -582,15 +582,14 @@ export class SymbolView extends Component {
 
     /**
      * Hiển thị giá trị credit ở giữa symbol sticky (green/gold).
-     * Dùng format KMBT (1500 → "1.5K"). Label pop-in nhỏ.
-     * Gọi sau khi reel dừng và sticky cell đã được xác nhận.
+     * Luôn 2 chữ số thập phân (0.1 → "0.10", 0.2 → "0.20") để đồng nhất trên coin.
      */
     showCredit(value: number): void {
         if (!this.SpriteNumber) return;
         const labelNode = this.SpriteNumber.node;
         Tween.stopAllByTarget(labelNode);
         const shouldActive = value > 0;
-        this.SpriteNumber.setData(value);
+        this.SpriteNumber.setData(value, -1, 2);
         // Reset rotation của CreditLabel để tránh bị nghiêng méo (đặc biệt case row0 col0)
         labelNode.setRotationFromEuler(0, 0, 0);
         labelNode.active = shouldActive;

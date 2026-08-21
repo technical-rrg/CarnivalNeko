@@ -29,16 +29,33 @@ const CYCLE_KINDS: CarnivalFeatureKind[] = [
     CarnivalFeatureKind.ULTIMATE,
 ];
 
-function burstPotsForKind(kind: CarnivalFeatureKind): TrailColor[] {
+/**
+ * API CurrentFeatureType 0–5 → pot nhún khi kích hoạt Matsuri.
+ * 0 Mighty Blue | 1 Mega Green | 2 Super Blue+Green |
+ * 3 Ultra Blue+Red | 4 Supreme Red+Green | 5 Ultimate Blue+Red+Green
+ */
+export function burstPotsForApiFeatureType(apiType: number): TrailColor[] {
+    switch (apiType) {
+        case 0: return [TrailColor.BLUE];
+        case 1: return [TrailColor.GREEN];
+        case 2: return [TrailColor.BLUE, TrailColor.GREEN];
+        case 3: return [TrailColor.BLUE, TrailColor.RED];
+        case 4: return [TrailColor.RED, TrailColor.GREEN];
+        case 5: return [TrailColor.BLUE, TrailColor.RED, TrailColor.GREEN];
+        default: return [];
+    }
+}
+
+/** Pot nhún theo CarnivalFeatureKind — 6 Matsuri + Jackpot Red. */
+export function burstPotsForKind(kind: CarnivalFeatureKind): TrailColor[] {
     switch (kind) {
         case CarnivalFeatureKind.JACKPOT: return [TrailColor.RED];
-        case CarnivalFeatureKind.MIGHTY: return [TrailColor.BLUE];
-        case CarnivalFeatureKind.MEGA: return [TrailColor.GREEN];
-        case CarnivalFeatureKind.SUPER: return [TrailColor.BLUE, TrailColor.GREEN];
-        case CarnivalFeatureKind.ULTRA: return [TrailColor.BLUE, TrailColor.RED];
-        case CarnivalFeatureKind.SUPREME: return [TrailColor.RED, TrailColor.GREEN];
-        case CarnivalFeatureKind.ULTIMATE:
-            return [TrailColor.BLUE, TrailColor.RED, TrailColor.GREEN];
+        case CarnivalFeatureKind.MIGHTY: return burstPotsForApiFeatureType(0);
+        case CarnivalFeatureKind.MEGA: return burstPotsForApiFeatureType(1);
+        case CarnivalFeatureKind.SUPER: return burstPotsForApiFeatureType(2);
+        case CarnivalFeatureKind.ULTRA: return burstPotsForApiFeatureType(3);
+        case CarnivalFeatureKind.SUPREME: return burstPotsForApiFeatureType(4);
+        case CarnivalFeatureKind.ULTIMATE: return burstPotsForApiFeatureType(5);
         default: return [];
     }
 }

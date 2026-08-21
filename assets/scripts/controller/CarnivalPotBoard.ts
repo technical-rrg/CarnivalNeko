@@ -4,7 +4,7 @@
  * Events:
  *   CARNIVAL_POT_LEVELS_CHANGED → sync labels (visual tạm = LV3)
  *   CARNIVAL_TRAIL_ONE_HIT      → nhún nhẹ + LV{n}_Impact rồi Idle_LV{n}
- *   CARNIVAL_POT_BURST          → nhún nhẹ → CARNIVAL_POT_BURST_DONE
+ *   CARNIVAL_POT_BURST          → nhún lên-xuống các pot tương ứng → CARNIVAL_POT_BURST_DONE
  *
  * Tạm thời force visual level = 3 cho idle + impact (cùng Anim-Pot skeleton như Pot cũ).
  */
@@ -17,7 +17,11 @@ import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
 import { CarnivalFeatureTrigger, CarnivalPotLevels, TrailColor } from '../data/SlotTypes';
-import { resetBurstPotState } from '../data/CarnivalFeatureResolve';
+import {
+    burstPotsForApiFeatureType,
+    burstPotsForKind,
+    resetBurstPotState,
+} from '../data/CarnivalFeatureResolve';
 import { Log } from '../core/Logger';
 
 const { ccclass, property } = _decorator;
@@ -53,16 +57,26 @@ export class CarnivalPotBoard extends Component {
     scaleMax: number = 1.35;
 
     @property({ tooltip: 'Thời gian burst anim trước khi DONE (giây)' })
-    burstDuration: number = 0.85;
+    burstDuration: number = 1.15;
+
+    @property({ tooltip: 'Biên độ nhún lên khi trigger Matsuri (px)' })
+    hopHeight: number = 56;
+
+    @property({ tooltip: 'Số lần nhún lên-xuống khi trigger Matsuri' })
+    hopCount: number = 3;
 
     private _levels: CarnivalPotLevels = { blue: 0, red: 0, green: 0 };
     private _placeholderBuilt = false;
     private _bursting = false;
+    private _burstingPots: Node[] = [];
+    private _pendingBurstFeature: CarnivalFeatureTrigger | null = null;
 
     /** Spine cache per pot node */
     private _spineByNode = new Map<Node, sp.Skeleton>();
     /** Scale mặc định từ editor — không ghi đè về 1 */
     private _baseScaleByNode = new Map<Node, Vec3>();
+    /** Position mặc định từ editor — hop xong trả về đây */
+    private _basePosByNode = new Map<Node, Vec3>();
     /** Impact state per pot (tránh idle cắt impact / impact chồng nhau) */
     private _impactActive = new Set<Node>();
     private _impactFallback = new Map<Node, () => void>();
@@ -73,11 +87,11 @@ export class CarnivalPotBoard extends Component {
         bus.on(GameEvents.CARNIVAL_TRAIL_ONE_HIT, this._onTrailHit, this);
         bus.on(GameEvents.CARNIVAL_POT_BURST, this._onPotBurst, this);
         bus.on(GameEvents.GAME_READY, this._onGameReady, this);
-        this._cacheBaseScales();
+        this._cacheBaseTransforms();
     }
 
     start(): void {
-        this._cacheBaseScales();
+        this._cacheBaseTransforms();
         this._cacheSpines();
         this._ensurePlaceholders();
         this._levels = { ...GameData.instance.potLevels };
@@ -88,6 +102,9 @@ export class CarnivalPotBoard extends Component {
         for (const node of this._impactActive) {
             this._cancelImpact(node, true);
         }
+        this.unschedule(this._finishBurst);
+        this._pendingBurstFeature = null;
+        this._restoreBurstPots();
         EventBus.instance.offTarget(this);
     }
 
@@ -125,28 +142,55 @@ export class CarnivalPotBoard extends Component {
             return;
         }
         this._bursting = true;
-        Log.e(`[CarnivalPot] BURST → ${feature.featureName} pots=[${feature.burstPots.map(c => TrailColor[c]).join(',')}]`);
+        const hopColors = this._hopColorsFor(feature);
+        feature.burstPots = hopColors;
+        Log.e(`[CarnivalPot] BURST → ${feature.featureName} pots=[${hopColors.map(c => TrailColor[c]).join(',')}]`);
 
-        const pots = feature.burstPots
+        const pots = hopColors
             .map(c => this._nodeFor(c))
             .filter((n): n is Node => !!n?.isValid);
 
+        this._burstingPots = pots;
+        this._cacheBaseTransforms();
         for (const node of pots) {
             this._cancelImpact(node, true);
-            this._playSoftBounce(node, 1.08, 0.94);
+            this._playTriggerHop(node);
         }
 
-        resetBurstPotState(feature.burstPots);
+        resetBurstPotState(hopColors);
         this._levels = { ...GameData.instance.potLevels };
         this._applyLabelsOnly();
 
-        this.scheduleOnce(() => {
-            this._bursting = false;
-            this._applyAll(false);
-            EventBus.instance.emit(GameEvents.CARNIVAL_POT_BURST_DONE, feature);
-            Log.e('[CarnivalPot] BURST_DONE');
-        }, this.burstDuration);
+        this.unschedule(this._finishBurst);
+        this._pendingBurstFeature = feature;
+        this.scheduleOnce(this._finishBurst, Math.max(0.6, this.burstDuration));
     }
+
+    /**
+     * 0 Mighty Blue | 1 Mega Green | 2 Super Blue+Green |
+     * 3 Ultra Blue+Red | 4 Supreme Red+Green | 5 Ultimate Blue+Red+Green
+     */
+    private _hopColorsFor(feature: CarnivalFeatureTrigger): TrailColor[] {
+        const fromKind = burstPotsForKind(feature.kind);
+        if (fromKind.length) return fromKind;
+        const apiType = GameData.instance.cnApiFeatureType
+            ?? GameData.instance.lastSpinResponse?.currentFeatureType;
+        if (apiType != null && Number(apiType) >= 0) {
+            const fromApi = burstPotsForApiFeatureType(Number(apiType));
+            if (fromApi.length) return fromApi;
+        }
+        return (feature.burstPots ?? []).slice();
+    }
+
+    private _finishBurst = (): void => {
+        const feature = this._pendingBurstFeature;
+        this._pendingBurstFeature = null;
+        this._restoreBurstPots();
+        this._bursting = false;
+        this._applyAll(false);
+        EventBus.instance.emit(GameEvents.CARNIVAL_POT_BURST_DONE, feature);
+        Log.e('[CarnivalPot] BURST_DONE');
+    };
 
     // ─── Spine idle / impact (mirror PotController) ─────────────────────────
 
@@ -154,15 +198,35 @@ export class CarnivalPotBoard extends Component {
         return FORCE_VISUAL_LEVEL;
     }
 
-    private _cacheBaseScales(): void {
+    private _cacheBaseTransforms(): void {
         for (const node of [this.bluePot, this.redPot, this.greenPot]) {
-            if (!node || this._baseScaleByNode.has(node)) continue;
-            this._baseScaleByNode.set(node, node.scale.clone());
+            if (!node) continue;
+            if (!this._baseScaleByNode.has(node)) {
+                this._baseScaleByNode.set(node, node.scale.clone());
+            }
+            if (!this._basePosByNode.has(node)) {
+                this._basePosByNode.set(node, node.position.clone());
+            }
         }
     }
 
     private _baseScaleOf(node: Node): Vec3 {
         return this._baseScaleByNode.get(node)?.clone() ?? node.scale.clone();
+    }
+
+    private _basePosOf(node: Node): Vec3 {
+        return this._basePosByNode.get(node)?.clone() ?? node.position.clone();
+    }
+
+    private _restoreBurstPots(): void {
+        const pots = this._burstingPots;
+        this._burstingPots = [];
+        for (const node of pots) {
+            if (!node?.isValid) continue;
+            Tween.stopAllByTarget(node);
+            node.setPosition(this._basePosOf(node));
+            node.setScale(this._baseScaleOf(node));
+        }
     }
 
     /** Nhún squash nhẹ 1 nhịp rồi về scale editor — không zoom to. */
@@ -176,6 +240,30 @@ export class CarnivalPotBoard extends Component {
             .to(0.12, { scale: new Vec3(base.x * 0.98, base.y * 1.03, base.z) }, { easing: 'sineInOut' })
             .to(0.14, { scale: base.clone() }, { easing: 'sineOut' })
             .start();
+    }
+
+    /** Nhún lên-xuống rõ khi Matsuri / Jackpot kích hoạt — chỉ pot tương ứng. */
+    private _playTriggerHop(node: Node): void {
+        if (!node?.isValid) return;
+        Tween.stopAllByTarget(node);
+        const basePos = this._basePosOf(node);
+        const baseScale = this._baseScaleOf(node);
+        node.setPosition(basePos);
+        node.setScale(baseScale);
+
+        const hops = Math.max(1, Math.floor(this.hopCount));
+        const height = Math.max(16, this.hopHeight);
+        let seq = tween(node);
+        for (let i = 0; i < hops; i++) {
+            const h = height * (1 - i * 0.18);
+            const up = new Vec3(basePos.x, basePos.y + h, basePos.z);
+            const stretch = new Vec3(baseScale.x * 0.92, baseScale.y * 1.12, baseScale.z);
+            const squash = new Vec3(baseScale.x * 1.1, baseScale.y * 0.9, baseScale.z);
+            seq = seq
+                .to(0.12, { position: up, scale: stretch }, { easing: 'quadOut' })
+                .to(0.12, { position: basePos.clone(), scale: squash }, { easing: 'quadIn' });
+        }
+        seq.to(0.1, { position: basePos.clone(), scale: baseScale.clone() }, { easing: 'sineOut' }).start();
     }
 
     private _cacheSpines(): void {

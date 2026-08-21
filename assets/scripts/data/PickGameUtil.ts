@@ -1,9 +1,8 @@
 /**
  * PickGameUtil — Carnival Neko Jackpot Feature (Pick Game).
  *
- * API V1.0.2 flow + ID change 260810 (khớp game cũ):
+ * ID mới (Jackpot Symbol ID Change 260810):
  *   81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
- * (API guide cũ: 82 Mini … 85 Grand — đã remap 2026.08.10)
  */
 
 import { JackpotType, SymbolId } from './SlotTypes';
@@ -14,7 +13,7 @@ export const PICK_GAME_COLS = 5;
 export const PICK_GAME_ROWS = 3;
 export const PICK_GAME_CELL_COUNT = PICK_GAME_COLS * PICK_GAME_ROWS; // 15
 
-/** Default PS Pick IDs — sau Jackpot Symbol ID Change 260810. */
+/** Default PS Pick IDs — 수정 후 ID (Major=83, Minor=84). */
 export const PS_PICK = {
     IDLE: 81,
     GRAND: 82,

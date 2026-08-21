@@ -103,15 +103,15 @@ export const GameEvents = {
     /** Seed Start Gold xong → GameManager lock + spin đầu. No payload. */
     MATSURI_SEED_DONE: 'matsuri:seed:done',
     /**
-     * Matsuri: Green vừa land → Gold hút tiền về UI tổng; Green nhún rồi flip.
-     * Payload: { goldCells: StickyCell[] }
+     * Matsuri: 1 Green trong queue → hút toàn bộ Yellow đang hold.
+     * Payload: { goldCells: StickyCell[], bounceGreens?: StickyCell[], flipGreenKey?: string }
      */
     MATSURI_COLLECT_START: 'matsuri:collect:start',
     /** 1 Gold vừa bay xong → cộng credit vào tổng. Payload: { credit: number } */
     MATSURI_COLLECT_CREDIT: 'matsuri:collect:credit',
-    /** Collect/fly Gold xong → StickyOverlay flip Green→Gold. No payload. */
+    /** Collect/fly Gold xong → StickyOverlay flip 1 Green (flipGreenKey) → Gold. */
     MATSURI_COLLECT_DONE: 'matsuri:collect:done',
-    /** Flip Green→Gold xong hết → GameManager tiếp tục stage. No payload. */
+    /** Flip 1 Green xong → GameManager loop Green kế hoặc chốt stage. */
     MATSURI_FLIP_DONE: 'matsuri:flip:done',
     /** @deprecated dùng CARNIVAL_MATSURI_START — giữ alias cho listener cũ */
     CARNIVAL_MATSURI_STUB: 'carnival:matsuri:stub',

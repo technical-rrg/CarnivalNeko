@@ -432,7 +432,7 @@ export class TopUpAbsorbEffect extends Component {
         }
         const safeValue = Math.max(0, value);
         labelNode.active = safeValue > 0;
-        sn.setData(safeValue, -1, 0);
+        sn.setData(safeValue, -1, 2);
     }
 
     // -- Bay nhieu effect voi stagger, moi effect cham -> cong credit cua source --

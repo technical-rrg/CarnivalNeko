@@ -3,6 +3,7 @@ import { L, LocalizationManager } from './LocalizationManager';
 import { FontManager } from '../manager/FontManager';
 import { EventBus } from './EventBus';
 import { GameEvents } from './GameEvents';
+import { RichTextShrink } from './RichTextShrink';
 
 const { ccclass, property } = _decorator;
 
@@ -40,11 +41,24 @@ export class LanguageChange extends Component {
     private _label: Label | null = null;
     private _richText: RichText | null = null;
 
+    /** Runtime placeholders, e.g. `{ count: 15 }`. Not serialized. */
+    public translationParams?: Record<string, string | number>;
+
     onLoad() {
         this._label = this.getComponent(Label);
         this._richText = this.getComponent(RichText);
         this._update();
         EventBus.instance.on(GameEvents.LANGUAGE_CHANGED, this._update, this);
+    }
+
+    /** Re-apply locale text (after changing `translationParams`, or before own onLoad). */
+    public refreshText(): void {
+        if (!this._label && !this._richText) {
+            this._label = this.getComponent(Label);
+            this._richText = this.getComponent(RichText);
+        }
+        this._applyText();
+        this._shrinkRichText();
     }
 
     onDestroy() {
@@ -58,16 +72,24 @@ export class LanguageChange extends Component {
         if (this.enableFontChange) {
             this._applyFont();
         }
+        if (this.enableTextChange) {
+            this._shrinkRichText();
+        }
     }
 
     private _applyText() {
         if (!this.translationKey) return;
-        const text = L(this.translationKey);
+        const text = L(this.translationKey, this.translationParams);
         if (this._richText) {
             this._richText.string = text.replace(/\r\n|\n/g, '<br/>');
         } else if (this._label) {
             this._label.string = text;
         }
+    }
+
+    private _shrinkRichText() {
+        if (!this._richText) return;
+        this.getComponent(RichTextShrink)?.startShrink();
     }
 
     private _applyFont() {

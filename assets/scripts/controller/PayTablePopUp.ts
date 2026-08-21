@@ -14,7 +14,6 @@ import { GameEvents } from '../core/GameEvents';
 import { L } from '../core/LocalizationManager';
 import { Log } from '../core/Logger';
 import { RichTextShrink } from '../core/RichTextShrink';
-import { GameData } from '../data/GameData';
 import { CLIENT_TO_PS, SymbolId } from '../data/SlotTypes';
 import { OrientationLayout } from './OrientationLayout';
 
@@ -177,7 +176,7 @@ export class PayTablePopUp extends Component {
 
         this._ensurePages();
         this._applySymbolAtlas();
-        this._bindPage1Pays();
+        this._bindPage1Icons();
         this._remapFeatureIcons();
         this._hideLegacyBlocks();
 
@@ -385,7 +384,7 @@ export class PayTablePopUp extends Component {
             }
             this.symbolAtlas = atlas;
             this._bindAtlasToRichTexts();
-            this._bindPage1Pays();
+            this._bindPage1Icons();
             this._remapFeatureIcons();
             this._refreshLocalization();
         });
@@ -398,12 +397,10 @@ export class PayTablePopUp extends Component {
         }
     }
 
-    private _bindPage1Pays(): void {
+    /** Page 1 icons are null in prefab — assign SymbolPack frames only; keep Value labels as authored. */
+    private _bindPage1Icons(): void {
         const page = this.page1Node;
-        if (!page) return;
-        const table = GameData.instance.config.waysPayTable;
-        const row1 = page.getChildByName('IconRow1');
-        const row2 = page.getChildByName('IconRow2');
+        if (!page || !this.symbolAtlas) return;
         const highs: SymbolId[] = [
             SymbolId.MAJOR_CLEOPATRA, SymbolId.MAJOR_RAMSES, SymbolId.MAJOR_SOBEK,
             SymbolId.MAJOR_ANUBIS, SymbolId.MAJOR_HORUS,
@@ -412,40 +409,26 @@ export class PayTablePopUp extends Component {
             SymbolId.MINOR_A, SymbolId.MINOR_K, SymbolId.MINOR_Q,
             SymbolId.MINOR_J, SymbolId.MINOR_10, SymbolId.MINOR_9,
         ];
-        this._applyPayRow(row1, highs, table);
-        this._applyPayRow(row2, lows, table);
+        this._applyPage1IconRow(page.getChildByName('IconRow1'), highs);
+        this._applyPage1IconRow(page.getChildByName('IconRow2'), lows);
     }
 
-    private _applyPayRow(
-        row: Node | null,
-        symbols: SymbolId[],
-        table: Record<number, [number, number, number]>,
-    ): void {
-        if (!row) return;
+    private _applyPage1IconRow(row: Node | null, symbols: SymbolId[]): void {
+        if (!row || !this.symbolAtlas) return;
         const cells = row.children.filter(c => c.isValid);
         for (let i = 0; i < cells.length && i < symbols.length; i++) {
-            const sid = symbols[i];
-            const ps = CLIENT_TO_PS[sid];
+            const ps = CLIENT_TO_PS[symbols[i]];
             if (ps == null) continue;
-            const pays = table[sid] ?? [0, 0, 0];
-            this._applyPayCell(cells[i], ps, pays);
-        }
-    }
-
-    private _applyPayCell(cell: Node, psId: number, pays: [number, number, number]): void {
-        const frame = this.symbolAtlas?.getSpriteFrame(String(psId)) ?? null;
-        const icon = cell.getChildByName('Icon') ?? cell;
-        const sprite = icon.getComponent(Sprite) ?? icon.getComponentInChildren(Sprite);
-        if (sprite && frame) sprite.spriteFrame = frame;
-        const value = cell.getChildByName('Value')?.getComponent(Label);
-        if (value) {
-            value.string = `5 - ${pays[2]}\n4 - ${pays[1]}\n3 - ${pays[0]}\n`;
+            const frame = this.symbolAtlas.getSpriteFrame(String(ps));
+            if (!frame) continue;
+            const icon = cells[i].getChildByName('Icon') ?? cells[i];
+            const sprite = icon.getComponent(Sprite) ?? icon.getComponentInChildren(Sprite);
+            if (sprite) sprite.spriteFrame = frame;
         }
     }
 
     private _remapFeatureIcons(): void {
-        this._remapChildSprites(this.page4Node, ['82', '83', '84', '85', '86', '81']);
-        this._remapChildSprites(this.page3Node, ['46', '41', '42', '43']);
+        this._remapChildSprites(this.page3Node, ['41', '43', '42']);
         this._remapChildSprites(this.page2Node, ['21']);
     }
 

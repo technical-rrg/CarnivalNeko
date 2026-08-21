@@ -69,7 +69,7 @@ export class PickGamePopup extends Component {
 
     @property({
         type: SpriteAtlas,
-        tooltip: 'SymbolPack — frame 81 idle, 82 Grand … 85 Mini, 86 Upgrade (ID Change 260810).',
+        tooltip: 'SymbolPack — frame 81 idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade.',
     })
     symbolAtlas: SpriteAtlas | null = null;
 
@@ -395,12 +395,8 @@ export class PickGamePopup extends Component {
 
         if (this.coinFontDemo?.isValid) this.coinFontDemo.active = false;
 
-        if (!this._symbolPackReady) {
-            this._initSymbolPackFrames(() => this._continueOpenPickGame(state));
-            return;
-        }
-        this._applyIdleCoinBacks();
-        this._continueOpenPickGame(state);
+        // Refresh frames theo PS map hiện tại (Enter named fields), không cache ID cứng.
+        this._initSymbolPackFrames(() => this._continueOpenPickGame(state));
     }
 
     private _continueOpenPickGame(state: PickGameState): void {

@@ -3,6 +3,7 @@
  *
  * Prefab: assets/bundle/JackpotStartPopup.prefab (load qua PopupLoader).
  * Tap / Press to Start → PICK_GAME_START_POPUP_CLOSED → GameManager mở PickGamePopup.
+ * Tự đóng sau 30s kể từ lúc mở nếu người chơi chưa bấm.
  * Thay TransitionPopup khi vào Pick từ Normal.
  */
 
@@ -19,6 +20,9 @@ import { PickGameState } from '../data/SlotTypes';
 import { SoundManager } from '../manager/SoundManager';
 
 const { ccclass, property } = _decorator;
+
+/** Thời gian chờ tối đa trước khi tự vào feature (giây). */
+const AUTO_CLOSE_SECONDS = 30;
 
 @ccclass('JackpotStartPopup')
 export class JackpotStartPopup extends Component {
@@ -50,7 +54,8 @@ export class JackpotStartPopup extends Component {
     private _isOpen = false;
     private _pickState: PickGameState | null = null;
     private _built = false;
-    private _boundPress = () => this._onPressStart();
+    private _boundPress = () => this._closeAndEnter(true);
+    private _autoCloseCb = () => this._closeAndEnter(false);
 
     onLoad(): void {
         this._ensureUi();
@@ -63,6 +68,7 @@ export class JackpotStartPopup extends Component {
     }
 
     onDestroy(): void {
+        this._cancelAutoClose();
         this._unbindInput();
         EventBus.instance.offTarget(this);
     }
@@ -137,7 +143,19 @@ export class JackpotStartPopup extends Component {
         }
 
         this.scheduleOnce(() => this._bindInput(), 0.15);
-        Log.d('[JackpotStartPopup] show — PRESS TO START → Pick Game');
+
+        this._scheduleAutoClose();
+
+        Log.d(`[JackpotStartPopup] show — PRESS TO START → Pick Game (auto-close ${AUTO_CLOSE_SECONDS}s)`);
+    }
+
+    private _scheduleAutoClose(): void {
+        this._cancelAutoClose();
+        this.scheduleOnce(this._autoCloseCb, AUTO_CLOSE_SECONDS);
+    }
+
+    private _cancelAutoClose(): void {
+        this.unschedule(this._autoCloseCb);
     }
 
     private _bindInput(): void {
@@ -180,30 +198,33 @@ export class JackpotStartPopup extends Component {
     }
 
     private _onGlobalTouch = (_e: EventTouch): void => {
-        this._onPressStart();
+        this._closeAndEnter(true);
     };
 
     private _onGlobalMouse = (_e: EventMouse): void => {
-        this._onPressStart();
+        this._closeAndEnter(true);
     };
 
-    private _onPressStart(): void {
+    private _closeAndEnter(fromUserInput: boolean): void {
         if (!this._isOpen) return;
         this._isOpen = false;
+        this._cancelAutoClose();
         this._unbindInput();
 
         const pickState = this._pickState;
         this._pickState = null;
 
-        SoundManager.instance?.playButtonClick();
+        if (fromUserInput) {
+            SoundManager.instance?.playButtonClick();
+        }
         EventBus.instance.emit(GameEvents.POPUP_CLOSED);
         if (this.hintLabel) Tween.stopAllByTarget(this.hintLabel.node);
 
         if (pickState) {
-            Log.e('[JackpotStartPopup] PRESS → enter Pick Game');
+            Log.e(`[JackpotStartPopup] ${fromUserInput ? 'PRESS' : 'AUTO'} → enter Pick Game`);
             EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP_CLOSED, pickState);
         } else {
-            Log.w('[JackpotStartPopup] PRESS nhưng pickState=null');
+            Log.w('[JackpotStartPopup] close nhưng pickState=null');
             EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP_CLOSED, null);
         }
 

@@ -420,14 +420,17 @@ export class MockDataProvider {
             ? MATSURI_SPIN_COUNT
             : remainBefore;
 
-        // Mock API: Green.Credit = tổng Gold đang hold (+ Grand nếu full)
+        // Mock: CollectWin = tổng credit Gold đang hold (Green lượt này chưa cộng).
         let collectWin = 0;
+        let goldHoldCredit = 0;
         if (landedGreen) {
             for (const c of stickyMap.values()) {
-                if (c.symbolId === SymbolId.STICKY_YELLOW && (c.credit ?? 0) > 0) {
+                const isGold = c.symbolId === SymbolId.STICKY_YELLOW;
+                if (isGold && (c.credit ?? 0) > 0) {
                     collectWin += c.credit ?? 0;
                 }
             }
+            goldHoldCredit = collectWin;
         }
 
         const filledAfter = stickyMap.size + newGreens.length;
@@ -444,6 +447,10 @@ export class MockDataProvider {
 
         const topupReel = buildMatsuriTopupReel(stickyMap, newGreens, rows);
 
+        let accumulatedStickyCredit = 0;
+        for (const c of stickyMap.values()) accumulatedStickyCredit += Math.max(0, c.credit ?? 0);
+        for (const g of newGreens) accumulatedStickyCredit += Math.max(0, g.credit ?? 0);
+
         const spinWin = collectWin;
         const nextStage = (fullGrid || remainRespinCount <= 0)
             ? SlotStageType.TOPUP_SPIN_END
@@ -457,7 +464,7 @@ export class MockDataProvider {
             `[Matsuri MOCK] rows=${rows} newGreen=${newGreens.length} filled=${filledAfter}/${cellCount}` +
             ` remain ${remainBefore}→${remainRespinCount}` +
             `${landedGreen ? ' (GREEN reset 3)' : ''}` +
-            ` collect=${spinWin} next=${nextStage}`
+            ` goldHold=${goldHoldCredit} collect=${spinWin} accSticky=${accumulatedStickyCredit} next=${nextStage}`
         );
 
         return {
@@ -473,6 +480,8 @@ export class MockDataProvider {
             stickyCells: newGreens,
             newStickies: newGreens,
             remainRespinCount,
+            collectWin: goldHoldCredit,
+            accumulatedStickyCredit,
             featureSpinTotalWin: data.respinTotalWin + spinWin,
             topupReel,
             winGrade: MockDataProvider._getWinGrade(spinWin, totalBet),

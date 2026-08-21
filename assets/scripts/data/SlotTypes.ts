@@ -131,7 +131,7 @@ export function isFreeSpinTierReelIndex(reelIndex: number): reelIndex is FreeSpi
  * Carnival Neko API V1.0.1 PS IDs:
  *   Low 1–6 → MINOR_* | High 11–15 → MAJOR_* | Wild 21 → WILD
  *   Trail 41/42/43 → TRAIL_BLUE/GREEN/RED | Sticky 44/45 → STICKY_GREEN / STICKY_YELLOW(Gold)
- *   Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade (ID Change 260810)
+ *   Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
  */
 export enum SymbolId {
     // ── Pay symbols (PS Low01–06 = 1–6; art tạm giữ tên cũ) ──
@@ -154,7 +154,7 @@ export enum SymbolId {
     // (12, 15 reserved — legacy STICKY_RED / PLUS_ONE_SPIN removed)
     // ── Jackpot Pick (PS remapped) ──
     JP_IDLE = 16,          // PS 81
-    JP_MINI = 17,          // PS 85 (ID Change 260810)
+    JP_MINI = 17,          // PS 85
     JP_MINOR = 18,         // PS 84
     JP_MAJOR = 19,         // PS 83
     JP_GRAND = 20,         // PS 82
@@ -358,7 +358,7 @@ export function wildSubstitutes(s: number): boolean { return isMinor(s) || isMaj
  * Low: 1–6 | High: 11–15 | Wild: 21
  * Trail: 41 Blue, 42 Green, 43 Red
  * Sticky: 44 Green (detect), 45 Gold (overlay)
- * Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade (ID Change 260810)
+ * Pick: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade
  *
  * Legacy 46–50: không dùng CN primary (giữ map nhẹ cho mock cũ nếu còn).
  */
@@ -390,7 +390,7 @@ export const PS_TO_CLIENT: Record<number, number> = {
     48: SymbolId.STICKY_YELLOW,
     49: SymbolId.STICKY_GREEN,
     50: SymbolId.STICKY_GREEN,
-    // ─── Pick Game (ID Change 260810): 82 Grand, 83 Major, 84 Minor, 85 Mini ───
+    // ─── Pick Game (ID mới 260810): 82 Grand, 83 Major, 84 Minor, 85 Mini ───
     81: SymbolId.JP_IDLE,
     82: SymbolId.JP_GRAND,
     83: SymbolId.JP_MAJOR,
@@ -815,7 +815,7 @@ export interface ServerMatchedLinePay {
 
 /**
  * Pick response từ server (AckPick → CNPickResponse) — API V1.0.2 Table 23.
- * PickGame: 15 ô, -1=chưa chọn, số dương=PS ID đã lộ (82 Grand … 85 Mini, 86 Upgrade — ID Change 260810).
+ * PickGame: 15 ô, -1=chưa chọn, số dương=PS ID (82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade).
  * PickResults: PS ID ô vừa pick. PickWin=0 đến khi match 3 JP.
  * IsJackpot luôn false, JackpotIndex luôn -1 (flat jackpot).
  * NextStage=PICK(7) khi còn pick; PICK_END(102) khi match 3 JP → /Claim.
@@ -865,6 +865,8 @@ export interface ClaimResult {
     winCash?: number;
     winGrade?: string;
     claimTotalWin?: number;
+    /** CNClaimResponse.FeatureSpinTotalWin — đối chiếu collect-all với client. */
+    claimFeatureSpinTotalWin?: number;
     topLevelWinCash?: number;
     featureName?: string;
     /** PICK_END claim only — tier Mini/Minor/Major/Grand. */

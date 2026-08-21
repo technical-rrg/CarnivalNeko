@@ -353,6 +353,18 @@ export class SpriteNumber extends Component {
     // ─── Public API ───────────────────────────────────────────────────────
 
     /**
+     * Scale hiển thị của node (parent) khi shrinkToFit=true.
+     * setData() luôn reset về `_initialScale` — phải cập nhật ở đây, nếu không tỉ lệ
+     * theo symbol/cell (5×4 / 5×5) sẽ bị mất mỗi lần gán số.
+     */
+    public setDisplayScale(scale: number): void {
+        const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
+        this._stopJolt();
+        this._initialScale = s;
+        this.node.setScale(s, s, 1);
+    }
+
+    /**
      * Tính trước kích thước container dựa trên giá trị đích (lớn nhất) và khoá lại.
      * Sau khi gọi, setData() sẽ KHÔNG thay đổi contentSize hay scale nữa → tránh layout nhảy.
      * Gọi unlockWidth() để trở về chế độ dynamic sau khi count-up xong.

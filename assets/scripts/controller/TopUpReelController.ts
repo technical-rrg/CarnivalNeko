@@ -761,10 +761,10 @@ export class TopUpReelController extends Component {
                 if (win > 0) {
                     const sn = creditNode.getComponent(SpriteNumber);
                     if (sn) {
-                        sn.setData(win, -1, 0, true);
+                        sn.setData(win, -1, 2, true);
                     } else {
                         const lbl = creditNode.getComponent(Label);
-                        if (lbl) lbl.string = win.toString();
+                        if (lbl) lbl.string = win.toFixed(2);
                     }
                 }
             }

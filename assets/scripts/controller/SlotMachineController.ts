@@ -461,6 +461,10 @@ export class SlotMachineController extends Component {
         // Build symbolFrames từ SymbolPack rồi phân phối sớm — trước ENTER_SUCCESS / RESUME.
         this._initSymbolFramesFromAtlas();
         this._distributeFramesToSymbolViews();
+
+        screen.on('window-resize', this._applyReelFrameCatsVisibility, this);
+        screen.on('orientation-change', this._applyReelFrameCatsVisibility, this);
+        this._applyReelFrameCatsVisibility();
     }
 
     start(): void {
@@ -491,6 +495,7 @@ export class SlotMachineController extends Component {
         // Gọi trực tiếp _onEnterSuccess() — real data đã có trong GameData nếu ENTER_SUCCESS đã fire.
         // Lần áp dứt khoát được đảm bảo bởi applyInitialSymbols() gọi từ _onLoadingComplete().
         this._onEnterSuccess();
+        this.scheduleOnce(this._applyReelFrameCatsVisibility, 0);
     }
 
     /**
@@ -607,8 +612,22 @@ export class SlotMachineController extends Component {
     onDestroy(): void {
         this._pendingReelStarts = [];
         this._stopLongSpinCameraZoom(true);
+        screen.off('window-resize', this._applyReelFrameCatsVisibility, this);
+        screen.off('orientation-change', this._applyReelFrameCatsVisibility, this);
         EventBus.instance.offTarget(this);
     }
+
+    /** ReelFrameImg: 2 con mèo chỉ hiện ở màn ngang. */
+    private _applyReelFrameCatsVisibility = (): void => {
+        const frame = this.node.getChildByName('ReelFrameImg');
+        if (!frame?.isValid) return;
+        const showCats = screen.windowSize.width >= screen.windowSize.height;
+        for (const child of frame.children) {
+            if (child.name === 'Cat' || child.name === 'Cat-001') {
+                child.active = showCats;
+            }
+        }
+    };
 
     get areAllReelsStopped(): boolean {
         return this._allReelsStopped && this.reels.every((reel) => reel?.isIdle ?? true);

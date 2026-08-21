@@ -7,7 +7,8 @@
  *      Để 0 = tự lấy từ UITransform.contentSize lúc onLoad (chỉ đáng tin khi node có kích thước cố định).
  *
  * ── THUẬT TOÁN ──
- *   1. Set richText.maxWidth = containerWidth → RichText tự xuống dòng khi vượt giới hạn ngang.
+ *   1. allowWrap=true: set richText.maxWidth = containerWidth → tự xuống dòng khi vượt ngang.
+ *      allowWrap=false: maxWidth=0, 1 dòng, chỉ thu nhỏ font cho vừa width.
  *   2. Binary search fontSize trong [minFontSize, maxFontSize]:
  *      - Mỗi bước scale lineHeight theo tỉ lệ (luôn lineHeight ≥ fontSize để không overlap).
  *      - Chờ 2 frame sau mỗi lần đổi fontSize để RichText layout xong.
@@ -53,6 +54,11 @@ export class RichTextShrink extends Component {
         tooltip: 'Số dòng tối đa cho phép. Nếu text vượt quá số dòng này, fontSize sẽ tự giảm. Để 0 = không giới hạn.',
     })
     public maxLines: number = 0;
+
+    @property({
+        tooltip: 'true = set maxWidth và cho phép xuống dòng. false = 1 dòng, chỉ thu nhỏ font cho vừa width.',
+    })
+    public allowWrap: boolean = true;
 
     private _richText: RichText | null = null;
     private _uiTransform: UITransform | null = null;
@@ -104,10 +110,14 @@ export class RichTextShrink extends Component {
 
         this.unschedule(this._evalStep);
 
-        // Giới hạn ngang: text tự xuống dòng khi vượt containerWidth.
-        if (this._bounds.width > 0) {
-            this._richText.maxWidth = this._bounds.width;
-        }
+        if (this.maxFontSize > 0) this._maxFs = this.maxFontSize;
+
+        const w = this.containerWidth > 0 ? this.containerWidth : this._uiTransform.contentSize.width;
+        const h = this.containerHeight > 0 ? this.containerHeight : this._uiTransform.contentSize.height;
+        this._bounds = new Size(w, h);
+
+        // allowWrap: giới hạn ngang → text tự xuống dòng. Tắt = 1 dòng, chỉ shrink font.
+        this._richText.maxWidth = this.allowWrap && this._bounds.width > 0 ? this._bounds.width : 0;
 
         this._lo = this.minFontSize;
         this._hi = this._maxFs;

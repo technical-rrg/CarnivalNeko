@@ -61,8 +61,7 @@ export const Log = {
     clearWhitelist: (): void => { _white.clear(); },
 };
 
-// Chỉ in kết quả spin + lỗi network nghiêm trọng.
+// Tag mới PHẢI thêm vào đây — Log.d/w/e bị nuốt nếu không whitelist.
 Log.setWhitelist([
-    'spin-result',    // [SPIN-RESULT] lines / totalWin / mult
-    'network',        // [Network] SERVER ERROR / decrypt fail / retry dead
+    'winhl',  // [WinHL] show-all vs cycle từng line khi win multiple
 ]);

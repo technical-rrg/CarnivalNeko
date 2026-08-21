@@ -1304,10 +1304,19 @@ class RealNetworkAdapter implements INetworkAdapter {
             ?? (raw as any).Res
             ?? {};
         const claimWinGrade: string | undefined = claimResponse.WinGrade ?? claimResponse.winGrade ?? undefined;
-        const claimTotalWin = claimResponse.TotalWin ?? claimResponse.totalWin;
-        const topLevelWinCash = (raw as any).WinCash ?? (raw as any).winCash;
+        const claimTotalWin = this._toFiniteNumber(
+            claimResponse.TotalWin ?? claimResponse.totalWin,
+        );
+        const claimFeatureSpinTotal = this._toFiniteNumber(
+            claimResponse.FeatureSpinTotalWin ?? claimResponse.featureSpinTotalWin
+            ?? (raw as any).FeatureSpinTotalWin ?? (raw as any).featureSpinTotalWin,
+        );
+        const topLevelWinCash = this._toFiniteNumber(
+            (raw as any).WinCash ?? (raw as any).winCash,
+        );
         const cash = (raw as any).Cash ?? (raw as any).cash ?? (raw as any).Balance ?? (raw as any).balance;
-        const winCash = claimTotalWin ?? topLevelWinCash;
+        // CNClaimResponse.TotalWin = số trả thưởng chính thức (API §5.5).
+        const winCash = claimTotalWin ?? claimFeatureSpinTotal ?? topLevelWinCash;
         const featureName = claimResponse.FeatureName ?? claimResponse.featureName;
         // JackpotName chỉ meaningful khi claim PICK_END (API V1.0.2)
         const jackpotName = claimResponse.JackpotName ?? claimResponse.jackpotName;
@@ -1318,7 +1327,9 @@ class RealNetworkAdapter implements INetworkAdapter {
         );
 
         Log.e(
-            `[Claim] parsed balance=${cash} totalWin=${winCash}` +
+            `[Claim] parsed balance=${cash}` +
+            ` TotalWin=${claimTotalWin ?? 'n/a'} FeatureSpinTotalWin=${claimFeatureSpinTotal ?? 'n/a'}` +
+            ` WinCash=${topLevelWinCash ?? 'n/a'} → popup=${winCash ?? 'n/a'}` +
             ` FeatureName=${featureName ?? 'n/a'} JackpotName=${jackpotName ?? 'n/a'}` +
             ` NextStage=${nextStage} WinGrade=${claimWinGrade ?? 'n/a'}` +
             ` PickGame=${pickGame ? `grid=${pickGame.grid.length}` : 'n/a'}`,
@@ -1328,6 +1339,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             winCash,
             winGrade: claimWinGrade,
             claimTotalWin,
+            claimFeatureSpinTotalWin: claimFeatureSpinTotal,
             topLevelWinCash,
             featureName,
             jackpotName,
@@ -3035,7 +3047,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             Log.e('[PS:NormalMap] CN 1–6 Low, 11–15 High, 21 Wild');
         }
 
-        // ═══ Pick Game — ID Change 260810: 81 Idle, 82 Grand, 83 Major, 84 Minor, 85 Mini, 86 Upgrade ═══
+        // ═══ Pick Game — 수정 후 ID (260810): 82 Grand, 83 Major, 84 Minor, 85 Mini ═══
         {
             const _pickSymbols: Record<number, number> = {
                 81: SymbolId.JP_IDLE,
@@ -3049,11 +3061,7 @@ class RealNetworkAdapter implements INetworkAdapter {
                 const id = parseInt(psId, 10);
                 dynMap[id] = clientId as number;
             }
-            Log.e(
-                `[PS:PickMap] Idle=81 Grand=82 Major=83 Minor=84 Mini=85 Upgrade=86 (ID Change 260810)` +
-                ` | dyn Mini=${Object.entries(dynMap).find(([, v]) => v === SymbolId.JP_MINI)?.[0] ?? '?'}` +
-                ` Grand=${Object.entries(dynMap).find(([, v]) => v === SymbolId.JP_GRAND)?.[0] ?? '?'}`,
-            );
+            Log.e('[PS:PickMap] Idle=81 Grand=82 Major=83 Minor=84 Mini=85 Upgrade=86');
         }
 
         // ═══ Fallback sequential: chỉ chạy khi dynMap quá ít (PS không có named fields nào) ═══
@@ -3130,10 +3138,10 @@ class RealNetworkAdapter implements INetworkAdapter {
         // Server dùng các ID này trên reel strip để biểu thị jackpot symbol.
         // Client detect jackpot bằng cách so sánh rawPsStrips với các ID này.
         data.jackpotPsIds = {
-            MINI:  ps.MiniJackpotID  ?? data.jackpotPsIds.MINI,
-            MINOR: ps.MinorJackpotID ?? data.jackpotPsIds.MINOR,
-            MAJOR: ps.MajorJackpotID ?? data.jackpotPsIds.MAJOR,
-            GRAND: ps.GrandJackpotID ?? data.jackpotPsIds.GRAND,
+            MINI:  toPsId(ps.MinijackpotSymbolID) ?? toPsId(ps.MiniJackpotSymbolID) ?? toPsId(ps.MiniJackpotID)  ?? data.jackpotPsIds.MINI,
+            MINOR: toPsId(ps.MinorjackpotSymbolID) ?? toPsId(ps.MinorJackpotSymbolID) ?? toPsId(ps.MinorJackpotID) ?? data.jackpotPsIds.MINOR,
+            MAJOR: toPsId(ps.MajorjackpotSymbolID) ?? toPsId(ps.MajorJackpotSymbolID) ?? toPsId(ps.MajorJackpotID) ?? data.jackpotPsIds.MAJOR,
+            GRAND: toPsId(ps.GrandjackpotSymbolID) ?? toPsId(ps.GrandJackpotSymbolID) ?? toPsId(ps.GrandJackpotID) ?? data.jackpotPsIds.GRAND,
         };
         Log.d(`[PS:JackpotIDs] MINI=${data.jackpotPsIds.MINI} MINOR=${data.jackpotPsIds.MINOR} MAJOR=${data.jackpotPsIds.MAJOR} GRAND=${data.jackpotPsIds.GRAND}`);
 

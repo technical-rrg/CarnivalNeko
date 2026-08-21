@@ -1,0 +1,734 @@
+
+14_Win.png
+size: 1963,1913
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+images/Background_Fox
+  rotate: false
+  xy: 932, 771
+  size: 180, 180
+  orig: 182, 182
+  offset: 1, 1
+  index: -1
+images/Border
+  rotate: false
+  xy: 2, 945
+  size: 190, 190
+  orig: 192, 192
+  offset: 1, 1
+  index: -1
+images/Fish/Fish_00000
+  rotate: true
+  xy: 182, 580
+  size: 179, 178
+  orig: 192, 192
+  offset: 7, 5
+  index: -1
+images/Fish/Fish_00001
+  rotate: true
+  xy: 539, 208
+  size: 180, 173
+  orig: 192, 192
+  offset: 5, 14
+  index: -1
+images/Fish/Fish_00002
+  rotate: true
+  xy: 530, 26
+  size: 180, 172
+  orig: 192, 192
+  offset: 5, 15
+  index: -1
+images/Fish/Fish_00003
+  rotate: true
+  xy: 1236, 34
+  size: 178, 155
+  orig: 192, 192
+  offset: 7, 17
+  index: -1
+images/Fish/Fish_00004
+  rotate: false
+  xy: 1605, 90
+  size: 178, 155
+  orig: 192, 192
+  offset: 7, 17
+  index: -1
+images/Fish/Fish_00005
+  rotate: true
+  xy: 1785, 67
+  size: 178, 155
+  orig: 192, 192
+  offset: 7, 17
+  index: -1
+images/Fish/Fish_00006
+  rotate: true
+  xy: 1806, 253
+  size: 178, 155
+  orig: 192, 192
+  offset: 7, 17
+  index: -1
+images/Fish/Fish_00007
+  rotate: true
+  xy: 1441, 68
+  size: 178, 162
+  orig: 192, 192
+  offset: 7, 17
+  index: -1
+images/Fish/Fish_00008
+  rotate: true
+  xy: 181, 204
+  size: 180, 173
+  orig: 192, 192
+  offset: 7, 14
+  index: -1
+images/Fish/Fish_00009
+  rotate: true
+  xy: 704, 24
+  size: 180, 167
+  orig: 192, 192
+  offset: 7, 17
+  index: -1
+images/Fish/Fish_00010
+  rotate: false
+  xy: 1453, 605
+  size: 182, 171
+  orig: 192, 192
+  offset: 5, 16
+  index: -1
+images/Fish/Fish_00011
+  rotate: true
+  xy: 1094, 217
+  size: 182, 173
+  orig: 192, 192
+  offset: 5, 14
+  index: -1
+images/Fish/Fish_00012
+  rotate: true
+  xy: 919, 586
+  size: 182, 175
+  orig: 192, 192
+  offset: 5, 12
+  index: -1
+images/Fish/Fish_00013
+  rotate: false
+  xy: 574, 953
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00014
+  rotate: false
+  xy: 758, 953
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00015
+  rotate: false
+  xy: 942, 953
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00016
+  rotate: false
+  xy: 1126, 953
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00017
+  rotate: false
+  xy: 748, 770
+  size: 182, 181
+  orig: 192, 192
+  offset: 5, 6
+  index: -1
+images/Fish/Fish_00018
+  rotate: false
+  xy: 1310, 953
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00019
+  rotate: false
+  xy: 1494, 953
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00020
+  rotate: false
+  xy: 1678, 953
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00021
+  rotate: false
+  xy: 194, 769
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00022
+  rotate: false
+  xy: 2, 761
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00023
+  rotate: false
+  xy: 1096, 590
+  size: 179, 175
+  orig: 192, 192
+  offset: 5, 6
+  index: -1
+images/Fish/Fish_00024
+  rotate: false
+  xy: 378, 769
+  size: 182, 182
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00025
+  rotate: true
+  xy: 714, 206
+  size: 182, 172
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00026
+  rotate: true
+  xy: 350, 15
+  size: 183, 171
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+images/Fish/Fish_00027
+  rotate: true
+  xy: 1114, 767
+  size: 184, 179
+  orig: 192, 192
+  offset: 4, 5
+  index: -1
+images/Fish/Fish_00028
+  rotate: true
+  xy: 1638, 247
+  size: 184, 166
+  orig: 192, 192
+  offset: 4, 17
+  index: -1
+images/Fish/Fish_00029
+  rotate: true
+  xy: 2, 575
+  size: 184, 178
+  orig: 192, 192
+  offset: 4, 5
+  index: -1
+images/Fish/Fish_00030
+  rotate: false
+  xy: 388, 953
+  size: 184, 182
+  orig: 192, 192
+  offset: 4, 5
+  index: -1
+images/Fish/Fish_00031
+  rotate: false
+  xy: 562, 770
+  size: 184, 181
+  orig: 192, 192
+  offset: 4, 6
+  index: -1
+images/Fish/Fish_00032
+  rotate: true
+  xy: 356, 200
+  size: 184, 172
+  orig: 192, 192
+  offset: 4, 15
+  index: -1
+images/Fish/Fish_00033
+  rotate: false
+  xy: 1480, 781
+  size: 184, 170
+  orig: 192, 192
+  offset: 4, 17
+  index: -1
+images/Fish/Fish_00034
+  rotate: true
+  xy: 888, 22
+  size: 184, 169
+  orig: 192, 192
+  offset: 4, 17
+  index: -1
+images/Fish/Fish_00035
+  rotate: true
+  xy: 539, 390
+  size: 184, 173
+  orig: 192, 192
+  offset: 4, 14
+  index: -1
+images/Fish/Fish_00036
+  rotate: true
+  xy: 176, 18
+  size: 184, 172
+  orig: 192, 192
+  offset: 4, 15
+  index: -1
+images/Fish/Fish_00037
+  rotate: true
+  xy: 714, 390
+  size: 184, 173
+  orig: 192, 192
+  offset: 4, 14
+  index: -1
+images/Fish/Fish_00038
+  rotate: true
+  xy: 1094, 401
+  size: 183, 173
+  orig: 192, 192
+  offset: 5, 14
+  index: -1
+images/Fish/Fish_00039
+  rotate: false
+  xy: 1295, 778
+  size: 183, 173
+  orig: 192, 192
+  offset: 5, 14
+  index: -1
+images/Fish/Fish_00040
+  rotate: false
+  xy: 1269, 398
+  size: 183, 173
+  orig: 192, 192
+  offset: 5, 14
+  index: -1
+images/Fish/Fish_00041
+  rotate: true
+  xy: 2, 2
+  size: 183, 172
+  orig: 192, 192
+  offset: 5, 15
+  index: -1
+images/Fish/Fish_00042
+  rotate: true
+  xy: 1454, 420
+  size: 183, 170
+  orig: 192, 192
+  offset: 5, 17
+  index: -1
+images/Fish/Fish_00043
+  rotate: false
+  xy: 1454, 248
+  size: 182, 170
+  orig: 192, 192
+  offset: 5, 17
+  index: -1
+images/Fish/Fish_00044
+  rotate: true
+  xy: 889, 208
+  size: 182, 173
+  orig: 192, 192
+  offset: 5, 14
+  index: -1
+images/Fish/Fish_00045
+  rotate: false
+  xy: 1626, 433
+  size: 182, 170
+  orig: 192, 192
+  offset: 5, 17
+  index: -1
+images/Fish/Fish_00046
+  rotate: false
+  xy: 1637, 609
+  size: 182, 170
+  orig: 192, 192
+  offset: 5, 17
+  index: -1
+images/Fish/Fish_00047
+  rotate: false
+  xy: 1666, 781
+  size: 182, 170
+  orig: 192, 192
+  offset: 5, 17
+  index: -1
+images/Fish/Fish_00048
+  rotate: true
+  xy: 1064, 35
+  size: 180, 170
+  orig: 192, 192
+  offset: 7, 17
+  index: -1
+images/Fish/Fish_00049
+  rotate: true
+  xy: 1269, 214
+  size: 182, 170
+  orig: 192, 192
+  offset: 5, 17
+  index: -1
+images/Fish_Glow/Fish_Glow_00000
+  rotate: false
+  xy: 2, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00001
+  rotate: false
+  xy: 196, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00002
+  rotate: false
+  xy: 390, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00003
+  rotate: false
+  xy: 584, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00004
+  rotate: false
+  xy: 778, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00005
+  rotate: false
+  xy: 972, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00006
+  rotate: false
+  xy: 1166, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00007
+  rotate: false
+  xy: 1360, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00008
+  rotate: false
+  xy: 1554, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00009
+  rotate: false
+  xy: 1748, 1719
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00010
+  rotate: false
+  xy: 2, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00011
+  rotate: false
+  xy: 196, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00012
+  rotate: false
+  xy: 390, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00013
+  rotate: true
+  xy: 1748, 1137
+  size: 192, 190
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00014
+  rotate: false
+  xy: 194, 953
+  size: 192, 182
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00015
+  rotate: true
+  xy: 562, 576
+  size: 192, 178
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00016
+  rotate: true
+  xy: 182, 386
+  size: 192, 177
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00017
+  rotate: true
+  xy: 361, 386
+  size: 192, 176
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00018
+  rotate: false
+  xy: 362, 592
+  size: 192, 175
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00019
+  rotate: true
+  xy: 742, 576
+  size: 192, 175
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00020
+  rotate: true
+  xy: 1277, 573
+  size: 192, 174
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00021
+  rotate: true
+  xy: 919, 392
+  size: 192, 173
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00022
+  rotate: true
+  xy: 2, 187
+  size: 192, 172
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00023
+  rotate: true
+  xy: 2, 381
+  size: 192, 177
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00024
+  rotate: false
+  xy: 584, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00025
+  rotate: false
+  xy: 778, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00026
+  rotate: false
+  xy: 972, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00027
+  rotate: false
+  xy: 1166, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00028
+  rotate: false
+  xy: 1360, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00029
+  rotate: false
+  xy: 1554, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00030
+  rotate: false
+  xy: 1748, 1525
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00031
+  rotate: false
+  xy: 2, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00032
+  rotate: false
+  xy: 196, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00033
+  rotate: false
+  xy: 390, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00034
+  rotate: false
+  xy: 584, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00035
+  rotate: false
+  xy: 778, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00036
+  rotate: false
+  xy: 972, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00037
+  rotate: false
+  xy: 1166, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00038
+  rotate: false
+  xy: 1360, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00039
+  rotate: false
+  xy: 1554, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00040
+  rotate: false
+  xy: 1748, 1331
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00041
+  rotate: false
+  xy: 2, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00042
+  rotate: false
+  xy: 196, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00043
+  rotate: false
+  xy: 390, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00044
+  rotate: false
+  xy: 584, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00045
+  rotate: false
+  xy: 778, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00046
+  rotate: false
+  xy: 972, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00047
+  rotate: false
+  xy: 1166, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00048
+  rotate: false
+  xy: 1360, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Fish_Glow/Fish_Glow_00049
+  rotate: false
+  xy: 1554, 1137
+  size: 192, 192
+  orig: 192, 192
+  offset: 0, 0
+  index: -1
+images/Shadow
+  rotate: true
+  xy: 1862, 1004
+  size: 131, 64
+  orig: 151, 68
+  offset: 10, 2
+  index: -1
+images/light
+  rotate: false
+  xy: 1942, 1897
+  size: 14, 14
+  orig: 25, 25
+  offset: 5, 6
+  index: -1

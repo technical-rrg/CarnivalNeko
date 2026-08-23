@@ -150,6 +150,39 @@ export function clientSymToJackpotType(sym: number): JackpotType {
     }
 }
 
+/** JackpotType → PS Pick ID (82 Grand … 85 Mini). */
+export function jackpotTypeToPickPsId(type: JackpotType): number {
+    switch (type) {
+        case JackpotType.GRAND: return PS_PICK.GRAND;
+        case JackpotType.MAJOR: return PS_PICK.MAJOR;
+        case JackpotType.MINOR: return PS_PICK.MINOR;
+        case JackpotType.MINI:  return PS_PICK.MINI;
+        default: return PS_PICK.MINI;
+    }
+}
+
+/** Client SymbolId → PS Pick ID (82–86). Upgrade=86; idle/unknown → 81. */
+export function clientSymToPickPsId(sym: number): number {
+    if (isPickUpgradeSymbol(sym)) return PS_PICK.UPGRADE;
+    const tier = clientSymToJackpotType(sym);
+    if (tier !== JackpotType.NONE) return jackpotTypeToPickPsId(tier);
+    return PS_PICK.IDLE;
+}
+
+/** Spine anim lật symbol: `82_Transition`, `86_Transition`, … */
+export function pickPsTransitionAnim(psId: number): string {
+    return `${psId}_Transition`;
+}
+
+/** Spine anim idle sau lật: `82_Idle`, `86_Idle`, … */
+export function pickPsIdleAnim(psId: number): string {
+    return `${psId}_Idle`;
+}
+
+export function isPickPsTransitionAnim(animName: string | null | undefined): boolean {
+    return !!animName && /^\d+_Transition$/.test(animName);
+}
+
 /**
  * Nâng tier khi đã đủ 3 Upgrade trước khi match 3 JP.
  * Grand + upgrade → vẫn GRAND nhưng doubleGrand = true.

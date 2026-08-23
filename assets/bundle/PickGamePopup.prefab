@@ -387,7 +387,7 @@
       "r": 36,
       "g": 21,
       "b": 0,
-      "a": 149
+      "a": 185
     },
     "_spriteFrame": {
       "__uuid__": "b730527c-3233-41c2-aaf7-7cdab58f9749@f9941",
@@ -503,7 +503,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -13.178,
+      "y": -25.84,
       "z": 0
     },
     "_lrot": {
@@ -515,8 +515,8 @@
     },
     "_lscale": {
       "__type__": "cc.Vec3",
-      "x": 1,
-      "y": 1,
+      "x": 0.7,
+      "y": 0.7,
       "z": 1
     },
     "_mobility": 0,
@@ -543,8 +543,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 217,
-      "height": 48
+      "width": 641,
+      "height": 102
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -580,7 +580,7 @@
       "a": 255
     },
     "_spriteFrame": {
-      "__uuid__": "2e960963-93c8-421c-bf2b-a53f0c82a9a2@f9941",
+      "__uuid__": "f9c3c994-05a4-4484-806a-1ceb55f77e58@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "_type": 0,
@@ -1722,23 +1722,10 @@
         "__id__": 305
       }
     ],
-    "spineJpMini": {
-      "__uuid__": "8731c8ab-d387-4a84-9449-c72430a1488b",
+    "pickSymbolSpineData": {
+      "__uuid__": "322a59d3-c906-4a09-ad3d-11728d5bc690",
       "__expectedType__": "sp.SkeletonData"
     },
-    "spineJpMinor": {
-      "__uuid__": "fd57b534-a9c0-4837-a6e2-5b22cf9b7747",
-      "__expectedType__": "sp.SkeletonData"
-    },
-    "spineJpMajor": {
-      "__uuid__": "34aa35dc-cc1b-45bc-8845-40916dead1e8",
-      "__expectedType__": "sp.SkeletonData"
-    },
-    "spineJpGrand": {
-      "__uuid__": "c9d8e4ea-cddb-4cee-86c3-583852502d21",
-      "__expectedType__": "sp.SkeletonData"
-    },
-    "spineJpUpgrade": null,
     "symbolAtlas": {
       "__uuid__": "8dbe097e-d812-4920-ac55-b5f62456e3b2",
       "__expectedType__": "cc.SpriteAtlas"
@@ -1748,7 +1735,7 @@
     "frameJpMinor": null,
     "frameJpMajor": null,
     "frameJpGrand": null,
-    "preferSymbolSprites": true,
+    "preferSymbolSprites": false,
     "coinFontPrefab": {
       "__uuid__": "e8c4d1a2-7b3f-4e91-9c5a-2f6d8a0b1c3e",
       "__expectedType__": "cc.Prefab"
@@ -7451,6 +7438,7 @@
     "currencySpacingRatio": 0,
     "maxWidth": 190,
     "shrinkToFit": true,
+    "fillContainer": false,
     "joltEnabled": false,
     "joltIntervalMin": 0.3,
     "joltIntervalMax": 1,

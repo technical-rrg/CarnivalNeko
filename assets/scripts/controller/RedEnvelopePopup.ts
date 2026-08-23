@@ -4,22 +4,22 @@
  * ── SETUP TRONG EDITOR ──
  *   RedEnvelopePopup (component này)
  *     ├── Overlay        ← overlayNode + clickOverlay
- *     └── Panel          ← popupNode (zoom in + pulse)
- *           ├── Base     ← sprite/panel art
+ *     └── Panel          ← popupNode
+ *           ├── Base     ← sp.Skeleton (In → Loop → Out)
  *           ├── TextLayer (tuỳ chọn) — Title / Awarded Label
  *           └── AmountDisplay ← SpriteNumber (amountDisplay)
  *
  * Flow:
- *   1. Panel zoom scale in (backOut)
- *   2. Sau zoom xong → SpriteNumber xuất hiện, count-up nhanh tới số thưởng
- *   3. Sau count-up → Panel pulse zoom nhẹ in/out liên tục
+ *   1. Base spine play In → Loop
+ *   2. Khi In xong → SpriteNumber count-up nhanh tới số thưởng (Loop đang chạy)
+ *   3. Đóng: tap hoặc auto → Base spine play Out → ẩn popup
  *
- * Đóng: tap hoặc auto 3s → CARNIVAL_RED_ENVELOPE_CLOSED.
+ * Đóng: tap hoặc auto → CARNIVAL_RED_ENVELOPE_CLOSED.
  */
 
 import {
     _decorator, Component, Node, Label, UIOpacity, Canvas, UITransform, Widget,
-    tween, Tween, Vec3, EventTouch, input, Input, EventMouse, view,
+    tween, Tween, Vec3, EventTouch, input, Input, EventMouse, view, sp,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -32,10 +32,6 @@ import { SpriteNumber } from '../core/SpriteNumber';
 const { ccclass, property } = _decorator;
 
 const AUTO_CLOSE_SEC = 3.0;
-const PANEL_ZOOM_IN_DUR = 0.32;
-const PANEL_ZOOM_SETTLE_DUR = 0.12;
-/** Hiện số tiền sớm trong lúc Panel còn đang zoom (không đợi zoom xong). */
-const AMOUNT_SHOW_DELAY = 0.16;
 
 @ccclass('RedEnvelopePopup')
 export class RedEnvelopePopup extends Component {
@@ -45,6 +41,10 @@ export class RedEnvelopePopup extends Component {
 
     @property({ type: Node })
     popupNode: Node | null = null;
+
+    /** sp.Skeleton trên node Base — In → Loop khi mở, Out khi đóng */
+    @property({ type: sp.Skeleton, tooltip: 'Spine trên node Base (In → Loop → Out)\n→ Kéo sp.Skeleton node Base vào đây' })
+    baseSpine: sp.Skeleton | null = null;
 
     @property({ type: Label })
     titleLabel: Label | null = null;
@@ -61,24 +61,24 @@ export class RedEnvelopePopup extends Component {
     @property({ tooltip: 'Timeout tự đóng (giây)' })
     autoCloseTimeout: number = AUTO_CLOSE_SEC;
 
-    @property({ tooltip: 'Thời gian count-up số tiền sau khi Panel zoom xong (giây)' })
+    @property({ tooltip: 'Thời gian count-up số tiền sau khi spine In xong (giây)' })
     countUpDuration: number = 0.9;
-
-    @property({ tooltip: 'Scale đỉnh khi Panel pulse (nhẹ in/out sau count-up)' })
-    panelPulseScale: number = 1.04;
-
-    @property({ tooltip: 'Một nửa chu kỳ pulse Panel (giây)' })
-    panelPulseHalfDuration: number = 0.55;
 
     private _isOpen = false;
     private _boundPress = () => this._closePopup();
     private _countUpTween: Tween<{ value: number }> | null = null;
     private _countUpTarget = 0;
     private _countUpSoundEnded = false;
-    private _panelPulseTween: Tween<Node> | null = null;
+    private _outHideCb: (() => void) | null = null;
+    private _amountStarted = false;
+    private _isHiding = false;
 
     onLoad(): void {
         this.node.active = false;
+        if (!this.baseSpine && this.popupNode) {
+            const base = this.popupNode.getChildByName('Base');
+            if (base) this.baseSpine = base.getComponent(sp.Skeleton);
+        }
     }
 
     onDestroy(): void {
@@ -91,6 +91,8 @@ export class RedEnvelopePopup extends Component {
     showPopup(amount: number): void {
         if (this._isOpen) return;
         this._isOpen = true;
+        this._isHiding = false;
+        this._amountStarted = false;
 
         const pay = Number(amount) || 0;
         this._countUpTarget = pay;
@@ -124,7 +126,7 @@ export class RedEnvelopePopup extends Component {
         }
         if (this.popupNode) {
             this.popupNode.active = true;
-            this.popupNode.setScale(0.15, 0.15, 1);
+            this.popupNode.setScale(1, 1, 1);
             const op = this.popupNode.getComponent(UIOpacity);
             if (op) op.opacity = 255;
         }
@@ -135,36 +137,38 @@ export class RedEnvelopePopup extends Component {
         this.scheduleOnce(() => this._fitOverlayFullscreen(), 0);
         EventBus.instance.emit(GameEvents.POPUP_OPENED);
 
-        this._playPanelZoomIn(pay);
+        this._playSpineIn(pay);
 
         this.scheduleOnce(() => this._bindInput(), 0.2);
         this.unschedule(this._boundPress);
         this.scheduleOnce(this._boundPress, Math.max(0.5, this.autoCloseTimeout));
     }
 
-    /** Chỉ zoom Panel — không scale Overlay / root riêng. Số tiền hiện sớm giữa lúc zoom. */
-    private _playPanelZoomIn(pay: number): void {
-        const panel = this.popupNode;
-        if (!panel?.isValid) {
+    /** Base spine: In → Loop; count-up bắt đầu khi In xong. */
+    private _playSpineIn(pay: number): void {
+        const spine = this.baseSpine;
+        if (!spine?.isValid) {
             this._startAmountCountUp(pay);
             return;
         }
 
-        Tween.stopAllByTarget(panel);
-        tween(panel)
-            .to(PANEL_ZOOM_IN_DUR, { scale: new Vec3(1.08, 1.08, 1) }, { easing: 'backOut' })
-            .to(PANEL_ZOOM_SETTLE_DUR, { scale: new Vec3(1, 1, 1) }, { easing: 'sineOut' })
-            .start();
-
-        this.unschedule(this._boundStartAmount);
-        this._pendingPay = pay;
-        this.scheduleOnce(this._boundStartAmount, AMOUNT_SHOW_DELAY);
+        spine.node.active = true;
+        spine.setCompleteListener(null);
+        spine.setAnimation(0, 'In', false);
+        spine.setCompleteListener(() => {
+            spine.setCompleteListener(null);
+            if (!this._isOpen) return;
+            spine.setAnimation(0, 'Loop', true);
+            this._startAmountCountUp(pay);
+        });
     }
 
-    private _pendingPay = 0;
-    private _boundStartAmount = (): void => {
-        this._startAmountCountUp(this._pendingPay);
-    };
+    private _resolveOutAnimName(): string | null {
+        if (!this.baseSpine) return null;
+        if (this.baseSpine.findAnimation('Out')) return 'Out';
+        if (this.baseSpine.findAnimation('out')) return 'out';
+        return null;
+    }
 
     private _hideAmountDisplay(): void {
         if (!this.amountDisplay) return;
@@ -173,15 +177,13 @@ export class RedEnvelopePopup extends Component {
         this.amountDisplay.node.active = false;
     }
 
-    /** Xuất hiện + count-up nhanh sau khi Panel zoom xong. */
+    /** Count-up nhanh sau khi spine In xong (Loop đang chạy). */
     private _startAmountCountUp(pay: number): void {
-        if (!this._isOpen) return;
+        if (!this._isOpen || this._amountStarted) return;
+        this._amountStarted = true;
 
         const sn = this.amountDisplay;
-        if (!sn) {
-            this._startPanelPulse();
-            return;
-        }
+        if (!sn) return;
 
         this._stopCountUp();
         this._countUpSoundEnded = false;
@@ -228,37 +230,6 @@ export class RedEnvelopePopup extends Component {
             SoundManager.instance?.stopCoinLoop();
             this._countUpSoundEnded = true;
         }
-
-        if (this._isOpen) {
-            this._startPanelPulse();
-        }
-    }
-
-    /** Pulse zoom nhẹ in/out trên Panel sau count-up. */
-    private _startPanelPulse(): void {
-        const panel = this.popupNode;
-        if (!panel?.isValid || !this._isOpen) return;
-
-        this._stopPanelPulse();
-        const peak = Math.max(1.01, this.panelPulseScale);
-        const half = Math.max(0.2, this.panelPulseHalfDuration);
-
-        this._panelPulseTween = tween(panel)
-            .to(half, { scale: new Vec3(peak, peak, 1) }, { easing: 'sineInOut' })
-            .to(half, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' })
-            .union()
-            .repeatForever()
-            .start() as Tween<Node>;
-    }
-
-    private _stopPanelPulse(): void {
-        if (this._panelPulseTween) {
-            this._panelPulseTween.stop();
-            this._panelPulseTween = null;
-        }
-        if (this.popupNode?.isValid) {
-            Tween.stopAllByTarget(this.popupNode);
-        }
     }
 
     private _stopCountUp(): void {
@@ -269,9 +240,14 @@ export class RedEnvelopePopup extends Component {
     }
 
     private _stopAnimations(): void {
-        this.unschedule(this._boundStartAmount);
+        if (this._outHideCb) {
+            this.unschedule(this._outHideCb);
+            this._outHideCb = null;
+        }
         this._stopCountUp();
-        this._stopPanelPulse();
+        if (this.baseSpine?.isValid) {
+            this.baseSpine.setCompleteListener(null);
+        }
         if (this.amountDisplay) {
             Tween.stopAllByTarget(this.amountDisplay.node);
             if (!this._countUpSoundEnded) {
@@ -296,26 +272,50 @@ export class RedEnvelopePopup extends Component {
         EventBus.instance.emit(GameEvents.POPUP_CLOSED);
         EventBus.instance.emit(GameEvents.CARNIVAL_RED_ENVELOPE_CLOSED);
 
-        const hide = () => {
-            if (this.overlayNode) this.overlayNode.active = false;
-            if (this.clickOverlay) this.clickOverlay.active = false;
-            this.node.active = false;
-        };
-
-        this._stopPanelPulse();
-
-        const panel = this.popupNode;
-        if (panel?.isValid) {
-            Tween.stopAllByTarget(panel);
-            tween(panel)
-                .to(0.1, { scale: new Vec3(1.05, 1.05, 1) }, { easing: 'sineOut' })
-                .to(0.14, { scale: new Vec3(0.01, 0.01, 1) }, { easing: 'sineIn' })
-                .call(hide)
-                .start();
-        } else {
+        const spine = this.baseSpine;
+        const outAnim = spine?.isValid ? this._resolveOutAnimName() : null;
+        if (!spine?.isValid || !outAnim) {
             this._stopAnimations();
-            hide();
+            this._finishHide();
+            return;
         }
+
+        spine.setCompleteListener(null);
+        this._stopCountUp();
+        if (this.amountDisplay) {
+            Tween.stopAllByTarget(this.amountDisplay.node);
+        }
+        SoundManager.instance?.stopCoinLoop();
+
+        spine.setAnimation(0, outAnim, false);
+        spine.setCompleteListener(() => {
+            spine.setCompleteListener(null);
+            if (this._outHideCb) {
+                this.unschedule(this._outHideCb);
+                this._outHideCb = null;
+            }
+            this._finishHide();
+        });
+
+        const outDur = spine.findAnimation(outAnim)?.duration ?? 0.5;
+        if (this._outHideCb) this.unschedule(this._outHideCb);
+        this._outHideCb = () => {
+            this._outHideCb = null;
+            spine.setCompleteListener(null);
+            this._finishHide();
+        };
+        this.scheduleOnce(this._outHideCb, outDur + 0.05);
+    }
+
+    private _finishHide(): void {
+        if (this._isHiding) return;
+        this._isHiding = true;
+        this._stopAnimations();
+        if (this.overlayNode) this.overlayNode.active = false;
+        if (this.clickOverlay) this.clickOverlay.active = false;
+        if (this.popupNode) this.popupNode.active = false;
+        if (this.baseSpine) this.baseSpine.node.active = false;
+        this.node.active = false;
     }
 
     private _bindInput(): void {
@@ -398,7 +398,6 @@ export class RedEnvelopePopup extends Component {
         sn.fillContainer = true;
         sn.maxWidth = 0;
         sn.enableLangCurrency = true;
-        // Đọc lại contentSize hiện tại (override prefab) — tránh snapshot size mặc định 600×100.
         sn.refreshContainerDims();
     }
 }

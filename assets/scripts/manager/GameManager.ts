@@ -2883,11 +2883,10 @@ export class GameManager extends Component {
     }
 
     /**
-     * POT_WIN_DONE / Carnival Jackpot: hiện JackpotStartPopup (Press to Start)
-     * thay TransitionPopup. Sau khi đóng → PICK_GAME_OPEN.
+     * POT_WIN_DONE / Carnival Jackpot: vào thẳng Pick Game (bỏ qua JackpotStartPopup).
      */
     private _onPotWinDone(): void {
-        Log.e('[DEBUG-PICK] _onPotWinDone ENTER → JackpotStartPopup');
+        Log.e('[DEBUG-PICK] _onPotWinDone ENTER → Pick Game');
         const data = GameData.instance;
         const resp = data.lastSpinResponse;
 
@@ -2906,16 +2905,12 @@ export class GameManager extends Component {
     private _pendingJackpotStartPick: PickGameState | null = null;
 
     private _showJackpotStartPopupThenEnter(pickState: PickGameState): void {
-        this._pendingJackpotStartPick = pickState;
-        this._gameState = GameState.POPUP;
-        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
-        // Không prefetch BG trên frame hiện popup
+        this._pendingJackpotStartPick = null;
+        this.unschedule(this._jackpotStartPopupFailsafe);
         this.unschedule(this._prefetchFeatureBackground);
         this.scheduleOnce(this._prefetchFeatureBackground, 0.5);
-        Log.e('[GameManager] PICK_GAME_START_POPUP → PRESS TO START');
-        EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP, pickState);
-        this.unschedule(this._jackpotStartPopupFailsafe);
-        this.scheduleOnce(this._jackpotStartPopupFailsafe, 31.0);
+        Log.e('[GameManager] Skip JackpotStartPopup → PICK_GAME_OPEN');
+        this._openPickGameNow(pickState);
     }
 
     private _jackpotStartPopupFailsafe = (): void => {

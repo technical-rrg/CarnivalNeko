@@ -1,0 +1,55 @@
+
+Anim_Red_Mystery_Envelope.png
+size: 2026, 1818
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Backlight
+  rotate: false
+  xy: 1, 901
+  size: 1329, 916
+  orig: 1651, 930
+  offset: 162, 14
+  index: -1
+CiircleLight2
+  rotate: false
+  xy: 1, 1
+  size: 991, 898
+  orig: 1651, 930
+  offset: 325, 32
+  index: -1
+Jackpot
+  rotate: true
+  xy: 1861, 217
+  size: 350, 74
+  orig: 1651, 930
+  offset: 651, 536
+  index: -1
+Khung
+  rotate: false
+  xy: 1332, 1280
+  size: 693, 537
+  orig: 1651, 930
+  offset: 487, 141
+  index: -1
+Mini
+  rotate: true
+  xy: 1861, 569
+  size: 709, 142
+  orig: 1651, 930
+  offset: 472, 640
+  index: -1
+Star
+  rotate: false
+  xy: 1332, 912
+  size: 366, 366
+  orig: 440, 440
+  offset: 37, 37
+  index: -1
+circle
+  rotate: false
+  xy: 994, 34
+  size: 865, 865
+  orig: 1651, 930
+  offset: 383, 14
+  index: -1

@@ -704,13 +704,10 @@ export class ProgressiveWinPopup extends Component {
 
         this._isCountingUp = false;
         this._stopCountUp();
+        this._clearAllParticleSystems();
 
         const spine = this._activeSpine;
         if (spine) {
-            // Stop particle effects ngay lập tức
-            this._stopParticleEffects();
-            this._stopPopupFxIn();
-            
             // Play "out" animation ngay, không đợi xong
             spine.setAnimation(0, 'out', false);
             // Phát sx_banner_disappear ngay khi spine animation "out" bắt đầu
@@ -807,6 +804,25 @@ export class ProgressiveWinPopup extends Component {
         this._switchParticleSet(this._activeTier!);
     }
 
+    /** Dừng và xóa sạch mọi particle trong popup (gọi khi bắt đầu anim out). */
+    private _clearAllParticleSystems(): void {
+        if (this._popupFxPlayCb) {
+            this.unschedule(this._popupFxPlayCb);
+            this._popupFxPlayCb = null;
+        }
+        for (const ps of this.node.getComponentsInChildren(ParticleSystem)) {
+            try {
+                ps.stop();
+                ps.clear();
+            } catch (e) {
+                Log.w('[ProgressiveWinPopup] skip broken particle on clear', e);
+            }
+        }
+        for (const node of [this.particleSet1, this.particleSet2, this.particleSet3, this.popupFxIn]) {
+            if (node) node.active = false;
+        }
+    }
+
     private _stopParticleEffects(): void {
         for (const node of [this.particleSet1, this.particleSet2, this.particleSet3]) {
             if (!node) continue;
@@ -861,8 +877,8 @@ export class ProgressiveWinPopup extends Component {
 
     private _cleanup(): void {
         this._restoreAmountDisplayParent();
+        this._clearAllParticleSystems();
         this._stopCountUp();
-        this._stopPopupFxIn();
         if (this._autoCloseCb) {
             this.unschedule(this._autoCloseCb);
             this._autoCloseCb = null;

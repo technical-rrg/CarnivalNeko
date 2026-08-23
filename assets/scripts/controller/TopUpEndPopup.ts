@@ -247,8 +247,24 @@ export class TopUpEndPopup extends Component {
             const systems = node.getComponentsInChildren(ParticleSystem);
             for (const ps of systems) {
                 ps.stop();
+                ps.clear();
             }
             node.active = false;
+        }
+    }
+
+    /** Dừng và xóa sạch mọi particle trong popup (gọi khi bắt đầu anim out). */
+    private _clearAllParticleSystems(): void {
+        for (const ps of this.node.getComponentsInChildren(ParticleSystem)) {
+            try {
+                ps.stop();
+                ps.clear();
+            } catch (e) {
+                Log.w('[TopUpEndPopup] skip broken particle on clear', e);
+            }
+        }
+        for (const node of [this.fx1, this.fx2]) {
+            if (node) node.active = false;
         }
     }
 
@@ -416,6 +432,7 @@ export class TopUpEndPopup extends Component {
         }
         Log.d(`[coinloop][TopUpEndPopup._closePopup] showCount=${this._showCount} stopCoinLoop()`);
         SoundManager.instance?.stopCoinLoop();
+        this._clearAllParticleSystems();
 
         if (this.spine) {
             this.spine.setCompleteListener(null);
@@ -490,7 +507,7 @@ export class TopUpEndPopup extends Component {
             this._outAnimCloseCb = null;
         }
         this._cancelAmountShowSchedule();
-        this._hideFxNodes();
+        this._clearAllParticleSystems();
         this._stopCountUp();
         if (this._amountOpacity) Tween.stopAllByTarget(this._amountOpacity);
         if (this.amountLabel) {

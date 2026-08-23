@@ -17,7 +17,11 @@ import { PickGameState, JackpotType, SymbolId, SlotStageType } from '../data/Slo
 import {
     psPickToClient,
     clientSymToJackpotType,
+    clientSymToPickPsId,
     isPickUpgradeSymbol,
+    isPickPsTransitionAnim,
+    pickPsIdleAnim,
+    pickPsTransitionAnim,
     resolvePickState,
     parseCnJackpotName,
     PICK_GAME_CELL_COUNT,
@@ -60,20 +64,13 @@ export class PickGamePopup extends Component {
     })
     coinNodes: Node[] = [];
 
-    @property({ type: sp.SkeletonData, tooltip: 'SpineData Jackpot MINI.' })
-    spineJpMini: sp.SkeletonData | null = null;
-
-    @property({ type: sp.SkeletonData, tooltip: 'SpineData Jackpot MINOR.' })
-    spineJpMinor: sp.SkeletonData | null = null;
-
-    @property({ type: sp.SkeletonData, tooltip: 'SpineData Jackpot MAJOR.' })
-    spineJpMajor: sp.SkeletonData | null = null;
-
-    @property({ type: sp.SkeletonData, tooltip: 'SpineData Jackpot GRAND.' })
-    spineJpGrand: sp.SkeletonData | null = null;
-
-    @property({ type: sp.SkeletonData, tooltip: 'SpineData Upgrade Coin (optional).' })
-    spineJpUpgrade: sp.SkeletonData | null = null;
+    @property({
+        type: sp.SkeletonData,
+        tooltip: 'Spine chung Pick Game (82–85 jackpot, 86 bonus).\n'
+               + 'Anim: {ID}_Transition (lật) → {ID}_Idle (loop).\n'
+               + 'Ví dụ: 82_Transition, 82_Idle, 86_Transition, 86_Idle.',
+    })
+    pickSymbolSpineData: sp.SkeletonData | null = null;
 
     @property({
         type: SpriteAtlas,
@@ -112,11 +109,11 @@ export class PickGamePopup extends Component {
     frameJpGrand: SpriteFrame | null = null;
 
     @property({
-        tooltip: 'true = lật coin dùng hình symbol (tạm).\n'
-               + 'false = dùng spine khi đã gán SkeletonData.\n'
-               + 'Thiếu frame thì vẫn fallback spine.',
+        tooltip: 'true = lật coin dùng Sprite SymbolPack.\n'
+               + 'false = dùng pickSymbolSpineData + anim {ID}_Transition/{ID}_Idle.\n'
+               + 'Thiếu frame hoặc spine thì tự fallback.',
     })
-    preferSymbolSprites: boolean = true;
+    preferSymbolSprites: boolean = false;
 
     @property({
         type: Prefab,
@@ -588,9 +585,28 @@ export class PickGamePopup extends Component {
         if (front) {
             front.active = true;
             const sym = this._pickState.grid[index];
-            this._applySymbolToFront(front, sym);
+            this._applySymbolToFront(front, sym, false);
         }
         this._setCoinInteractable(index, false);
+    }
+
+    private _applySymbolToFront(front: Node, symbolId: number, withTransition: boolean): void {
+        const frame = this._resolveSymbolFrame(symbolId);
+
+        // Đã gán pickSymbolSpineData → luôn ưu tiên spine (bỏ qua preferSymbolSprites).
+        if (this._hasPickSpine()) {
+            this._applySpineToFront(front, symbolId, withTransition);
+            return;
+        }
+
+        if (this.preferSymbolSprites && frame) {
+            this._applySpriteToFront(front, frame);
+            return;
+        }
+
+        if (frame) {
+            this._applySpriteToFront(front, frame);
+        }
     }
 
     private _playCoinIntroBounce(): void {
@@ -640,30 +656,12 @@ export class PickGamePopup extends Component {
                 if (back) back.active = false;
                 if (front) {
                     front.active = true;
-                    this._applySymbolToFront(front, symbolId);
+                    this._applySymbolToFront(front, symbolId, true);
                 }
             })
             .to(half, { scale: new Vec3(1, 1, 1) })
             .call(() => { onDone?.(); })
             .start();
-    }
-
-    private _applySymbolToFront(front: Node, symbolId: number): void {
-        const frame = this._resolveSymbolFrame(symbolId);
-        if (this.preferSymbolSprites && frame) {
-            this._applySpriteToFront(front, frame);
-            return;
-        }
-        if (isPickUpgradeSymbol(symbolId)) {
-            this._applyUpgradeToFront(front);
-            return;
-        }
-        const jpType = clientSymToJackpotType(symbolId);
-        this._applySpineToFront(front, jpType);
-        // Spine chưa gán → vẫn hiện hình symbol nếu có
-        if (frame && !this._hasSpineFor(jpType, symbolId)) {
-            this._applySpriteToFront(front, frame);
-        }
     }
 
     private _resolveSymbolFrame(symbolId: number): SpriteFrame | null {
@@ -677,15 +675,8 @@ export class PickGamePopup extends Component {
         }
     }
 
-    private _hasSpineFor(jpType: JackpotType, symbolId: number): boolean {
-        if (isPickUpgradeSymbol(symbolId)) return !!this.spineJpUpgrade;
-        const dataMap: Partial<Record<JackpotType, sp.SkeletonData | null>> = {
-            [JackpotType.MINI]:  this.spineJpMini,
-            [JackpotType.MINOR]: this.spineJpMinor,
-            [JackpotType.MAJOR]: this.spineJpMajor,
-            [JackpotType.GRAND]: this.spineJpGrand,
-        };
-        return !!dataMap[jpType];
+    private _hasPickSpine(): boolean {
+        return !!this.pickSymbolSpineData;
     }
 
     private _applySpriteToFront(front: Node, frame: SpriteFrame): void {
@@ -695,42 +686,6 @@ export class PickGamePopup extends Component {
             sk.enabled = false;
         }
         this._setSymbolSpriteChild(front, frame);
-    }
-
-    private _applyUpgradeToFront(front: Node): void {
-        const sk = front.getComponent(sp.Skeleton);
-        if (this.frameJpUpgrade) {
-            this._applySpriteToFront(front, this.frameJpUpgrade);
-            return;
-        }
-
-        this._setSymbolSpriteChild(front, null);
-
-        if (this.spineJpUpgrade && sk) {
-            sk.enabled = true;
-            sk.skeletonData = this.spineJpUpgrade;
-            sk.color = new Color(255, 220, 80, 255);
-            sk.setAnimation(0, 'In', false);
-            sk.setCompleteListener(() => {
-                sk.setAnimation(0, 'Loop', true);
-            });
-            return;
-        }
-
-        // Fallback: reuse spine Major + tint vàng
-        if (sk && this.spineJpMajor) {
-            sk.enabled = true;
-            sk.skeletonData = this.spineJpMajor;
-            sk.color = new Color(255, 200, 40, 255);
-            sk.setAnimation(0, 'In', false);
-            sk.setCompleteListener(() => {
-                sk.setAnimation(0, 'Loop', true);
-            });
-            Log.d('[PickGamePopup] Upgrade dùng spine Major + tint (chưa có art Upgrade).');
-            return;
-        }
-
-        Log.d('[PickGamePopup] Chưa gán visual Upgrade (spineJpUpgrade / frameJpUpgrade).');
     }
 
     /**
@@ -760,29 +715,54 @@ export class PickGamePopup extends Component {
         child.setScale(1, 1, 1);
     }
 
-    private _applySpineToFront(front: Node, jpType: JackpotType): void {
+    private _applySpineToFront(front: Node, symbolId: number, withTransition: boolean): void {
         this._setSymbolSpriteChild(front, null);
 
-        const dataMap: Partial<Record<JackpotType, sp.SkeletonData | null>> = {
-            [JackpotType.MINI]:  this.spineJpMini,
-            [JackpotType.MINOR]: this.spineJpMinor,
-            [JackpotType.MAJOR]: this.spineJpMajor,
-            [JackpotType.GRAND]: this.spineJpGrand,
-        };
-        const data = dataMap[jpType];
         const sk = front.getComponent(sp.Skeleton);
-        if (sk && data) {
-            sk.enabled = true;
-            sk.color = Color.WHITE;
-            sk.skeletonData = data;
-            sk.setAnimation(0, 'In', false);
-            sk.setCompleteListener(() => {
-                sk.setAnimation(0, 'Loop', true);
-            });
-        } else if (!sk) {
+        if (!sk) {
             Log.d('[PickGamePopup] CoinFront thiếu sp.Skeleton.');
-        } else if (!data) {
-            Log.d(`[PickGamePopup] Chưa gán SpineData tier=${JackpotType[jpType]}.`);
+            return;
+        }
+        if (!this.pickSymbolSpineData) {
+            Log.d('[PickGamePopup] Chưa gán pickSymbolSpineData trên PickGamePopup.');
+            return;
+        }
+
+        const psId = clientSymToPickPsId(symbolId);
+        sk.enabled = true;
+        sk.color = isPickUpgradeSymbol(symbolId)
+            ? new Color(255, 220, 80, 255)
+            : Color.WHITE;
+        sk.skeletonData = this.pickSymbolSpineData;
+        sk.setToSetupPose();
+        this._playPickPsSpine(sk, psId, withTransition);
+        Log.d(`[PickGamePopup] spine psId=${psId} transition=${withTransition}`);
+    }
+
+    /** Play `{psId}_Transition` → `{psId}_Idle` trên spine chung. */
+    private _playPickPsSpine(sk: sp.Skeleton, psId: number, withTransition: boolean): void {
+        const idleAnim = pickPsIdleAnim(psId);
+        const transitionAnim = pickPsTransitionAnim(psId);
+
+        sk.setCompleteListener(null);
+
+        if (withTransition && sk.findAnimation(transitionAnim)) {
+            sk.setAnimation(0, transitionAnim, false);
+            sk.setCompleteListener(() => {
+                sk.setCompleteListener(null);
+                if (sk.findAnimation(idleAnim)) {
+                    sk.setAnimation(0, idleAnim, true);
+                } else {
+                    Log.w(`[PickGamePopup] Thiếu anim ${idleAnim}`);
+                }
+            });
+            return;
+        }
+
+        if (sk.findAnimation(idleAnim)) {
+            sk.setAnimation(0, idleAnim, true);
+        } else {
+            Log.w(`[PickGamePopup] Thiếu anim ${idleAnim} / ${transitionAnim} (psId=${psId})`);
         }
     }
 
@@ -815,10 +795,17 @@ export class PickGamePopup extends Component {
         const front = lastNode?.getChildByName('CoinFront');
         const sk = front?.getComponent(sp.Skeleton);
         const current = sk?.getCurrent(0);
-        if (sk && current?.animation?.name === 'In') {
+        const animName = current?.animation?.name;
+        if (sk && isPickPsTransitionAnim(animName)) {
             sk.setCompleteListener(() => {
                 sk.setCompleteListener(null);
-                sk.setAnimation(0, 'Loop', true);
+                const psId = this._pickState
+                    ? clientSymToPickPsId(this._pickState.grid[lastIdx])
+                    : 0;
+                const idleAnim = pickPsIdleAnim(psId);
+                if (sk.findAnimation(idleAnim)) {
+                    sk.setAnimation(0, idleAnim, true);
+                }
                 startCelebrate();
             });
             return;

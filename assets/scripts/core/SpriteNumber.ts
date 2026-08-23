@@ -383,10 +383,7 @@ export class SpriteNumber extends Component {
      * Gọi unlockWidth() để trở về chế độ dynamic sau khi count-up xong.
      */
     lockWidth(finalValue: number, currencyIndex: number = -1, minDecimals: number = 0): void {
-        // Khi hiển thị tiền tệ, luôn tính size bao gồm phần thập phân .000
-        if (this.enableLangCurrency && currencyIndex >= 0) {
-            minDecimals = Math.max(minDecimals, 3);
-        }
+        minDecimals = this._resolveCurrencyMinDecimals(minDecimals, currencyIndex);
         const sizeResult = this._computeSize(finalValue, currencyIndex, minDecimals);
         const { totalWidth, maxHeight, sumSpriteWidth, sumVisualGaps } = sizeResult;
         this._lockedWidth  = totalWidth;
@@ -469,6 +466,15 @@ export class SpriteNumber extends Component {
     }
 
     /**
+     * Khi hiển thị tiền tệ: mặc định 3 chữ thập phân (.000).
+     * Caller truyền minDecimals > 0 thì giữ nguyên (vd. CreditLabel sticky = 2 → .00).
+     */
+    private _resolveCurrencyMinDecimals(minDecimals: number, currencyIndex: number): number {
+        if (!this.enableLangCurrency || currencyIndex < 0) return minDecimals;
+        return minDecimals > 0 ? minDecimals : 3;
+    }
+
+    /**
      * Tạo hoặc lấy Label node để hiển thị KMBT text khi value >= 100K.
      */
     private _kmbtLabelNode: Node | null = null;
@@ -503,10 +509,7 @@ export class SpriteNumber extends Component {
             this._snapshotContainerDims();
         }
 
-        // Khi hiển thị tiền tệ, luôn show phần thập phân .000
-        if (this.enableLangCurrency && currencyIndex >= 0) {
-            minDecimals = Math.max(minDecimals, 3);
-        }
+        minDecimals = this._resolveCurrencyMinDecimals(minDecimals, currencyIndex);
 
         // Khi enableLangCurrency=true và caller muốn hiển thị tiền tệ (>= 0),
         // ƯU TIÊN: dùng currency code từ server (nếu có) để chọn sprite đúng.
@@ -676,7 +679,7 @@ export class SpriteNumber extends Component {
             // Dùng "full size" (bao gồm .000 dù số tròn) để tính container và scale,
             // tránh trường hợp bỏ .000 làm totalWidth nhỏ hơn → scale ít hơn → tràn khung.
             const sizeRef = (this.enableLangCurrency && currencyIndex >= 0)
-                ? this._computeSize(value, currencyIndex, Math.max(this._lastMinDecimals, 3)).totalWidth
+                ? this._computeSize(value, currencyIndex, minDecimals).totalWidth
                 : totalWidth;
             const parentTf = this.node.getComponent(UITransform);
             if (this.shrinkToFit) {

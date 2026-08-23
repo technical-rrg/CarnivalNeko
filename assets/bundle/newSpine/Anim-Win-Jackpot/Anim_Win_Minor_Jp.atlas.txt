@@ -1,0 +1,55 @@
+
+Anim_Win_Minor_Jp.png
+size: 2029, 1728
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Backlight
+  rotate: true
+  xy: 1, 476
+  size: 1251, 863
+  orig: 1555, 876
+  offset: 153, 13
+  index: -1
+CiircleLight2
+  rotate: false
+  xy: 943, 881
+  size: 934, 846
+  orig: 1555, 876
+  offset: 306, 30
+  index: -1
+Jackpot
+  rotate: true
+  xy: 943, 260
+  size: 272, 87
+  orig: 1555, 876
+  offset: 641, 499
+  index: -1
+Khung
+  rotate: false
+  xy: 1, 1
+  size: 940, 473
+  orig: 1555, 876
+  offset: 306, 126
+  index: -1
+Mini
+  rotate: true
+  xy: 1879, 1111
+  size: 616, 127
+  orig: 1555, 876
+  offset: 470, 592
+  index: -1
+Star
+  rotate: false
+  xy: 866, 534
+  size: 345, 345
+  orig: 415, 415
+  offset: 35, 35
+  index: -1
+circle
+  rotate: false
+  xy: 1213, 64
+  size: 815, 815
+  orig: 1555, 876
+  offset: 361, 13
+  index: -1

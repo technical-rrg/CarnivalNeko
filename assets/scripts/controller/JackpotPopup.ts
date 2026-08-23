@@ -506,12 +506,11 @@ export class JackpotPopup extends Component {
 
         this._isCountingUp = false;
         this._stopCountUp();
-        this._stopParticleEffects();
+        this._clearAllParticleSystems();
 
         const spine = this._activeSpine;
         if (spine) {
             spine.setCompleteListener(null);
-            this._stopParticleInOut();
 
             // Không có anim "out"/"Out" → đóng ngay, tránh treo game
             const outAnimName = spine.findAnimation('out')
@@ -542,7 +541,6 @@ export class JackpotPopup extends Component {
             };
             this.scheduleOnce(this._outAnimCloseCb, this.outAnimCloseDelay);
         } else {
-            this._stopParticleInOut();
             this._finishClose();
         }
     }
@@ -597,15 +595,14 @@ export class JackpotPopup extends Component {
         }
     }
 
-    private _stopParticleEffects(): void {
-        if (this.particleNode) {
-            for (const p of this._getParticlesFrom(this.particleNode)) {
-                p.stop();
-            }
-        }
-        if (this.particleNodeOrientationBased) {
-            for (const p of this._getParticlesFrom(this.particleNodeOrientationBased)) {
-                p.stop();
+    /** Dừng và xóa sạch mọi particle trong popup (gọi khi bắt đầu anim out). */
+    private _clearAllParticleSystems(): void {
+        for (const ps of this.node.getComponentsInChildren(ParticleSystem)) {
+            try {
+                ps.stop();
+                ps.clear();
+            } catch (e) {
+                Log.w('[JackpotPopup] skip broken particle on clear', e);
             }
         }
     }
@@ -616,15 +613,6 @@ export class JackpotPopup extends Component {
             this._safePlayParticle(this.particleNodeInOut);
         }
     }
-
-    private _stopParticleInOut(): void {
-        if (this.particleNodeInOut) {
-           // for (const p of this._getParticlesFrom(this.particleNodeInOut)) {
-                 this.particleNodeInOut.stop();
-           // }
-        }
-    }
-
 
     private _onScreenChange(): void {
         this._applyOrientationScale();
@@ -716,6 +704,7 @@ export class JackpotPopup extends Component {
 
     private _cleanup(): void {
         this._restoreAmountDisplayParent();
+        this._clearAllParticleSystems();
         this._stopCountUp();
         if (this._autoCloseCb) {
             this.unschedule(this._autoCloseCb);

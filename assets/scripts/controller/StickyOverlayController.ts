@@ -1017,7 +1017,7 @@ export class StickyOverlayController extends Component {
                 }
                 if (poolSlot?.isValid) {
                     const { labelNode, sn } = this._resolveCreditLabel(poolSlot);
-                    this._fitCreditLabelToGrid(labelNode, sn, r);
+                    this._fitCreditLabelToGrid(labelNode, sn, r, poolSlot);
                 }
             }
         }
@@ -2294,8 +2294,8 @@ export class StickyOverlayController extends Component {
         const { labelNode, sn } = this._resolveCreditLabel(slotNode);
         if (!labelNode) return;
         if (!labelNode.active) labelNode.active = true;
-        this._fitCreditLabelToGrid(labelNode, sn);
-        if (sn && credit > 0) sn.setData(credit, -1, 2);
+        this._fitCreditLabelToGrid(labelNode, sn, undefined, slotNode);
+        if (sn && credit > 0) sn.setData(credit, 0, 2);
         const op = labelNode.getComponent(UIOpacity) ?? labelNode.addComponent(UIOpacity);
         op.opacity = visible ? 255 : 0;
         if (visible) this._raiseCreditLabelAboveSpine(slotNode);
@@ -2348,7 +2348,7 @@ export class StickyOverlayController extends Component {
     }
 
     /**
-     * CreditLabel.prefab = 130×130, shrinkToFit theo khung đó (thiết kế 5×3).
+     * CreditLabel.prefab = 130×130, shrinkToFit + fillContainer theo khung đó (thiết kế 5×3).
      * Coin 5×4/5×5 thu nhỏ bằng contentSize — child không inherit → số bị to.
      * Scale label theo cell/182 để khớp tỉ lệ symbol.
      */
@@ -2356,11 +2356,32 @@ export class StickyOverlayController extends Component {
         return matsuriCellSize(rows ?? this._rowCount) / MATSURI_CELL_SIZE_LARGE;
     }
 
-    private _fitCreditLabelToGrid(labelNode: Node | null, sn: SpriteNumber | null, rows?: number): void {
+    /** shrinkToFit chỉ thu nhỏ khi fillContainer=false — bật fill + maxWidth=0 để phóng to vừa khung. */
+    private _configureCreditLabelSpriteNumber(sn: SpriteNumber): void {
+        sn.shrinkToFit = true;
+        sn.fillContainer = true;
+        sn.maxWidth = 0;
+        sn.enableLangCurrency = true;
+        sn.refreshContainerDims();
+    }
+
+    private _fitCreditLabelToGrid(
+        labelNode: Node | null,
+        sn: SpriteNumber | null,
+        rows?: number,
+        slotNode?: Node,
+    ): void {
         if (!labelNode) return;
         const s = this._creditLabelGridScale(rows);
         if (sn) {
+            this._configureCreditLabelSpriteNumber(sn);
             sn.setDisplayScale(s);
+            if (slotNode) {
+                const credit = this._slotCreditMap.get(slotNode);
+                if (credit != null && credit > 0) {
+                    sn.setData(credit, 0, 2);
+                }
+            }
         } else {
             labelNode.setScale(s, s, 1);
         }
@@ -2413,19 +2434,19 @@ export class StickyOverlayController extends Component {
             if (creditChanged) {
                 labelNode.setRotationFromEuler(0, 0, 0);
             }
-            this._fitCreditLabelToGrid(labelNode, sn);
+            this._fitCreditLabelToGrid(labelNode, sn, undefined, slotNode);
             if (isMatsuri) {
                 // Không active=false — lần đầu bật sẽ delay onLoad SpriteNumber (số hiện chậm).
                 if (!labelNode.active) labelNode.active = true;
                 const lop = labelNode.getComponent(UIOpacity) ?? labelNode.addComponent(UIOpacity);
                 lop.opacity = shouldActive ? 255 : 0;
                 if (sn && displayCredit > 0) {
-                    sn.setData(Math.max(0, displayCredit), -1, 2);
+                    sn.setData(Math.max(0, displayCredit), 0, 2);
                 }
             } else {
                 labelNode.active = shouldActive;
                 if (sn && (creditChanged || shouldActive)) {
-                    sn.setData(Math.max(0, displayCredit), -1, 2);
+                    sn.setData(Math.max(0, displayCredit), 0, 2);
                 } else if (!sn && !quiet) {
                     Log.e(`[StickyOverlay] Missing SpriteNumber on ${slotNode.name}/CreditLabel`);
                 }
@@ -3064,9 +3085,9 @@ export class StickyOverlayController extends Component {
         const symbolId = cell?.symbolId ?? SymbolId.STICKY_YELLOW;
         const { labelNode, sn } = this._resolveCreditLabel(slotNode);
         if (labelNode) {
-            this._fitCreditLabelToGrid(labelNode, sn);
+            this._fitCreditLabelToGrid(labelNode, sn, undefined, slotNode);
             if (sn) {
-                sn.setData(safeCredit, -1, 2);
+                sn.setData(safeCredit, 0, 2);
             }
             labelNode.active = this._shouldShowCreditLabel(symbolId, safeCredit);
         }

@@ -73,7 +73,7 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 130,
+      "width": 170,
       "height": 130
     },
     "_anchorPoint": {
@@ -231,10 +231,11 @@
     "spacing": -30,
     "kmbtSpacing": 0,
     "punctuationSpacingOffset": -5,
-    "currencySpacing": -25,
+    "currencySpacing": -30,
     "currencySpacingRatio": 0,
-    "maxWidth": 130,
+    "maxWidth": 0,
     "shrinkToFit": true,
+    "fillContainer": true,
     "joltEnabled": true,
     "joltIntervalMin": 0.3,
     "joltIntervalMax": 1,

@@ -181,7 +181,8 @@ for (let i = 1; i < rows.length; i++) {
     for (const [col, lang] of Object.entries(COL_MAP)) {
         const val = row[parseInt(col)];
         if (val !== undefined && val !== null && val !== '') {
-            excelData[lang][key] = String(val);
+            // Normalize line endings so \r\r\n from Excel/SheetJS không thành \\n\\n
+            excelData[lang][key] = String(val).replace(/\r\n/g, '\n').replace(/\r/g, '');
         }
     }
 }
@@ -250,12 +251,12 @@ console.log('\n🎉 Done! All locale files updated.');
 // ─── HELPERS ───
 
 function quote(str) {
-    // Use single quotes, escape internal quotes and backslashes
-    const escaped = str
+    // Normalize line endings first: \r\r\n / \r\n / lone \r → \n
+    // (avoids leftover \r becoming an extra \\n → duplicate <br/> at runtime)
+    const normalized = String(str).replace(/\r\n/g, '\n').replace(/\r/g, '');
+    const escaped = normalized
         .replace(/\\/g, '\\\\')
         .replace(/'/g, "\\'")
-        .replace(/\r\n/g, '\\n')
-        .replace(/\n/g, '\\n')
-        .replace(/\r/g, '\\n');
+        .replace(/\n/g, '\\n');
     return `'${escaped}'`;
 }

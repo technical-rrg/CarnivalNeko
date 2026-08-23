@@ -1,0 +1,62 @@
+
+Anim_Congratulation.png
+size: 2014, 1633
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+CONGRATULATION
+  rotate: false
+  xy: 431, 1
+  size: 666, 84
+  orig: 666, 84
+  offset: 0, 0
+  index: -1
+Cat
+  rotate: true
+  xy: 431, 87
+  size: 331, 495
+  orig: 331, 495
+  offset: 0, 0
+  index: -1
+FEATURE_COMPLETE
+  rotate: true
+  xy: 378, 50
+  size: 368, 51
+  orig: 368, 51
+  offset: 0, 0
+  index: -1
+Frame
+  rotate: false
+  xy: 928, 88
+  size: 1058, 330
+  orig: 1059, 330
+  offset: 0, 0
+  index: -1
+Glow
+  rotate: true
+  xy: 1204, 484
+  size: 1148, 809
+  orig: 1148, 809
+  offset: 0, 0
+  index: -1
+Star
+  rotate: false
+  xy: 1, 43
+  size: 375, 375
+  orig: 451, 451
+  offset: 38, 38
+  index: -1
+Sunlight
+  rotate: true
+  xy: 1, 420
+  size: 1212, 1201
+  orig: 1225, 1225
+  offset: 13, 24
+  index: -1
+YOUWON
+  rotate: false
+  xy: 1099, 12
+  size: 259, 74
+  orig: 259, 74
+  offset: 0, 0
+  index: -1

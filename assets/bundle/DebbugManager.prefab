@@ -2919,7 +2919,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "7",
+    "_name": "AllTrail",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -2930,7 +2930,7 @@
         "__id__": 108
       }
     ],
-    "_active": false,
+    "_active": true,
     "_components": [
       {
         "__id__": 114
@@ -2947,8 +2947,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": -78.752,
-      "y": -139.462,
+      "x": 50,
+      "y": -262.489,
       "z": 0
     },
     "_lrot": {
@@ -3074,7 +3074,7 @@
       "b": 0,
       "a": 255
     },
-    "_string": "Minor x5",
+    "_string": "All Trail",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 20,
@@ -7892,7 +7892,7 @@
     "btnWin": {
       "__id__": 285
     },
-    "btnMinorWin5": {
+    "btnAllTrail": {
       "__id__": 118
     },
     "btnSingleWayWin": {

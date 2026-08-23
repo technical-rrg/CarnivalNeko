@@ -1,6 +1,5 @@
 /**
- * TopUpEndPopup - Popup tổng kết khi TopUp (Re-Spin) kết thúc.
- *
+ * TopUpEndPopup - Popup tổng kết khi TopUp (Re-Spin) kết thúc. *
  * ── NỘI DUNG ──
  *   CONGRATULATIONS
  *   YOU WON
@@ -28,7 +27,7 @@
  *      (tại đây GameManager mới emit TOPUP_END và cleanup state)
  */
 
-import { _decorator, Component, Node, Label, UIOpacity, Button, tween, Vec3, Tween } from 'cc';
+import { _decorator, Component, Node, Label, UIOpacity, Button, tween, Vec3, Tween, ParticleSystem } from 'cc';
 import { sp } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -85,6 +84,13 @@ export class TopUpEndPopup extends Component {
     @property({ type: sp.Skeleton, tooltip: 'Spine animation cho popup\n→ Kéo sp.Skeleton node vào đây' })
     spine: sp.Skeleton | null = null;
 
+    /** FX coin fly — ẩn lúc mở, hiện cùng amountLabel sau amountShowDelay */
+    @property({ type: Node, tooltip: 'Fx1 — particle FX\n→ Kéo node Fx1 vào đây' })
+    fx1: Node | null = null;
+
+    @property({ type: Node, tooltip: 'Fx2 — particle FX\n→ Kéo node Fx2 vào đây' })
+    fx2: Node | null = null;
+
     // ── ANIMATION PARAMS ─────────────────────────────────────────────────────
 
     @property({ tooltip: 'Timeout tự đóng popup (giây)' })
@@ -93,8 +99,14 @@ export class TopUpEndPopup extends Component {
     @property({ tooltip: 'Thời gian count-up từ 0 đến totalWin (giây)' })
     countUpDuration: number = 1.5;
 
-    @property({ tooltip: 'Thời gian fade-out amountLabel khi spine Out (giây).\n≤0 = dùng đúng duration animation Out của spine.' })
+    @property({ tooltip: 'Thời gian fade-out amountLabel (giây).\n>0 = dùng đúng giá trị này.\n≤0 = tự tính từ spine Out trừ amountFadeLeadTime.' })
     amountFadeOutDuration: number = 0;
+
+    @property({ tooltip: 'Amount biến mất sớm hơn popup bao nhiêu giây (chỉ khi amountFadeOutDuration ≤ 0).\nVd 0.12 → số mất hẳn ~120ms trước khi spine Out kết thúc.' })
+    amountFadeLeadTime: number = 0.12;
+
+    @property({ tooltip: 'Delay trước khi hiện amountLabel sau khi mở popup (giây)' })
+    amountShowDelay: number = 0.3;
 
     // ── INTERNAL ─────────────────────────────────────────────────────────────
 
@@ -102,6 +114,8 @@ export class TopUpEndPopup extends Component {
     private _autoCloseCb: (() => void) | null = null;
     private _boundClickOverlayHandler = this._onClickOverlay.bind(this);
     private _spineOutCb: (() => void) | null = null;
+    private _outAnimCloseCb: (() => void) | null = null;
+    private _amountShowCb: (() => void) | null = null;
     private _countUpTween: Tween<{ value: number }> | null = null;
     private _countUpTarget: number = 0;
     private _countUpSoundEnded: boolean = false;
@@ -113,6 +127,14 @@ export class TopUpEndPopup extends Component {
     onLoad(): void {
         this.node.active = false;
         if (this.overlayNode) this.overlayNode.active = false;
+        if (!this.fx1) {
+            this.fx1 = this.node.getChildByName('Fx1')
+                ?? this.node.getChildByName('Popup_Fx_Coinfly');
+        }
+        if (!this.fx2) {
+            this.fx2 = this.node.getChildByName('Fx2')
+                ?? this.node.getChildByName('Popup_Fx_Coinfly-001');
+        }
         // Không lắng nghe TOPUP_END_POPUP trực tiếp; PopupLoader là manager load và show popup.
 
         if (this.closeButton) {
@@ -156,7 +178,8 @@ export class TopUpEndPopup extends Component {
 
         this.node.active = true;
 
-        this._animateAmountLabel(totalWin);
+        this._hideDelayedRevealElements();
+        this._scheduleDelayedReveal(totalWin);
 
         if (this.spine) {
             this.spine.node.active = true;
@@ -171,6 +194,71 @@ export class TopUpEndPopup extends Component {
         }
     }
 
+    /** Ẩn amount + Fx lúc mở popup → delay rồi mới hiện */
+    private _scheduleDelayedReveal(totalWin: number): void {
+        this._cancelAmountShowSchedule();
+        const delay = Math.max(0, this.amountShowDelay);
+        if (delay <= 0) {
+            this._revealDelayedElements(totalWin);
+            return;
+        }
+        this._amountShowCb = () => {
+            this._amountShowCb = null;
+            this._revealDelayedElements(totalWin);
+        };
+        this.scheduleOnce(this._amountShowCb, delay);
+    }
+
+    private _hideDelayedRevealElements(): void {
+        if (this.amountLabel) {
+            Tween.stopAllByTarget(this.amountLabel.node);
+            this.amountLabel.node.setScale(1, 1, 1);
+            this.amountLabel.node.active = false;
+            this._resetAmountLabelOpacity();
+        }
+        this._hideFxNodes();
+    }
+
+    private _revealDelayedElements(totalWin: number): void {
+        if (!this._isOpen) return;
+        this._playFxNode(this.fx1);
+        this._playFxNode(this.fx2);
+        if (this.amountLabel) {
+            this.amountLabel.node.active = true;
+            this._resetAmountLabelOpacity();
+            this._animateAmountLabel(totalWin);
+        }
+    }
+
+    private _playFxNode(node: Node | null): void {
+        if (!node) return;
+        node.active = true;
+        const systems = node.getComponentsInChildren(ParticleSystem);
+        for (const ps of systems) {
+            ps.stop();
+            ps.clear();
+            ps.play();
+        }
+    }
+
+    private _hideFxNodes(): void {
+        for (const node of [this.fx1, this.fx2]) {
+            if (!node) continue;
+            const systems = node.getComponentsInChildren(ParticleSystem);
+            for (const ps of systems) {
+                ps.stop();
+            }
+            node.active = false;
+        }
+    }
+
+    private _cancelAmountShowSchedule(): void {
+        if (this._amountShowCb) {
+            this.unschedule(this._amountShowCb);
+            this._amountShowCb = null;
+        }
+    }
+
     /** Chạy hiệu ứng count-up nhanh từ 0 đến totalWin */
     private _animateAmountLabel(totalWin: number): void {
         if (!this.amountLabel) return;
@@ -178,7 +266,6 @@ export class TopUpEndPopup extends Component {
         this._countUpSoundEnded = false;
         Log.d(`[coinloop][TopUpEndPopup._animateAmountLabel] showCount=${this._showCount} stopCoinLoop before new count-up target=${totalWin}`);
         SoundManager.instance?.stopCoinLoop();
-        this.amountLabel.node.active = true;
         this._resetAmountLabelOpacity();
         this._countUpTarget = totalWin;
 
@@ -224,11 +311,12 @@ export class TopUpEndPopup extends Component {
             Log.d(`[coinloop][TopUpEndPopup._finishCountUp] showCount=${this._showCount} skip endCountUp (already ended)`);
         }
         if (isInt) {
+            this.amountLabel.unlockWidth();
             this.amountLabel.setData(Math.floor(this._countUpTarget), 0, 0);
         } else {
+            this.amountLabel.unlockWidth();
             this.amountLabel.setData(Math.floor(this._countUpTarget * 1000) / 1000, 0, 3);
         }
-        this.amountLabel.unlockWidth();
         Log.e(`[TopUpEndPopup][AMOUNT_COUNTUP_END] showCount=${this._showCount} final=${this._countUpTarget}`);
     }
 
@@ -256,13 +344,25 @@ export class TopUpEndPopup extends Component {
         op.opacity = 255;
     }
 
-    /** Fade amountLabel alpha → 0 trong lúc spine Out */
+    /** Fade amountLabel alpha → 0 */
     private _fadeAmountLabelOut(duration: number): void {
         const op = this._ensureAmountOpacity();
         if (!op) return;
         Tween.stopAllByTarget(op);
         const dur = Math.max(0.01, duration);
         tween(op).to(dur, { opacity: 0 }).start();
+    }
+
+    /**
+     * Tính thời gian fade amount sao cho opacity = 0 trước khi spine Out kết thúc ~lead giây.
+     * amountFadeOutDuration > 0 → override thủ công.
+     */
+    private _computeAmountFadeDuration(spineOutDur: number): number {
+        if (this.amountFadeOutDuration > 0) {
+            return this.amountFadeOutDuration;
+        }
+        const lead = Math.max(0.05, this.amountFadeLeadTime);
+        return Math.max(0.15, spineOutDur - lead);
     }
 
     // ── PRIVATE ──────────────────────────────────────────────────────────────
@@ -273,15 +373,27 @@ export class TopUpEndPopup extends Component {
 
     private _waitForClose(): void {
         if (this.clickOverlay) {
+            this.clickOverlay.off(Node.EventType.TOUCH_END, this._boundClickOverlayHandler);
+            this.clickOverlay.on(Node.EventType.TOUCH_END, this._boundClickOverlayHandler);
             this.clickOverlay.active = true;
         }
         this._autoCloseCb = () => { this._closePopup(); };
         this.scheduleOnce(this._autoCloseCb, this.autoCloseTimeout);
     }
 
+    /** Spine JSON dùng 'Out' (Anim_Congratulation) — fallback 'out' nếu asset khác. */
+    private _resolveOutAnimName(): string | null {
+        if (!this.spine) return null;
+        if (this.spine.findAnimation('Out')) return 'Out';
+        if (this.spine.findAnimation('out')) return 'out';
+        return null;
+    }
+
     private _closePopup(): void {
         if (!this._isOpen) return;
         this._isOpen = false;
+
+        this._cancelAmountShowSchedule();
 
         if (this._autoCloseCb) {
             this.unschedule(this._autoCloseCb);
@@ -307,31 +419,60 @@ export class TopUpEndPopup extends Component {
 
         if (this.spine) {
             this.spine.setCompleteListener(null);
-            const entry = this.spine.setAnimation(0, 'out', false);
-            const spineOutDur = entry?.animation?.duration ?? 0.3;
-            const fadeDur = this.amountFadeOutDuration > 0 ? this.amountFadeOutDuration : spineOutDur;
+            const outAnimName = this._resolveOutAnimName();
+            if (!outAnimName) {
+                Log.w('[TopUpEndPopup] No Out animation — closing immediately');
+                this._finishClose();
+                return;
+            }
+
+            const entry = this.spine.setAnimation(0, outAnimName, false);
+            const spineOutDur = entry?.animation?.duration ?? 0.467;
+            const fadeDur = this._computeAmountFadeDuration(spineOutDur);
             this._fadeAmountLabelOut(fadeDur);
+
+            if (this._outAnimCloseCb) this.unschedule(this._outAnimCloseCb);
+            this._outAnimCloseCb = () => {
+                this._outAnimCloseCb = null;
+                this._finishClose();
+            };
+            this.scheduleOnce(this._outAnimCloseCb, spineOutDur + 0.05);
+
             this.spine.setCompleteListener(() => {
                 this.spine!.setCompleteListener(null);
+                if (this._outAnimCloseCb) {
+                    this.unschedule(this._outAnimCloseCb);
+                    this._outAnimCloseCb = null;
+                }
                 this._finishClose();
             });
         } else {
-            const fadeDur = this.amountFadeOutDuration > 0 ? this.amountFadeOutDuration : 0.3;
+            const fadeDur = this._computeAmountFadeDuration(0.3);
             this._fadeAmountLabelOut(fadeDur);
-            this.scheduleOnce(() => this._finishClose(), fadeDur);
+            this.scheduleOnce(() => this._finishClose(), 0.3);
         }
     }
 
     private _finishClose(): void {
         Log.d(`[coinloop][TopUpEndPopup._finishClose] showCount=${this._showCount} soundEnded=${this._countUpSoundEnded}`);
+        if (this._outAnimCloseCb) {
+            this.unschedule(this._outAnimCloseCb);
+            this._outAnimCloseCb = null;
+        }
         this._stopCountUp();
-        if (this.amountLabel && !this._countUpSoundEnded) {
-            Log.d(`[coinloop][TopUpEndPopup._finishClose] showCount=${this._showCount} endCountUp()`);
-            this.amountLabel.endCountUp();
-            this._countUpSoundEnded = true;
+        if (this.amountLabel) {
+            Tween.stopAllByTarget(this.amountLabel.node);
+            this.amountLabel.node.setScale(1, 1, 1);
+            this._resetAmountLabelOpacity();
+            if (!this._countUpSoundEnded) {
+                Log.d(`[coinloop][TopUpEndPopup._finishClose] showCount=${this._showCount} endCountUp()`);
+                this.amountLabel.endCountUp();
+                this._countUpSoundEnded = true;
+            }
         }
         Log.d(`[coinloop][TopUpEndPopup._finishClose] showCount=${this._showCount} stopCoinLoop() → emit TOPUP_END_POPUP_CLOSED`);
         SoundManager.instance?.stopCoinLoop();
+        this._hideFxNodes();
         this.node.active = false;
         if (this.overlayNode) this.overlayNode.active = false;
         if (this.spine) this.spine.node.active = false;
@@ -344,11 +485,20 @@ export class TopUpEndPopup extends Component {
             this.unschedule(this._autoCloseCb);
             this._autoCloseCb = null;
         }
+        if (this._outAnimCloseCb) {
+            this.unschedule(this._outAnimCloseCb);
+            this._outAnimCloseCb = null;
+        }
+        this._cancelAmountShowSchedule();
+        this._hideFxNodes();
         this._stopCountUp();
         if (this._amountOpacity) Tween.stopAllByTarget(this._amountOpacity);
-        if (this.amountLabel && !this._countUpSoundEnded) {
-            this.amountLabel.endCountUp();
-            this._countUpSoundEnded = true;
+        if (this.amountLabel) {
+            Tween.stopAllByTarget(this.amountLabel.node);
+            if (!this._countUpSoundEnded) {
+                this.amountLabel.endCountUp();
+                this._countUpSoundEnded = true;
+            }
         }
         SoundManager.instance?.stopCoinLoop();
         if (this.spine) {

@@ -1,0 +1,244 @@
+
+Pot_Blue.png
+size: 1843,241
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+Layer 33
+  rotate: false
+  xy: 1615, 7
+  size: 28, 34
+  orig: 32, 39
+  offset: 3, 2
+  index: -1
+Pot
+  rotate: false
+  xy: 148, 2
+  size: 156, 95
+  orig: 162, 99
+  offset: 3, 0
+  index: -1
+PotB
+  rotate: true
+  xy: 1820, 35
+  size: 125, 21
+  orig: 126, 24
+  offset: 1, 3
+  index: -1
+Potnap
+  rotate: false
+  xy: 1576, 175
+  size: 130, 64
+  orig: 130, 78
+  offset: 0, 14
+  index: -1
+Potnap8
+  rotate: false
+  xy: 1708, 162
+  size: 129, 77
+  orig: 134, 78
+  offset: 2, 1
+  index: -1
+PotnapB
+  rotate: true
+  xy: 1615, 43
+  size: 130, 39
+  orig: 130, 63
+  offset: 0, 0
+  index: -1
+gold_01
+  rotate: true
+  xy: 1656, 51
+  size: 122, 38
+  orig: 122, 38
+  offset: 0, 0
+  index: -1
+gold_08
+  rotate: false
+  xy: 1656, 11
+  size: 122, 38
+  orig: 122, 38
+  offset: 0, 0
+  index: -1
+gold_09
+  rotate: true
+  xy: 1780, 38
+  size: 122, 38
+  orig: 122, 38
+  offset: 0, 0
+  index: -1
+gold_18
+  rotate: true
+  xy: 1780, 7
+  size: 29, 21
+  orig: 29, 22
+  offset: 0, 1
+  index: -1
+potblue/potblue_00000
+  rotate: true
+  xy: 1101, 4
+  size: 144, 85
+  orig: 160, 160
+  offset: 9, 44
+  index: -1
+potblue/potblue_00001
+  rotate: false
+  xy: 1140, 154
+  size: 144, 85
+  orig: 160, 160
+  offset: 9, 44
+  index: -1
+potblue/potblue_00002
+  rotate: true
+  xy: 1188, 8
+  size: 144, 85
+  orig: 160, 160
+  offset: 9, 44
+  index: -1
+potblue/potblue_00003
+  rotate: true
+  xy: 1275, 9
+  size: 143, 85
+  orig: 160, 160
+  offset: 9, 45
+  index: -1
+potblue/potblue_00004
+  rotate: false
+  xy: 1286, 157
+  size: 143, 82
+  orig: 160, 160
+  offset: 9, 49
+  index: -1
+potblue/potblue_00005
+  rotate: false
+  xy: 1431, 163
+  size: 143, 76
+  orig: 160, 160
+  offset: 9, 56
+  index: -1
+potblue/potblue_00006
+  rotate: true
+  xy: 1537, 18
+  size: 143, 76
+  orig: 160, 160
+  offset: 9, 56
+  index: -1
+potblue/potblue_00007
+  rotate: false
+  xy: 995, 150
+  size: 143, 89
+  orig: 160, 160
+  offset: 9, 41
+  index: -1
+potblue/potblue_00008
+  rotate: false
+  xy: 850, 140
+  size: 143, 99
+  orig: 160, 160
+  offset: 9, 26
+  index: -1
+potblue/potblue_00009
+  rotate: false
+  xy: 734, 6
+  size: 143, 114
+  orig: 160, 160
+  offset: 9, 12
+  index: -1
+potblue/potblue_00010
+  rotate: false
+  xy: 417, 111
+  size: 141, 128
+  orig: 160, 160
+  offset: 10, 4
+  index: -1
+potblue/potblue_00011
+  rotate: true
+  xy: 2, 98
+  size: 141, 136
+  orig: 160, 160
+  offset: 10, 2
+  index: -1
+potblue/potblue_00012
+  rotate: false
+  xy: 278, 102
+  size: 137, 137
+  orig: 160, 160
+  offset: 11, 3
+  index: -1
+potblue/potblue_00013
+  rotate: false
+  xy: 879, 2
+  size: 131, 136
+  orig: 160, 160
+  offset: 14, 4
+  index: -1
+potblue/potblue_00014
+  rotate: true
+  xy: 598, 4
+  size: 109, 134
+  orig: 160, 160
+  offset: 25, 6
+  index: -1
+potblue/potblue_00015
+  rotate: false
+  xy: 1362, 21
+  size: 87, 134
+  orig: 160, 160
+  offset: 47, 6
+  index: -1
+potblue/potblue_00016
+  rotate: false
+  xy: 1451, 23
+  size: 84, 138
+  orig: 160, 160
+  offset: 48, 3
+  index: -1
+potblue/potblue_00017
+  rotate: true
+  xy: 707, 122
+  size: 117, 141
+  orig: 160, 160
+  offset: 23, 1
+  index: -1
+potblue/potblue_00018
+  rotate: true
+  xy: 140, 99
+  size: 140, 136
+  orig: 160, 160
+  offset: 12, 4
+  index: -1
+potblue/potblue_00019
+  rotate: false
+  xy: 560, 115
+  size: 145, 124
+  orig: 160, 160
+  offset: 10, 10
+  index: -1
+potblue/potblue_00020
+  rotate: false
+  xy: 452, 2
+  size: 144, 107
+  orig: 160, 160
+  offset: 10, 20
+  index: -1
+potblue/potblue_00021
+  rotate: false
+  xy: 306, 5
+  size: 144, 95
+  orig: 160, 160
+  offset: 10, 28
+  index: -1
+potblue/potblue_00022
+  rotate: false
+  xy: 2, 5
+  size: 144, 91
+  orig: 160, 160
+  offset: 9, 36
+  index: -1
+potblue/potblue_00023
+  rotate: true
+  xy: 1012, 4
+  size: 144, 87
+  orig: 160, 160
+  offset: 9, 41
+  index: -1

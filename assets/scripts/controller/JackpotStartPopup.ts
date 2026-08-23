@@ -2,13 +2,12 @@
  * JackpotStartPopup — thông báo trước khi vào Pick Game (Jackpot Feature).
  *
  * Prefab: assets/bundle/JackpotStartPopup.prefab (load qua PopupLoader).
- * Tap / Press to Start → PICK_GAME_START_POPUP_CLOSED → GameManager mở PickGamePopup.
- * Tự đóng sau 30s kể từ lúc mở nếu người chơi chưa bấm.
- * Thay TransitionPopup khi vào Pick từ Normal.
+ * Chỉ dùng UI từ prefab — không tạo Graphics/Label bằng code.
+ * Press / tap → PICK_GAME_START_POPUP_CLOSED → GameManager mở PickGamePopup.
  */
 
 import {
-    _decorator, Component, Node, Label, Button, Color, Graphics, Canvas,
+    _decorator, Component, Node, Label, Button, Canvas,
     UITransform, UIOpacity, BlockInputEvents, Widget, tween, Tween, Vec3,
     EventTouch, input, Input, EventMouse, view,
 } from 'cc';
@@ -21,7 +20,6 @@ import { SoundManager } from '../manager/SoundManager';
 
 const { ccclass, property } = _decorator;
 
-/** Thời gian chờ tối đa trước khi tự vào feature (giây). */
 const AUTO_CLOSE_SECONDS = 30;
 
 @ccclass('JackpotStartPopup')
@@ -33,38 +31,33 @@ export class JackpotStartPopup extends Component {
     @property({ type: Node, tooltip: 'Panel content' })
     popupNode: Node | null = null;
 
-    @property({ type: Label, tooltip: 'Dòng 1: JACKPOT FEATURE AWARD' })
+    @property({ type: Label, tooltip: 'TitleLabel (optional — prefab có sẵn text)' })
     titleLabel: Label | null = null;
 
-    @property({ type: Label, tooltip: 'Dòng 2: Jackpot Feature / Pick Game' })
+    @property({ type: Label, tooltip: 'FeatureLabel (optional)' })
     featureLabel: Label | null = null;
 
-    @property({ type: Label, tooltip: 'Dòng 3: mô tả ngắn (optional)' })
+    @property({ type: Label, tooltip: 'ReelLabel / mô tả (optional)' })
     reelLabel: Label | null = null;
 
-    @property({ type: Label, tooltip: 'Hint: PRESS TO START' })
+    @property({ type: Label, tooltip: 'HintLabel — PRESS TO START (optional)' })
     hintLabel: Label | null = null;
 
-    @property({ type: Button, tooltip: '(Tuỳ chọn) Nút Start riêng' })
+    @property({ type: Button, tooltip: 'Nút Start / Press (optional)' })
     startButton: Button | null = null;
 
-    @property({ type: Node, tooltip: 'Layer bắt tap full-screen' })
+    @property({ type: Node, tooltip: 'Layer bắt tap full-screen (mặc định = Overlay)' })
     clickOverlay: Node | null = null;
 
     private _isOpen = false;
     private _pickState: PickGameState | null = null;
-    private _built = false;
+    private _refsReady = false;
     private _boundPress = () => this._closeAndEnter(true);
     private _autoCloseCb = () => this._closeAndEnter(false);
 
     onLoad(): void {
-        this._ensureUi();
-        if (this.startButton) {
-            this.startButton.node.on(Button.EventType.CLICK, this._boundPress, this);
-        }
-        // KHÔNG set active=false ở đây.
-        // addComponent trên node inactive → onLoad bị defer đến lúc showPopup bật active,
-        // nếu set false ở đây sẽ tắt popup ngay sau khi vừa mở.
+        this._ensureRefs();
+        this.startButton?.node.on(Button.EventType.CLICK, this._boundPress, this);
     }
 
     onDestroy(): void {
@@ -75,10 +68,52 @@ export class JackpotStartPopup extends Component {
 
     showPopup(pickState: PickGameState): void {
         if (this._isOpen) return;
-        this._ensureUi();
+        this._ensureRefs();
         this._pickState = pickState;
         this._isOpen = true;
 
+        this._applyLabels();
+
+        this.node.setScale(1, 1, 1);
+        if (this.overlayNode) {
+            this.overlayNode.setScale(1, 1, 1);
+            this.overlayNode.active = true;
+        }
+        if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
+            this.clickOverlay.setScale(1, 1, 1);
+            this.clickOverlay.active = true;
+        }
+        this.node.active = true;
+        this._fitOverlayFullscreen();
+        EventBus.instance.emit(GameEvents.POPUP_OPENED);
+
+        const panel = this.popupNode;
+        if (panel) {
+            panel.setScale(1, 1, 1);
+            const op = panel.getComponent(UIOpacity) ?? panel.addComponent(UIOpacity);
+            op.opacity = 255;
+            Tween.stopAllByTarget(panel);
+        }
+
+        if (this.hintLabel) {
+            const hn = this.hintLabel.node;
+            Tween.stopAllByTarget(hn);
+            tween(hn)
+                .repeatForever(
+                    tween(hn)
+                        .to(0.55, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'sineInOut' })
+                        .to(0.55, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' }),
+                )
+                .start();
+        }
+
+        this.scheduleOnce(() => this._bindInput(), 0.15);
+        this._scheduleAutoClose();
+
+        Log.d(`[JackpotStartPopup] show — PRESS TO START → Pick Game (auto-close ${AUTO_CLOSE_SECONDS}s)`);
+    }
+
+    private _applyLabels(): void {
         if (this.titleLabel) {
             const award = L('jackpot_feature_award');
             this.titleLabel.string = award.includes('[jackpot_feature_award]')
@@ -103,50 +138,59 @@ export class JackpotStartPopup extends Component {
                 ? 'PRESS TO START'
                 : hint;
         }
+    }
 
-        this.node.setScale(1, 1, 1);
-        if (this.overlayNode) {
-            this.overlayNode.setScale(1, 1, 1);
-            this.overlayNode.active = true;
+    private _ensureRefs(): void {
+        if (this._refsReady) return;
+        this._refsReady = true;
+
+        if (!this.overlayNode) {
+            this.overlayNode = this.node.getChildByName('Overlay');
         }
-        if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
-            this.clickOverlay.setScale(1, 1, 1);
-            this.clickOverlay.active = true;
+        if (!this.popupNode) {
+            this.popupNode = this.node.getChildByName('Panel');
         }
-        this.node.active = true;
-        this._fitOverlayFullscreen();
-        this.scheduleOnce(() => this._fitOverlayFullscreen(), 0);
-        EventBus.instance.emit(GameEvents.POPUP_OPENED);
+        if (!this.clickOverlay) {
+            this.clickOverlay = this.overlayNode;
+        }
 
         const panel = this.popupNode;
         if (panel) {
-            panel.setScale(0.2, 0.2, 1);
-            const op = panel.getComponent(UIOpacity) ?? panel.addComponent(UIOpacity);
-            op.opacity = 255;
-            Tween.stopAllByTarget(panel);
-            tween(panel)
-                .to(0.28, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'backOut' })
-                .to(0.12, { scale: new Vec3(1, 1, 1) }, { easing: 'sineOut' })
-                .start();
+            if (!this.titleLabel) {
+                this.titleLabel = panel.getChildByName('TitleLabel')?.getComponent(Label)
+                    ?? panel.getChildByName('Title')?.getComponent(Label)
+                    ?? null;
+            }
+            if (!this.featureLabel) {
+                this.featureLabel = panel.getChildByName('FeatureLabel')?.getComponent(Label)
+                    ?? panel.getChildByName('Feature')?.getComponent(Label)
+                    ?? null;
+            }
+            if (!this.reelLabel) {
+                this.reelLabel = panel.getChildByName('ReelLabel')?.getComponent(Label)
+                    ?? panel.getChildByName('Reel')?.getComponent(Label)
+                    ?? panel.getChildByName('Desc')?.getComponent(Label)
+                    ?? null;
+            }
+            if (!this.hintLabel) {
+                this.hintLabel = panel.getChildByName('HintLabel')?.getComponent(Label)
+                    ?? panel.getChildByName('Hint')?.getComponent(Label)
+                    ?? panel.getChildByName('Press')?.getComponent(Label)
+                    ?? null;
+            }
+            if (!this.startButton) {
+                this.startButton = panel.getChildByName('Press')?.getComponent(Button)
+                    ?? panel.getChildByName('Start')?.getComponent(Button)
+                    ?? null;
+            }
         }
 
-        if (this.hintLabel) {
-            const hn = this.hintLabel.node;
-            Tween.stopAllByTarget(hn);
-            tween(hn)
-                .repeatForever(
-                    tween(hn)
-                        .to(0.55, { scale: new Vec3(1.08, 1.08, 1) }, { easing: 'sineInOut' })
-                        .to(0.55, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' }),
-                )
-                .start();
+        if (this.overlayNode && !this.overlayNode.getComponent(BlockInputEvents)) {
+            this.overlayNode.addComponent(BlockInputEvents);
         }
-
-        this.scheduleOnce(() => this._bindInput(), 0.15);
-
-        this._scheduleAutoClose();
-
-        Log.d(`[JackpotStartPopup] show — PRESS TO START → Pick Game (auto-close ${AUTO_CLOSE_SECONDS}s)`);
+        if (this.overlayNode && !this.overlayNode.getComponent(UITransform)) {
+            this.overlayNode.addComponent(UITransform);
+        }
     }
 
     private _scheduleAutoClose(): void {
@@ -160,11 +204,15 @@ export class JackpotStartPopup extends Component {
 
     private _bindInput(): void {
         if (!this._isOpen) return;
+
+        if (this.startButton?.node?.isValid) {
+            this.startButton.node.off(Button.EventType.CLICK, this._boundPress, this);
+            this.startButton.node.on(Button.EventType.CLICK, this._boundPress, this);
+        }
+
         const targets = [
             this.clickOverlay,
             this.overlayNode,
-            this.popupNode,
-            this.node,
         ].filter((n): n is Node => !!n?.isValid);
 
         for (const n of targets) {
@@ -183,8 +231,6 @@ export class JackpotStartPopup extends Component {
         const targets = [
             this.clickOverlay,
             this.overlayNode,
-            this.popupNode,
-            this.node,
         ].filter((n): n is Node => !!n?.isValid);
         for (const n of targets) {
             n.off(Node.EventType.TOUCH_END, this._boundPress, this);
@@ -228,23 +274,11 @@ export class JackpotStartPopup extends Component {
             EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP_CLOSED, null);
         }
 
-        const hideOverlay = () => {
-            if (this.overlayNode) this.overlayNode.active = false;
-            if (this.clickOverlay) this.clickOverlay.active = false;
-            this.node.active = false;
-        };
-
-        const panel = this.popupNode;
-        if (panel) {
-            Tween.stopAllByTarget(panel);
-            tween(panel)
-                .to(0.12, { scale: new Vec3(1.05, 1.05, 1) }, { easing: 'sineOut' })
-                .to(0.14, { scale: new Vec3(0.01, 0.01, 1) }, { easing: 'sineIn' })
-                .call(hideOverlay)
-                .start();
-        } else {
-            hideOverlay();
+        if (this.overlayNode) this.overlayNode.active = false;
+        if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
+            this.clickOverlay.active = false;
         }
+        this.node.active = false;
     }
 
     private _fitOverlayFullscreen(): void {
@@ -277,102 +311,6 @@ export class JackpotStartPopup extends Component {
             }
         };
 
-        apply(this.node);
         apply(this.overlayNode);
-        if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
-            apply(this.clickOverlay);
-        }
-    }
-
-    private _ensureUi(): void {
-        if (this._built && this.popupNode?.isValid) return;
-        this._built = true;
-
-        if (this.overlayNode && this.popupNode && this.titleLabel) {
-            if (!this.overlayNode.getComponent(BlockInputEvents)) {
-                this.overlayNode.addComponent(BlockInputEvents);
-            }
-            if (!this.overlayNode.getComponent(UITransform)) {
-                this.overlayNode.addComponent(UITransform);
-            }
-            if (!this.clickOverlay) this.clickOverlay = this.overlayNode;
-            return;
-        }
-
-        // Runtime fallback UI (giống MatsuriStartPopup)
-        const root = this.node;
-        let utf = root.getComponent(UITransform);
-        if (!utf) utf = root.addComponent(UITransform);
-        utf.setContentSize(1080, 1920);
-        if (!root.getComponent(Widget)) {
-            const w = root.addComponent(Widget);
-            w.isAlignTop = w.isAlignBottom = w.isAlignLeft = w.isAlignRight = true;
-            w.top = w.bottom = w.left = w.right = 0;
-            w.alignMode = Widget.AlignMode.ALWAYS;
-        }
-        if (!root.getComponent(BlockInputEvents)) {
-            root.addComponent(BlockInputEvents);
-        }
-
-        const overlay = new Node('Overlay');
-        overlay.setParent(root);
-        const oUt = overlay.addComponent(UITransform);
-        oUt.setContentSize(2000, 2000);
-        const oW = overlay.addComponent(Widget);
-        oW.isAlignTop = oW.isAlignBottom = oW.isAlignLeft = oW.isAlignRight = true;
-        oW.top = oW.bottom = oW.left = oW.right = 0;
-        oW.alignMode = Widget.AlignMode.ALWAYS;
-        const g = overlay.addComponent(Graphics);
-        g.fillColor = new Color(0, 0, 0, 180);
-        g.rect(-1000, -1000, 2000, 2000);
-        g.fill();
-        overlay.addComponent(BlockInputEvents);
-        this.overlayNode = overlay;
-        this.clickOverlay = overlay;
-
-        const panel = new Node('Panel');
-        panel.setParent(root);
-        const pUt = panel.addComponent(UITransform);
-        pUt.setContentSize(720, 420);
-        panel.addComponent(UIOpacity);
-        const pg = panel.addComponent(Graphics);
-        pg.fillColor = new Color(40, 12, 18, 245);
-        pg.roundRect(-360, -210, 720, 420, 28);
-        pg.fill();
-        pg.strokeColor = new Color(255, 180, 60, 220);
-        pg.lineWidth = 4;
-        pg.roundRect(-360, -210, 720, 420, 28);
-        pg.stroke();
-        this.popupNode = panel;
-
-        this.titleLabel = this._makeLabel(panel, 'Title', 42, 160, Color.WHITE, 110);
-        this.featureLabel = this._makeLabel(panel, 'Feature', 34, 60, new Color(255, 200, 100, 255), 50);
-        this.reelLabel = this._makeLabel(panel, 'Desc', 28, -20, new Color(220, 220, 230, 255), 50);
-        this.hintLabel = this._makeLabel(panel, 'Hint', 28, -130, new Color(255, 240, 160, 255), 50);
-    }
-
-    private _makeLabel(
-        parent: Node,
-        name: string,
-        fontSize: number,
-        y: number,
-        color: Color,
-        height: number,
-    ): Label {
-        const n = new Node(name);
-        n.setParent(parent);
-        n.setPosition(0, y, 0);
-        const ut = n.addComponent(UITransform);
-        ut.setContentSize(680, height);
-        const lab = n.addComponent(Label);
-        lab.string = '';
-        lab.fontSize = fontSize;
-        lab.lineHeight = fontSize + 8;
-        lab.color = color;
-        lab.horizontalAlign = Label.HorizontalAlign.CENTER;
-        lab.verticalAlign = Label.VerticalAlign.CENTER;
-        lab.overflow = Label.Overflow.SHRINK;
-        lab.enableWrapText = true;
-        return lab;
     }
 }

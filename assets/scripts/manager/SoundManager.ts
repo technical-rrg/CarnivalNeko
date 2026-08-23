@@ -12,10 +12,10 @@ type ReelStoppedPayload = number | { reelIndex: number; result?: unknown };
 type StickyCellLike = { symbolId?: number; credit?: number };
 
 /** UI volume 100% maps to this actual engine level (keeps relative balance). */
-const VOLUME_BASE_SCALE = 0.8;
+const VOLUME_BASE_SCALE = 1;
 
 /** mx_normal_loop plays at this fraction of the normal BGM level. */
-const MX_NORMAL_LOOP_VOLUME_SCALE = 0.6;
+const MX_NORMAL_LOOP_VOLUME_SCALE = 1;
 
 /** Bundle path (no extension) for clips nulled out of Base.prefab to shrink boot deps. */
 const LAZY_AUDIO_PATHS: Record<string, string> = {

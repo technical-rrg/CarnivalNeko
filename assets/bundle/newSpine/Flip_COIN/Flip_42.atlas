@@ -1,0 +1,174 @@
+
+Flip_42.png
+size: 1521,92
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+Coin/Coin_00000
+  rotate: false
+  xy: 180, 2
+  size: 86, 88
+  orig: 108, 108
+  offset: 11, 10
+  index: -1
+Coin/Coin_00001
+  rotate: false
+  xy: 268, 2
+  size: 86, 88
+  orig: 108, 108
+  offset: 11, 10
+  index: -1
+Coin/Coin_00002
+  rotate: false
+  xy: 531, 2
+  size: 84, 88
+  orig: 108, 108
+  offset: 11, 10
+  index: -1
+Coin/Coin_00003
+  rotate: false
+  xy: 1076, 2
+  size: 61, 88
+  orig: 108, 108
+  offset: 21, 10
+  index: -1
+Coin/Coin_00004
+  rotate: false
+  xy: 1198, 2
+  size: 52, 88
+  orig: 108, 108
+  offset: 26, 10
+  index: -1
+Coin/Coin_00005
+  rotate: false
+  xy: 1252, 2
+  size: 45, 88
+  orig: 108, 108
+  offset: 30, 10
+  index: -1
+Coin/Coin_00006
+  rotate: false
+  xy: 1387, 2
+  size: 32, 88
+  orig: 108, 108
+  offset: 37, 10
+  index: -1
+Coin/Coin_00007
+  rotate: false
+  xy: 1455, 2
+  size: 24, 88
+  orig: 108, 108
+  offset: 42, 10
+  index: -1
+Coin/Coin_00008
+  rotate: false
+  xy: 1506, 2
+  size: 13, 88
+  orig: 108, 108
+  offset: 48, 10
+  index: -1
+Coin/Coin_00009
+  rotate: false
+  xy: 1481, 2
+  size: 23, 88
+  orig: 108, 108
+  offset: 46, 10
+  index: -1
+Coin/Coin_00010
+  rotate: false
+  xy: 1421, 2
+  size: 32, 88
+  orig: 108, 108
+  offset: 42, 10
+  index: -1
+Coin/Coin_00011
+  rotate: false
+  xy: 1346, 2
+  size: 39, 88
+  orig: 108, 108
+  offset: 39, 10
+  index: -1
+Coin/Coin_00012
+  rotate: false
+  xy: 1299, 2
+  size: 45, 88
+  orig: 108, 108
+  offset: 36, 10
+  index: -1
+Coin/Coin_00013
+  rotate: false
+  xy: 1139, 2
+  size: 57, 88
+  orig: 108, 108
+  offset: 30, 10
+  index: -1
+Coin/Coin_00014
+  rotate: false
+  xy: 1011, 2
+  size: 63, 88
+  orig: 108, 108
+  offset: 27, 10
+  index: -1
+Coin/Coin_00015
+  rotate: false
+  xy: 942, 2
+  size: 67, 88
+  orig: 108, 108
+  offset: 25, 10
+  index: -1
+Coin/Coin_00016
+  rotate: false
+  xy: 865, 2
+  size: 75, 88
+  orig: 108, 108
+  offset: 20, 10
+  index: -1
+Coin/Coin_00017
+  rotate: false
+  xy: 785, 2
+  size: 78, 88
+  orig: 108, 108
+  offset: 18, 10
+  index: -1
+Coin/Coin_00018
+  rotate: false
+  xy: 702, 2
+  size: 81, 88
+  orig: 108, 108
+  offset: 16, 10
+  index: -1
+Coin/Coin_00019
+  rotate: false
+  xy: 617, 2
+  size: 83, 88
+  orig: 108, 108
+  offset: 15, 10
+  index: -1
+Coin/Coin_00020
+  rotate: false
+  xy: 444, 2
+  size: 85, 88
+  orig: 108, 108
+  offset: 13, 10
+  index: -1
+Coin/Coin_00021
+  rotate: false
+  xy: 2, 2
+  size: 87, 88
+  orig: 108, 108
+  offset: 11, 10
+  index: -1
+Coin/Coin_00022
+  rotate: false
+  xy: 91, 2
+  size: 87, 88
+  orig: 108, 108
+  offset: 11, 10
+  index: -1
+Coin/Coin_00023
+  rotate: false
+  xy: 356, 2
+  size: 86, 88
+  orig: 108, 108
+  offset: 11, 10
+  index: -1

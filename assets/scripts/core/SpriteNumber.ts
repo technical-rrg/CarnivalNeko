@@ -168,6 +168,12 @@ export class SpriteNumber extends Component {
     })
     shrinkToFit: boolean = false;
 
+    @property({
+        tooltip: 'Dùng cùng shrinkToFit: phóng to hoặc thu nhỏ chữ số để lấp đầy khung contentSize\n' +
+                 '(scale = min(containerW/totalW, containerH/glyphH)). Mặc định tắt — chỉ thu nhỏ khi tràn.',
+    })
+    fillContainer: boolean = false;
+
     // ─── Jolt Effect ──────────────────────────────────────────────────────
 
     @property({
@@ -325,11 +331,18 @@ export class SpriteNumber extends Component {
      */
     private _snapshotContainerDims(): void {
         if (this._shrinkContainerW > 0 || this._shrinkContainerH > 0) return;
+        this.refreshContainerDims();
+    }
+
+    /**
+     * Đọc lại contentSize hiện tại làm khung shrinkToFit / fillContainer.
+     * Gọi khi Editor đổi size, hoặc trước khi lockWidth với khung đã override trên prefab.
+     */
+    public refreshContainerDims(): void {
         const tf = this.node.getComponent(UITransform);
-        if (tf) {
-            this._shrinkContainerW = tf.contentSize.width;
-            this._shrinkContainerH = tf.contentSize.height;
-        }
+        if (!tf) return;
+        this._shrinkContainerW = tf.contentSize.width;
+        this._shrinkContainerH = tf.contentSize.height;
     }
 
     /** Re-render trong Editor khi chỉnh spacing / sprite — không cần gọi setData() thủ công. */
@@ -855,6 +868,19 @@ export class SpriteNumber extends Component {
         const containerW = this.maxWidth > 0 ? this.maxWidth : this._shrinkContainerW;
         const containerH = this._shrinkContainerH;
         const totalWidth = sumSpriteWidth + sumVisualGaps;
+        if (this.fillContainer) {
+            // Phóng to / thu nhỏ để lấp khung — KHÔNG clamp về 1 trước.
+            let scaleRatio = Number.POSITIVE_INFINITY;
+            if (containerW > 0 && totalWidth > 0) {
+                scaleRatio = Math.min(scaleRatio, containerW / totalWidth);
+            }
+            if (containerH > 0 && maxHeight > 0) {
+                scaleRatio = Math.min(scaleRatio, containerH / maxHeight);
+            }
+            if (!Number.isFinite(scaleRatio)) scaleRatio = 1;
+            return Math.max(0.01, scaleRatio);
+        }
+
         let scaleRatio = 1;
         if (containerW > 0 && totalWidth > containerW) {
             scaleRatio = Math.min(scaleRatio, containerW / totalWidth);

@@ -41,7 +41,7 @@ import { SpriteNumber } from '../core/SpriteNumber';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
-import { CLIENT_TO_PS, MatchedLinePay, PS_TO_CLIENT, SymbolId, WaysPayWin, isMajor, isMinor } from '../data/SlotTypes';
+import { CLIENT_TO_PS, MatchedLinePay, PS_TO_CLIENT, SymbolId, WaysPayWin, isHighPaySymbol, isWildSymbol, toSystemPsId } from '../data/SlotTypes';
 import { SoundManager } from '../manager/SoundManager';
 import { AutoSpinManager, SpeedMode } from '../manager/AutoSpinManager';
 import { ReelController } from './ReelController';
@@ -83,6 +83,7 @@ const DEFAULT_SPINE_DATA_PATHS: Readonly<Record<number, string>> = {
     [SymbolId.MAJOR_SOBEK]:     'newSpine/Symbol/13_Win',
     [SymbolId.MAJOR_RAMSES]:    'newSpine/Symbol/14_Win',
     [SymbolId.MAJOR_CLEOPATRA]: 'newSpine/Symbol/15_Win',
+    [SymbolId.WILD]:            'newSpine/Symbol/21_Win',
 };
 
 /** Dữ liệu theo dõi 1 spine node đang active (instantiate từ prefab) */
@@ -207,6 +208,8 @@ export class SymbolHighlighter extends Component {
     /** Callback schedule lặp highlight jackpot */
     private _jackpotCycleCallback: (() => void) | null = null;
     /** Counter tăng mỗi lần REELS_START_SPIN — dùng để tương quan debug logs */
+    private _tmpWorldScale = new Vec3();
+    private _tmpParentWorldScale = new Vec3();
     private _spinCount: number = 0;
     /** Nodes đang được green tint (#77FF42) trong FreeSpin — cần restore về white sau highlight */
     private _greenTintedNodes: Node[] = [];
@@ -326,7 +329,7 @@ export class SymbolHighlighter extends Component {
         this.paylineIndicator?.showWinLine(linePay.payLineIndex);
         if (this._canPlayCycleMatchSound()) {
             // Cycle lẻ: không play wild_layer — có Wild thì dùng high_value.
-            this._playSymbolMatchSound(linePay.matchedSymbols ?? [], linePay.containsWild, false);
+            this._playSymbolMatchSound(linePay.matchedSymbols ?? [], linePay.containsWild, false, 'ps');
         }
         void this._runHighlightWithSpines(cells, this.lineCycleHighlightDuration, false, () => {
             if (USE_SPINE_HIGHLIGHT) this._zoomCells(cells);
@@ -334,43 +337,41 @@ export class SymbolHighlighter extends Component {
     }
 
     /**
-     * Play đúng 1 SFX match:
-     *   allowWildLayer + có Wild → sx_symbol_match_wild_layer (chỉ show-all / multiply)
-     *   có Wild nhưng cycle lẻ → sx_symbol_match_high_value
-     *   highCount > lowCount → sx_symbol_match_high_value
-     *   còn lại → sx_symbol_match_low_value
+     * Play đúng 1 SFX match + emit cat tier.
+     * System ID: High = 11..15 → Win_lv1 | còn lại (kể cả Wild=21) → Win_Lv2.
+     * @param idSpace 'ps' = matchedSymbols server; 'client' = WaysPayWin (map → PS trước khi check).
      */
-    private _playSymbolMatchSound(syms: number[], containsWild = false, allowWildLayer = false): void {
+    private _playSymbolMatchSound(
+        syms: number[],
+        containsWild = false,
+        allowWildLayer = false,
+        idSpace: 'ps' | 'client' = 'ps',
+    ): void {
         const snd = SoundManager.instance;
         if (!snd) return;
 
-        const clientSyms = this._normalizeSymbols(syms);
-        if (clientSyms.includes(SymbolId.MAJOR_CLEOPATRA)) {
+        // So theo system/PS: high 11–15, wild 21
+        const hasHighSymbol = syms.some(s => isHighPaySymbol(s, idSpace));
+        const hasWild = containsWild || syms.some(s => isWildSymbol(s, idSpace));
+
+        // Girl SFX: Cleopatra = system 15
+        const hasGirl = syms.some(s => toSystemPsId(s, idSpace) === 15);
+        if (hasGirl) {
             snd.playGirlSymbolAnim();
         }
 
-        const hasWild = containsWild || clientSyms.includes(SymbolId.WILD);
+        // SFX (Wild=21 ưu tiên âm thanh — không gắn cat tier)
         if (hasWild && allowWildLayer) {
             snd.playSymbolMatchWild();
-            return;
-        }
-        if (hasWild) {
-            // Cycle line/way lẻ: Wild → high_value (wild_layer chỉ 1 lần ở show-all)
+        } else if (hasWild || hasHighSymbol) {
             snd.playSymbolMatchHigh();
+        } else if (syms.length > 0 || hasWild) {
+            snd.playSymbolMatchLow();
+        } else {
             return;
         }
-        if (clientSyms.length === 0) return;
 
-        let high = 0;
-        let low = 0;
-        for (const s of clientSyms) {
-            if (isMajor(s)) high++;
-            else if (isMinor(s)) low++;
-        }
-        if (high === 0 && low === 0) return;
-
-        if (high > low) snd.playSymbolMatchHigh();
-        else snd.playSymbolMatchLow();
+        EventBus.instance.emit(GameEvents.WIN_SYMBOL_MATCH_TIER, hasHighSymbol ? 'high' : 'low');
     }
 
     /** Cycle line/way lẻ: chỉ play khi không popup và chưa vào Feature. */
@@ -445,11 +446,11 @@ export class SymbolHighlighter extends Component {
         // Nếu chỉ có 1 line win duy nhất → loop spine animation thay vì play once
         this.paylineIndicator?.showMultipleWinLines(lines.map(l => l.payLineIndex));
 
-        // Match SFX: Wild ưu tiên; không thì high vs low theo số lượng symbol.
+        // Match SFX: high = PS 11–15 trong matchedSymbols (Wild không ép cat Win_lv1).
         const allSyms = lines.flatMap(l => l.matchedSymbols ?? []);
         const hasWild = lines.some(l => l.containsWild)
-            || this._normalizeSymbols(allSyms).includes(SymbolId.WILD);
-        this._playSymbolMatchSound(allSyms, hasWild, true);
+            || allSyms.some(s => isWildSymbol(s, 'ps'));
+        this._playSymbolMatchSound(allSyms, hasWild, true, 'ps');
 
         // Chờ prefab (Wild/11…) sẵn sàng TRƯỚC fillBlack — tránh overlay hiện sớm hơn spine.
         void this._runHighlightWithSpines(allCells, duration ?? this.showAllHighlightDuration, loopSpine)
@@ -486,15 +487,15 @@ export class SymbolHighlighter extends Component {
         this._deactivateAllSpines();
         // Zoom cho gold coin được xử lý trong _applyGreenTint (gọi từ _activateSpinesForCells)
 
-        // Match SFX: Wild ưu tiên; không thì đếm high/low theo từng ô trong mọi way.
+        // Match SFX: high = client MAJOR (6–10); Wild không ép cat Win_lv1.
         const waySyms: number[] = [];
         let hasWild = false;
         for (const w of ways) {
-            if (w.containsWild || w.symbolId === SymbolId.WILD) hasWild = true;
+            if (w.containsWild || isWildSymbol(w.symbolId, 'client')) hasWild = true;
             const n = Math.max(1, w.cells?.length ?? 1);
             for (let i = 0; i < n; i++) waySyms.push(w.symbolId);
         }
-        this._playSymbolMatchSound(waySyms, hasWild, true);
+        this._playSymbolMatchSound(waySyms, hasWild, true, 'client');
 
         // Chờ prefab (Wild/11…) sẵn sàng TRƯỚC fillBlack — tránh overlay hiện sớm hơn spine.
         void this._runHighlightWithSpines(allCells, duration ?? this.showAllHighlightDuration, loopSpine)
@@ -540,7 +541,12 @@ export class SymbolHighlighter extends Component {
             const n = Math.max(1, way.cells?.length ?? 1);
             const syms = Array(n).fill(way.symbolId);
             // Cycle lẻ: không play wild_layer — có Wild thì dùng high_value.
-            this._playSymbolMatchSound(syms, way.containsWild || way.symbolId === SymbolId.WILD, false);
+            this._playSymbolMatchSound(
+                syms,
+                way.containsWild || isWildSymbol(way.symbolId, 'client'),
+                false,
+                'client',
+            );
         }
 
         // Deactivate spine/bounce cho symbol không còn trong way mới (cả active + pending)
@@ -1024,7 +1030,7 @@ export class SymbolHighlighter extends Component {
                         Log.e(`[FreeYellow] REPLAY clone col=${col} row=${row}`);
                     }
                     const sv = symbolNode.getComponent(SymbolView);
-                    const symScale = sv?.getBaseScale() ?? 1;
+                    const symScale = this._getHighlightScale(symbolNode, sv ?? undefined, this.paylineManagerNode);
                     clone.setScale(symScale, symScale, 1);
                     clone.setParent(this.paylineManagerNode, true);
                     clone.setWorldPosition(symbolNode.getWorldPosition());
@@ -1076,19 +1082,12 @@ export class SymbolHighlighter extends Component {
                 if (view) view.setSpriteVisible(false);
             }
 
-            const posX = this.spineLocalPosX[symId] ?? 0;
-            const posY = this.spineLocalPosY[symId] ?? 0;
-
             if (this.paylineManagerNode) {
                 // Parent vào PaylineManager để nằm trên cùng, tách biệt reel
                 spineNode.setParent(this.paylineManagerNode, false);
-                spineNode.setWorldPosition(symbolNode.getWorldPosition());
                 // Chỉ Wild được đẩy lên sibling index cao nhất; các symbol khác giữ mặc định append
                 if (symId === SymbolId.WILD) {
                     spineNode.setSiblingIndex(this.paylineManagerNode.children.length - 1);
-                }
-                if (posX !== 0 || posY !== 0) {
-                    spineNode.setPosition(spineNode.position.x + posX, spineNode.position.y + posY, spineNode.position.z);
                 }
                 // Freemode + STICKY_YELLOW: clone symbolNode cho paylineManagerNode,
                 // sibling index cao hơn spine effect để clone nằm trên effect highlight.
@@ -1099,7 +1098,7 @@ export class SymbolHighlighter extends Component {
                         this._yellowClones.set(symbolNode, clone);
                         Log.e(`[FreeYellow] NEW clone col=${col} row=${row}`);
                     }
-                    const symScale = view?.getBaseScale() ?? 1;
+                    const symScale = this._getHighlightScale(symbolNode, view, this.paylineManagerNode);
                     clone.setScale(symScale, symScale, 1);
                     clone.setParent(this.paylineManagerNode, true);
                     clone.setWorldPosition(symbolNode.getWorldPosition());
@@ -1123,8 +1122,17 @@ export class SymbolHighlighter extends Component {
             } else {
                 spineNode.setParent(symbolNode, false);
                 spineNode.setSiblingIndex(0);
-                spineNode.setPosition(posX, posY, 0);
             }
+            this._syncSpineTransform({
+                spineNode,
+                skel: null,
+                view: view ?? null,
+                symId,
+                symbolNode,
+                _onSymChanged: null,
+                loop: false,
+                gen: this._spineGen,
+            });
             spineNode.active = true;
             if (DEBUG) console.log(`[HighlightDebug] cell(${col},${row}) CREATE spine from prefab symId=${symId}`);
 
@@ -1202,7 +1210,7 @@ export class SymbolHighlighter extends Component {
             this._spriteBounceClones.set(symbolNode, clone);
         }
 
-        const baseScale = view?.getBaseScale() ?? this._getDefaultScale(symbolNode);
+        const baseScale = this._getHighlightScale(symbolNode, view, this.paylineManagerNode);
         clone.setScale(baseScale, baseScale, 1);
         clone.setParent(this.paylineManagerNode, true);
         clone.setWorldPosition(symbolNode.getWorldPosition());
@@ -1287,7 +1295,7 @@ export class SymbolHighlighter extends Component {
         entry.spineNode = bounceNode;
 
         Tween.stopAllByTarget(bounceNode);
-        const baseScale = entry.view?.getBaseScale() ?? this._getDefaultScale(symbolNode);
+        const baseScale = this._getHighlightScale(symbolNode, entry.view, this.paylineManagerNode);
         bounceNode.setScale(baseScale, baseScale, 1);
 
         if (!this._bounceOrigPos.has(bounceNode)) {
@@ -1338,7 +1346,7 @@ export class SymbolHighlighter extends Component {
         }
 
         if (symbolNode?.isValid) {
-            const baseScale = entry.view?.getBaseScale() ?? this._getDefaultScale(symbolNode);
+            const baseScale = this._getHighlightScale(symbolNode, entry.view, this.paylineManagerNode);
             symbolNode.setScale(baseScale, baseScale, 1);
             entry.spineNode = symbolNode;
         }
@@ -1408,6 +1416,7 @@ export class SymbolHighlighter extends Component {
 
         // Đảm bảo spine vẫn active (pending entries đã bị deactivate chưa? Không nữa)
         if (!entry.spineNode.active) entry.spineNode.active = true;
+        this._syncSpineTransform(entry);
 
         // Wild: luôn loop khi highlight (nhất quán với logic tạo mới)
         const shouldLoop = entry.symId === SymbolId.WILD || (entry.symId !== SymbolId.WILD && entry.loop) || entry.symId === SymbolId.STICKY_YELLOW;
@@ -1923,8 +1932,51 @@ export class SymbolHighlighter extends Component {
 
     /** Lấy base scale từ SymbolView (ExtraTop/ExtraBot = 0.8). Mặc định = 1 nếu không tìm thấy. */
     private _getDefaultScale(symbolNode: Node): number {
-        const view = symbolNode.getComponent(SymbolView);
-        return view?.getBaseScale() ?? 1;
+        return this._getHighlightScale(symbolNode);
+    }
+
+    /** Scale hiệu lực của symbol khi highlight — world scale so với parent spine (không dùng defaultScale cứng). */
+    private _getHighlightScale(symbolNode: Node, view?: SymbolView | null, spineParent?: Node | null): number {
+        symbolNode.getWorldScale(this._tmpWorldScale);
+        const symAbs = Math.abs(this._tmpWorldScale.x);
+        if (Number.isFinite(symAbs) && symAbs > 1e-6) {
+            const parent = spineParent ?? this.paylineManagerNode;
+            if (parent?.isValid) {
+                parent.getWorldScale(this._tmpParentWorldScale);
+                const parAbs = Math.abs(this._tmpParentWorldScale.x);
+                if (parAbs > 1e-6) return symAbs / parAbs;
+            }
+            return symAbs;
+        }
+        const sx = symbolNode.scale.x;
+        if (Number.isFinite(sx) && sx > 0) return sx;
+        const v = view ?? symbolNode.getComponent(SymbolView);
+        return v?.defaultScale ?? 1;
+    }
+
+    /** Đồng bộ vị trí + scale spine highlight theo symbol (paylineManager = world scale; child = inherit). */
+    private _syncSpineTransform(entry: ActiveSpineEntry): void {
+        const { spineNode, symbolNode, view, symId } = entry;
+        if (!spineNode?.isValid || !symbolNode?.isValid) return;
+
+        const posX = this.spineLocalPosX[symId] ?? 0;
+        const posY = this.spineLocalPosY[symId] ?? 0;
+
+        if (this.paylineManagerNode && spineNode.parent === this.paylineManagerNode) {
+            spineNode.setWorldPosition(symbolNode.getWorldPosition());
+            const scale = this._getHighlightScale(symbolNode, view, this.paylineManagerNode);
+            spineNode.setScale(scale, scale, 1);
+            if (posX !== 0 || posY !== 0) {
+                const p = spineNode.position;
+                spineNode.setPosition(p.x + posX, p.y + posY, p.z);
+            }
+            return;
+        }
+
+        if (spineNode.parent === symbolNode) {
+            spineNode.setScale(1, 1, 1);
+            spineNode.setPosition(posX, posY, 0);
+        }
     }
 
     /**

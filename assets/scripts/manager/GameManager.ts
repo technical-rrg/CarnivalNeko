@@ -49,6 +49,7 @@ import {
     parseCnStickyCells,
     pickMatsuriStartCoinCells,
     lookupCnStickyCredit,
+    sortMatsuriCellsTopBottomLeftRight,
 } from '../data/MatsuriGridUtil';
 import { buildCarnivalFeatureFromSpin, burstPotsForKind } from '../data/CarnivalFeatureResolve';
 
@@ -604,6 +605,7 @@ export class GameManager extends Component {
         bus.on(GameEvents.MATSURI_SEED_CELL,                this._onMatsuriSeedCell, this);
         bus.on(GameEvents.MATSURI_SEED_DONE,                this._onMatsuriSeedDone, this);
         bus.on(GameEvents.MATSURI_START_POPUP_CLOSED,       this._onMatsuriStartPopupClosed, this);
+        bus.on(GameEvents.MATSURI_START_POPUP_INTRO_DONE,   this._warmFeatureAfterStartPopup, this);
         bus.on(GameEvents.PICK_GAME_START_POPUP_CLOSED,     this._onJackpotStartPopupClosed, this);
         bus.on(GameEvents.CARNIVAL_RED_ENVELOPE_CLOSED,     this._onRedEnvelopePopupClosed, this);
         bus.on(GameEvents.POT_TRANSITION_END,                this._onPotTransitionEnd,       this);
@@ -1120,7 +1122,7 @@ export class GameManager extends Component {
     private _startCarnivalPotBurst(feature: CarnivalFeatureTrigger): void {
         this._pendingCarnivalAfterBurst = feature;
         this.unschedule(this._carnivalBurstFallback);
-        this.scheduleOnce(this._carnivalBurstFallback, 2.0);
+        this.scheduleOnce(this._carnivalBurstFallback, 4.2);
         // Burst: chỉ cache Prefab overlay (không instantiate) — instantiate sau khi popup scale-in xong
         this._prefetchOverlayPrefabOnly();
         this.unschedule(this._prefetchFeatureBackground);
@@ -1166,10 +1168,9 @@ export class GameManager extends Component {
         this._pendingMatsuriStartFeature = feature;
         this._gameState = GameState.IDLE;
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
-        // Không instantiate overlay/BG trên frame hiện popup — để scale-in mượt
+        // Warm StickyOverlay / BG Feature sau slam-in (INTRO_DONE) — không chạy giữa animation
         this.unschedule(this._prefetchFeatureBackground);
         this.unschedule(this._warmFeatureAfterStartPopup);
-        this.scheduleOnce(this._warmFeatureAfterStartPopup, 0.5);
         Log.e(`[GameManager] MATSURI_START_POPUP → "${feature.featureName}" 5x${feature.matsuriRows}`);
         EventBus.instance.emit(GameEvents.MATSURI_START_POPUP, feature);
         // Failsafe nếu PopupLoader miss event
@@ -1692,11 +1693,9 @@ export class GameManager extends Component {
         return golds;
     }
 
-    /** Visual / fly Yellow: trái → phải, trên → dưới (row 0 = top). */
+    /** Visual collect: cột trái → phải, trong cột trên → dưới (row 0 = top). */
     private _sortMatsuriLeftRightTopBottom(cells: StickyCell[]): StickyCell[] {
-        return [...cells].sort((a, b) =>
-            a.reel !== b.reel ? a.reel - b.reel : a.row - b.row,
-        );
+        return sortMatsuriCellsTopBottomLeftRight(cells);
     }
 
     /**

@@ -148,7 +148,7 @@ export enum SymbolId {
     MAJOR_RAMSES = 9,
     MAJOR_CLEOPATRA = 10,
     // ── Special ──
-    WILD = 11,             // PS 21
+    WILD = 11,             // Client index — system/PS Wild = 21 (PS_WILD_ID)
     STICKY_YELLOW = 13,    // CN Sticky_02 Gold — PS 45
     STICKY_GREEN = 14,     // CN Sticky_01 Green — PS 44
     // (12, 15 reserved — legacy STICKY_RED / PLUS_ONE_SPIN removed)
@@ -335,10 +335,24 @@ export function cnFreeSpinStripGroupStart(apiFeatureType: number): number {
     return t * 5;
 }
 
-/** Helper: kiểm tra symbol là Major (6–10) */
+/** Helper: kiểm tra symbol là Major (client 6–10) */
 export function isMajor(s: number): boolean { return s >= SymbolId.MAJOR_HORUS && s <= SymbolId.MAJOR_CLEOPATRA; }
-/** Helper: kiểm tra symbol là Minor (0–5) */
+/** Helper: kiểm tra symbol là Minor (client 0–5) */
 export function isMinor(s: number): boolean { return s >= SymbolId.MINOR_9 && s <= SymbolId.MINOR_A; }
+
+/** PS/system High pay ID 11–15 (High01–05). */
+export function isHighPayPsId(psId: number): boolean {
+    return psId >= 11 && psId <= 15;
+}
+
+/** PS/system Low pay ID 1–6 (Low01–06). */
+export function isLowPayPsId(psId: number): boolean {
+    return psId >= 1 && psId <= 6;
+}
+
+/** PS/system Wild ID — luôn là 21 (không phải 11). */
+export const PS_WILD_ID = 21;
+
 /** Helper: kiểm tra symbol là Sticky (Red/Yellow/Green) */
 export function isSticky(s: number): boolean {
     return s === SymbolId.STICKY_YELLOW || s === SymbolId.STICKY_GREEN;
@@ -426,6 +440,34 @@ export const CLIENT_TO_PS: Record<number, number> = {
     [SymbolId.JP_GRAND]:        82,
     [SymbolId.JP_UPGRADE]:      86,
 };
+
+/**
+ * Đưa về PS/system ID để so high/wild.
+ *   'ps'     : matchedSymbols server — giữ nguyên (11–15 = high, 21 = wild)
+ *   'client' : WaysPayWin.symbolId — map qua CLIENT_TO_PS (client WILD → PS 21)
+ */
+export function toSystemPsId(rawId: number, idSpace: 'ps' | 'client' = 'ps'): number {
+    if (idSpace === 'client') {
+        const ps = CLIENT_TO_PS[rawId];
+        return ps !== undefined ? ps : rawId;
+    }
+    return rawId;
+}
+
+/** High pay = system ID 11–15. Wild (21) không phải high. */
+export function isHighPaySymbol(rawId: number, idSpace: 'ps' | 'client' = 'ps'): boolean {
+    return isHighPayPsId(toSystemPsId(rawId, idSpace));
+}
+
+/** Low pay = system ID 1–6. */
+export function isLowPaySymbol(rawId: number, idSpace: 'ps' | 'client' = 'ps'): boolean {
+    return isLowPayPsId(toSystemPsId(rawId, idSpace));
+}
+
+/** Wild = system ID 21. */
+export function isWildSymbol(rawId: number, idSpace: 'ps' | 'client' = 'ps'): boolean {
+    return toSystemPsId(rawId, idSpace) === PS_WILD_ID;
+}
 
 export function psToClientSymbol(psId: number): number {
     return PS_TO_CLIENT[psId] ?? -1;

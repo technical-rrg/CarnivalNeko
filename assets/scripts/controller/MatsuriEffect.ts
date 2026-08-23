@@ -3,12 +3,12 @@
  *
  * TIMELINE
  *  A) VÀO FEATURE (SEED)
- *     bắn orb lần lượt xuống reel → sticky vàng hiện đủ
- *     → nhún highlight song song lệch pha (L→R, trên→dưới) → SEED_DONE → spin
+ *     Cat Spine: riseup → bonus từng vòng; vòng bonus xong → 1 quả cầu; hết cầu → dừng anim
+ *     → sticky vàng hiện đủ → SEED_DONE → spin
  *  B) GREEN LAND (COLLECT)
- *     nhún sticky vàng → clone vàng hút tiền về UI tổng
- *     → đồng thời nhún các Green (trước khi lật)
- *     → flip Green đó → Gold + CreditLabel
+ *     → Coin_Impact2 vàng lần lượt → clone vàng hút tiền về UI tổng
+ *     → đồng thời Green chạy Coin_Anim_Loop (trước khi lật)
+ *     → Transition_GoldCoin flip Green → Gold + CreditLabel
  *     → Green kế (đã thành Yellow nên bị hút lại)
  *
  * INSPECTOR: seedSourceNode / seedOrbTemplate / collectTargetNode
@@ -29,6 +29,7 @@ import {
     clampMatsuriRows,
     matsuriGridFitScale,
     matsuriCellSize,
+    sortMatsuriCellsTopBottomLeftRight,
     MATSURI_CELL_SIZE,
 } from '../data/MatsuriGridUtil';
 import { SpriteNumber } from '../core/SpriteNumber';
@@ -36,7 +37,7 @@ import { StickyOverlayController } from './StickyOverlayController';
 import { StickyFillEffect } from './StickyFillEffect';
 import { TopUpAbsorbEffect } from './TopUpAbsorbEffect';
 import { TopUpManager } from './TopUpManager';
-import { TOPUP_STICKY_SYMBOL_SCALE, GRID_MINI_COIN_SIZE } from './TopUpReelController';
+import { GRID_MINI_COIN_SIZE } from './TopUpReelController';
 import { SymbolView } from './SymbolView';
 import { SoundManager } from '../manager/SoundManager';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
@@ -54,7 +55,7 @@ const SEED_ORB_HOP_Y = 60;
 /** Thời gian hop. */
 const SEED_ORB_HOP_DURATION = 0.12;
 const SEED_ORB_SCALE_IN_DURATION = 0.18;
-/** ★ Delay giữa LẦN BẮT ĐẦU bắn 2 quả cầu (bay song song, không chờ land). */
+/** ★ Delay giữa LẦN BẮT ĐẦU bắn 2 quả cầu — dùng fallback khi không có Cat Spine. */
 const SEED_ORB_LAUNCH_INTERVAL = 0.4;
 /** ★ Vận tốc rơi quả cầu Seed → ô StickyOverlay (px/s). Lớn = bay nhanh. */
 const SEED_ORB_SPEED = 620;
@@ -62,17 +63,10 @@ const SEED_ORB_SPEED = 620;
 /** Camera 3D vẽ Circle-Light (layer DEFAULT). Mặc định scene: pos (960,540) = tâm 1920×1080 gốc trái. */
 const PARTICLE_3D_CAMERA_NAME = 'Particle3DCamera';
 
-// ── B) HIGHLIGHT — nhún sticky vàng song song, lệch pha (sau seed / trước bay tiền)
-/** ★ Hay chỉnh: cách bao lâu thì BẮT ĐẦU nhún sticky kế (song song, không chờ xong). */
-const HIGHLIGHT_STAGGER = 0.05;
-/** Trần thời điểm sticky CUỐI bắt đầu nhún — grid gần đầy thì nén stagger lại. */
-const HIGHLIGHT_LAUNCH_WINDOW = 0.5;
-/** Thời lượng 1 nhún của 1 sticky (scale+nhảy Y rồi settle). */
-const HIGHLIGHT_BOUNCE_DURATION = 0.5;
-/** Độ cao nhảy Y (pixel) khi nhún. */
-const HIGHLIGHT_JUMP_Y = 16;
-/** Nghỉ ngắn sau khi nhún hết tất cả, trước khi clone bay tiền. */
+// ── B) COLLECT — Coin_Impact2 vàng trước khi bay tiền ────────────────────────
 const DELAY_BEFORE_FLY = 0.04;
+/** Delay giữa mỗi Coin_Impact2 — trái→phải, trên→dưới (Normal speed). */
+const GOLD_IMPACT2_STAGGER = 0.12;
 
 // ── C) FLY — clone sticky vàng bay về UI tổng tiền ────────────────────────────
 /** Fallback vận tốc clone vàng (px/s). */
@@ -130,9 +124,17 @@ export class MatsuriEffect extends Component {
     })
     topUpAbsorbEffect: TopUpAbsorbEffect | null = null;
 
+    @property({
+        tooltip: 'Delay giữa mỗi Coin_Impact2 (giây, Normal). Trái→phải, trên→dưới.',
+    })
+    goldImpact2Stagger: number = GOLD_IMPACT2_STAGGER;
+
     // ── State ─────────────────────────────────────────────────────────────────
 
+    /** Đang chờ Cat Spine bắn từng quả cầu seed. */
     private _seedBusy = false;
+    private _seedOrbQueue: StickyCell[] = [];
+    private _seedLaunchPromises: Promise<void>[] = [];
     private _collectBusy = false;
     private _collectCells: StickyCell[] = [];
     /** Sequential: chỉ nhún Green đang tới lượt. null = mọi Green trên lưới. */
@@ -160,6 +162,7 @@ export class MatsuriEffect extends Component {
     onLoad(): void {
         const bus = EventBus.instance;
         bus.on(GameEvents.MATSURI_SEED_START, this._onSeedStart, this);
+        bus.on(GameEvents.MATSURI_SEED_CAT_ORB_FIRE, this._onSeedCatOrbFire, this);
         bus.on(GameEvents.MATSURI_COLLECT_START, this._onCollectStart, this);
         bus.on(GameEvents.CARNIVAL_MATSURI_START, this._onMatsuriStart, this);
         bus.on(GameEvents.CARNIVAL_MATSURI_END, this._onMatsuriEnd, this);
@@ -177,10 +180,17 @@ export class MatsuriEffect extends Component {
         this.stickyOverlay = overlay;
     }
 
+    /** Cột trái→phải, trong cột trên→dưới (row 0 = top). */
+    private _sortCollectOrder(cells: StickyCell[]): StickyCell[] {
+        return sortMatsuriCellsTopBottomLeftRight(cells);
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     private _onMatsuriStart(): void {
         this._seedBusy = false;
+        this._seedOrbQueue = [];
+        this._seedLaunchPromises = [];
         this._collectBusy = false;
         this._collectCells = [];
         this.unscheduleAllCallbacks();
@@ -193,6 +203,8 @@ export class MatsuriEffect extends Component {
 
     private _onMatsuriEnd(): void {
         this._seedBusy = false;
+        this._seedOrbQueue = [];
+        this._seedLaunchPromises = [];
         this._collectBusy = false;
         this._collectCells = [];
         this.stickyOverlay?.setMatsuriDeferGoldLandBounce(false);
@@ -237,7 +249,7 @@ export class MatsuriEffect extends Component {
         }
         this._resolveRefs();
 
-        const cells = this._sortLeftRightTopBottom(payload?.cells ?? []);
+        const cells = payload?.cells ?? [];
 
         if (cells.length === 0) {
             EventBus.instance.emit(GameEvents.MATSURI_SEED_DONE);
@@ -250,43 +262,56 @@ export class MatsuriEffect extends Component {
     }
 
     /**
-     * Seed: bắn song song lệch pha theo SEED_ORB_LAUNCH_INTERVAL
-     * (không chờ orb trước land xong). Bay/land giống StickyFillEffect.
-     * Tất cả land xong → highlight → SEED_DONE.
+     * Seed: Cat riseup → bonus loop; mỗi lần bonus → bắn 1 quả cầu (MATSURI_SEED_CAT_ORB_FIRE).
      */
     private async _runSeedSequence(cells: StickyCell[]): Promise<void> {
         this.stickyOverlay?.setMatsuriDeferGoldLandBounce(true);
         try {
             this.stickyOverlay?.alignPositionsFromTopUpManager();
+            const ordered = this._sortCollectOrder(cells);
             this._syncParticle3DCamera();
             const fill = this._stickyFillRef();
-            const popDur = this.stickyOverlay?.matsuriSeedPopDuration ?? this._dur(0.22);
 
-            // Orb i bắt đầu sau i * interval — bay song song
-            const jobs: Promise<void>[] = [];
-            const launchInterval = this._dur(SEED_ORB_LAUNCH_INTERVAL);
-            for (let i = 0; i < cells.length; i++) {
-                const delay = i * launchInterval;
-                const cell = cells[i];
-                jobs.push(
-                    this._wait(delay).then(() => this._seedLaunchOneLikeFill(cell, fill)),
-                );
+            this._seedOrbQueue = [...ordered];
+            this._seedLaunchPromises = [];
+
+            const maxWait = this._dur(Math.max(3, ordered.length * 1.8 + 2));
+            const waitStart = Date.now();
+            while (
+                this._seedOrbQueue.length > 0
+                && (Date.now() - waitStart) < maxWait * 1000
+            ) {
+                await this._wait(0.05);
             }
-            await Promise.all(jobs);
-            // Chờ pop của quả cuối (land gần nhất) settle
-            await this._wait(popDur + this._dur(0.08));
 
-            await this._phaseHighlightStaggered(cells);
+            while (this._seedOrbQueue.length > 0) {
+                const cell = this._seedOrbQueue.shift()!;
+                this._seedLaunchPromises.push(this._seedLaunchOneLikeFill(cell, fill));
+            }
+
+            await Promise.all(this._seedLaunchPromises);
+            const popDur = this.stickyOverlay?.matsuriSeedPopDuration ?? this._dur(0.22);
+            await this._wait(popDur + this._dur(0.08));
 
             this.stickyOverlay?.snapActiveCoinsToReelRest();
             await this._wait(this._dur(0.2));
         } catch {
             // seed failsafe
         }
+        this._seedOrbQueue = [];
+        this._seedLaunchPromises = [];
         this.stickyOverlay?.setMatsuriDeferGoldLandBounce(false);
         this._seedBusy = false;
         this._clearOrbs();
         EventBus.instance.emit(GameEvents.MATSURI_SEED_DONE);
+    }
+
+    /** Cat bonus loop — bắn quả cầu kế trong queue. */
+    private _onSeedCatOrbFire(): void {
+        if (!this._seedBusy || this._seedOrbQueue.length === 0) return;
+        const cell = this._seedOrbQueue.shift()!;
+        const fill = this._stickyFillRef();
+        this._seedLaunchPromises.push(this._seedLaunchOneLikeFill(cell, fill));
     }
 
     private _stickyFillRef(): StickyFillEffect | null {
@@ -535,7 +560,7 @@ export class MatsuriEffect extends Component {
         this._resolveRefs();
         this._cleanupClones();
 
-        const cells = this._sortLeftRightTopBottom(
+        const cells = this._sortCollectOrder(
             (payload?.goldCells ?? [])
                 .filter(c =>
                     (c.symbolId === MATSURI_GOLD_SYMBOL || c.symbolId === SymbolId.STICKY_YELLOW)
@@ -561,24 +586,27 @@ export class MatsuriEffect extends Component {
         this._collectBusy = true;
         this._collectCells = cells;
         this._bounceGreenCells = (payload?.bounceGreens?.length ?? 0) > 0
-            ? this._sortLeftRightTopBottom(payload!.bounceGreens!)
+            ? this._sortCollectOrder(payload!.bounceGreens!)
             : null;
         void this._runCollectSequence();
     }
 
     /**
-     * Collect: vàng nhún → hút tiền về UI; Green nhún trong lúc vàng bay; rồi flip.
+     * Collect: Coin_Impact2 vàng → hút tiền về UI; Green Coin_Anim_Loop trong lúc bay; rồi flip.
      */
     private async _runCollectSequence(): Promise<void> {
+        this.stickyOverlay?.alignPositionsFromTopUpManager();
+        const ordered = this._sortCollectOrder(this._collectCells);
+        this._collectCells = ordered;
         try {
-            await this._phaseHighlightStaggered(this._collectCells);
+            await this._phaseGoldImpact2Staggered(ordered);
             if (DELAY_BEFORE_FLY > 0) await this._wait(this._dur(DELAY_BEFORE_FLY));
-            const fly = this._phaseFlyAll();
-            await Promise.all([fly, this._phaseBounceGreensUntil(fly)]);
+            const fly = this._phaseFlyAll(ordered);
+            await Promise.all([fly, this._phaseGreenAnimLoopUntil(fly)]);
         } catch {
             // collect failsafe
         }
-        this._stopGreenCollectBounce();
+        this._stopGreenCollectAnimLoop();
         this._collectBusy = false;
         this._bounceGreenCells = null;
         this._cleanupClones();
@@ -595,111 +623,63 @@ export class MatsuriEffect extends Component {
         for (const cell of GameData.instance.stickyCells.values()) {
             if (cell.symbolId === SymbolId.STICKY_GREEN) greens.push(cell);
         }
-        return this._sortLeftRightTopBottom(greens);
+        return this._sortCollectOrder(greens);
     }
 
-    /** Green nhún liên tục khi vàng đang hút tiền — dừng khi fly xong. */
-    private async _phaseBounceGreensUntil(until: Promise<void>): Promise<void> {
+    /** Green Coin_Anim_Loop khi vàng đang hút tiền — dừng khi fly xong. */
+    private async _phaseGreenAnimLoopUntil(until: Promise<void>): Promise<void> {
         const greens = this._getGreenStickyCells();
-        if (greens.length === 0) {
-            await until;
-            return;
+        for (const cell of greens) {
+            const src = this.stickyOverlay?.getCoinSlot(cell.reel, cell.row) ?? null;
+            if (src?.active && isValid(src) && this.stickyOverlay) {
+                void this.stickyOverlay.playGreenCoinAnimLoopAtSlot(src);
+            }
         }
-        let finished = false;
-        const mark = until.then(() => { finished = true; });
-        while (!finished && this._collectBusy) {
-            await this._phaseHighlightStaggered(greens);
-        }
-        await mark;
-        this._stopGreenCollectBounce(greens);
+        await until;
+        this._stopGreenCollectAnimLoop(greens);
     }
 
-    private _stopGreenCollectBounce(cells?: StickyCell[]): void {
+    private _stopGreenCollectAnimLoop(cells?: StickyCell[]): void {
         const greens = cells ?? this._getGreenStickyCells();
         for (const cell of greens) {
             const node = this.stickyOverlay?.getCoinSlot(cell.reel, cell.row);
-            if (node?.isValid) Tween.stopAllByTarget(node);
+            if (node?.isValid) this.stickyOverlay?.clearGreenCoinAnimLoopAtSlot(node);
         }
-        this.stickyOverlay?.snapActiveCoinsToReelRest();
     }
 
     /**
-     * Nhún song song: sticky i bắt đầu sau i * HIGHLIGHT_STAGGER (không chờ bounce xong).
-     * Thứ tự bắt đầu: L→R, trên→dưới.
+     * Coin_Impact2: lần lượt hàng trên→dưới, trong hàng trái→phải.
      */
-    private async _phaseHighlightStaggered(cells: StickyCell[]): Promise<void> {
-        if (cells.length === 0) return;
-        const stagger = this._staggerFor(cells.length, HIGHLIGHT_STAGGER, HIGHLIGHT_LAUNCH_WINDOW);
+    private async _phaseGoldImpact2Staggered(cells: StickyCell[]): Promise<void> {
+        const sorted = this._sortCollectOrder(cells);
+        if (sorted.length === 0) return;
+        const stagger = this._dur(Math.max(0.05, this.goldImpact2Stagger));
         const jobs: Promise<void>[] = [];
-        for (let i = 0; i < cells.length; i++) {
-            const cell = cells[i];
+        for (let i = 0; i < sorted.length; i++) {
+            const cell = sorted[i];
             const delay = i * stagger;
             jobs.push(
                 this._wait(delay).then(async () => {
                     const src = this.stickyOverlay?.getCoinSlot(cell.reel, cell.row) ?? null;
-                    if (src?.active && isValid(src)) await this._bounceStickyLikeTopUp(src);
-                    else await this._wait(this._dur(HIGHLIGHT_BOUNCE_DURATION));
+                    if (src?.active && isValid(src) && this.stickyOverlay) {
+                        await this.stickyOverlay.playGoldCoinImpact2AtSlot(src);
+                    }
                 }),
             );
         }
         await Promise.all(jobs);
     }
 
-    /**
-     * Nhún giống TopUp sticky handoff.
-     * Curve gốc TopUp: grow 0.08 + hold 0.12 + shrink 0.32 (= 0.52).
-     */
-    private _bounceStickyLikeTopUp(node: Node): Promise<void> {
-        return new Promise(resolve => {
-            if (!isValid(node)) {
-                resolve();
-                return;
-            }
-            const total = this._dur(HIGHLIGHT_BOUNCE_DURATION);
-            const growDur = total * (0.08 / 0.52);
-            const holdDur = total * (0.12 / 0.52);
-            const shrinkDur = total * (0.32 / 0.52);
-            const baseScale = 1;
-            const startS = TOPUP_STICKY_SYMBOL_SCALE; // 0.85
-            const peakS = baseScale * 1.12;
-
-            const basePos = node.position.clone();
-            const peakPos = new Vec3(basePos.x, basePos.y + HIGHLIGHT_JUMP_Y, basePos.z);
-
-            Tween.stopAllByTarget(node);
-
-            node.setScale(startS, startS, 1);
-            node.setPosition(basePos);
-            tween(node)
-                .to(growDur, {
-                    scale: new Vec3(peakS, peakS, 1),
-                    position: peakPos,
-                }, { easing: 'sineOut' })
-                .delay(holdDur)
-                .to(shrinkDur, {
-                    scale: new Vec3(baseScale, baseScale, 1),
-                    position: basePos.clone(),
-                }, { easing: 'sineIn' })
-                .call(() => {
-                    if (isValid(node)) {
-                        node.setPosition(basePos);
-                        node.setScale(baseScale, baseScale, 1);
-                    }
-                    resolve();
-                })
-                .start();
-        });
-    }
-
-    private async _phaseFlyAll(): Promise<void> {
-        // Trail bay lên: 1 lần / wave (không play theo từng clone)
+    /** Bay tiền — cùng thứ tự Impact2: hàng trên→dưới, trái→phải. */
+    private async _phaseFlyAll(cells: StickyCell[]): Promise<void> {
         SoundManager.instance?.playBonusTrail();
         this._lastFlyArriveSfxAt = 0;
 
-        const stagger = this._staggerFor(this._collectCells.length, FLY_STAGGER, FLY_LAUNCH_WINDOW);
+        const ordered = this._sortCollectOrder(cells);
+        const stagger = this._staggerFor(ordered.length, FLY_STAGGER, FLY_LAUNCH_WINDOW);
         const jobs: Promise<void>[] = [];
-        for (let i = 0; i < this._collectCells.length; i++) {
-            const cell = this._collectCells[i];
+        for (let i = 0; i < ordered.length; i++) {
+            const cell = ordered[i];
             const delay = i * stagger;
             jobs.push(this._wait(delay).then(() => this._flyCloneOne(cell)));
         }
@@ -715,21 +695,18 @@ export class MatsuriEffect extends Component {
         return this._dur(Math.min(base, windowMax / (count - 1)));
     }
 
-    /** Trái → phải, trên → dưới (row 0 = top). */
-    private _sortLeftRightTopBottom(cells: StickyCell[]): StickyCell[] {
-        return [...cells].sort((a, b) =>
-            a.reel !== b.reel ? a.reel - b.reel : a.row - b.row,
-        );
-    }
-
     private _flyCloneOne(cell: StickyCell): Promise<void> {
         return new Promise(resolve => {
             const credit = cell.credit ?? 0;
             let resolved = false;
-            const finish = () => {
+            /** Chỉ play hit FX khi clone thật sự chạm đích — không gọi ở nhánh skip/fail. */
+            const finish = (didArrive: boolean) => {
                 if (resolved) return;
                 resolved = true;
-                this._playFlyArriveSfx();
+                if (didArrive) {
+                    this._playFlyArriveSfx();
+                    this.stickyOverlay?.playCollectFlyHitFx();
+                }
                 EventBus.instance.emit(GameEvents.MATSURI_COLLECT_CREDIT, { credit });
                 this._pulseTotal();
                 resolve();
@@ -738,19 +715,22 @@ export class MatsuriEffect extends Component {
             const srcNode = this.stickyOverlay?.getCoinSlot(cell.reel, cell.row) ?? null;
             const dst = this.collectTargetNode;
             if (!srcNode?.active || !dst?.isValid) {
-                finish();
+                finish(false);
                 return;
             }
 
+            this.stickyOverlay?.clearGoldCoinImpact2AtSlot(srcNode);
+
             const layer = this._flyLayer();
             if (!layer) {
-                finish();
+                finish(false);
                 return;
             }
             const layerUT = layer.getComponent(UITransform)!;
 
             const clone = instantiate(srcNode);
             clone.name = `MatsuriGoldFly_${cell.reel}_${cell.row}`;
+            this._stripGoldSpineFxFromClone(clone);
             clone.setParent(layer);
             clone.setSiblingIndex(layer.children.length - 1);
             clone.active = true;
@@ -772,8 +752,11 @@ export class MatsuriEffect extends Component {
             const holdDur = Math.max(0, flyDur - shrinkDur);
 
             const failSafe = () => {
+                if (resolved) return;
+                // Nếu đã bị _cleanupClones gỡ khỏi list → không play FX giả.
+                const wasFlying = this._activeClones.indexOf(clone) >= 0;
                 this._destroyClone(clone);
-                finish();
+                finish(wasFlying);
             };
             this.scheduleOnce(failSafe, flyDur + this._dur(1.0));
 
@@ -785,7 +768,7 @@ export class MatsuriEffect extends Component {
                 .call(() => {
                     this.unschedule(failSafe);
                     this._destroyClone(clone);
-                    finish();
+                    finish(true);
                 })
                 .start();
 
@@ -807,6 +790,14 @@ export class MatsuriEffect extends Component {
         if (now - this._lastFlyArriveSfxAt < this._dur(FLY_ARRIVE_SFX_COOLDOWN) * 1000) return;
         this._lastFlyArriveSfxAt = now;
         SoundManager.instance?.playSfxByName('sxBonusStickyGoldIncreaseHit');
+    }
+
+    /** Clone bay chỉ cần sprite + CreditLabel — bỏ Spine VFX đang play trên slot. */
+    private _stripGoldSpineFxFromClone(clone: Node): void {
+        const kids = clone.children.slice();
+        for (const child of kids) {
+            if (child?.name?.startsWith('GoldCoinSpineFx_')) child.destroy();
+        }
     }
 
     /**

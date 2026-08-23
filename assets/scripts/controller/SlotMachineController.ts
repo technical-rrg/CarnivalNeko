@@ -19,7 +19,7 @@
 
 import {
     _decorator, Component, Node, Sprite, SpriteAtlas, SpriteFrame,
-    screen, Prefab, instantiate, Vec3, tween, Tween, Camera, Canvas,
+    screen, Prefab, instantiate, Vec3, tween, Tween, Camera, Canvas, sp,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -189,6 +189,14 @@ export class SlotMachineController extends Component {
         tooltip: 'WaysPayDisplay component — gắn vào node nào đó trên scene, kéo vào đây.\nSlotMachineController sẽ tự gọi init() với highlightSpinePrefab + reels.',
     })
     waysPayDisplay: WaysPayDisplay | null = null;
+
+    @property({
+        tooltip: 'Idle_02 play sau N giây kể từ khi Idle_01 bắt đầu. Mỗi lần spin reset countdown.',
+    })
+    reelFrameCatIdle02Interval: number = 30;
+
+    @property({ tooltip: 'Delay lệch giữa 2 Cat (giây). 0 = play cùng lúc.' })
+    reelFrameCatStaggerDelay: number = 0;
 
     @property({ type: Node, tooltip: 'Slot machine background node (animated background quanh reels)' })
     slotBackgroundNode: Node | null = null;
@@ -419,12 +427,28 @@ export class SlotMachineController extends Component {
     /** Danh sách {reelIndex, rowIndex} cần show hint khi long spin bắt đầu */
     private _hintPositions: { reelIndex: number; rowIndex: number }[] = [];
     private _hintBounceCb: (() => void) | null = null;
+    private _reelFrameCatSpines: sp.Skeleton[] = [];
+    private _catWinPlaying = false;
+    /** Reels đang quay — mèo luôn Idle_01, không chuyển Idle_02. */
+    private _catSpinning = false;
+    private _catCurrentAnim: string | null = null;
+    private _catCurrentLoop = false;
+    private _catAnimGen = 0;
+    private _boundCatIdle02 = this._onReelFrameCatIdle02.bind(this);
+    private _catOneShotDoneCb: (() => void) | null = null;
+    private _onCatSpeedModeChanged = (): void => {
+        const ts = this._getCatTimeScale();
+        for (const skel of this._reelFrameCatSpines) {
+            if (skel?.isValid) skel.timeScale = ts;
+        }
+    };
 
     // ─── LIFECYCLE ───
 
     onLoad(): void {
         const bus = EventBus.instance;
         bus.on(GameEvents.REELS_START_SPIN, this._onReelsStartSpin, this);
+        bus.on(GameEvents.REELS_STOPPED, this._onReelsStoppedForCats, this);
         bus.on(GameEvents.SPIN_RESPONSE, this._onSpinResponse, this);
         bus.on(GameEvents.LONG_SPIN_TRIGGERED, this._onLongSpin, this);
         bus.on(GameEvents.LONG_SPIN_SYMBOL_HINT, this._onLongSpinHint, this);
@@ -442,6 +466,8 @@ export class SlotMachineController extends Component {
         bus.on(GameEvents.RESUME_NORMAL_SPIN, this._onResumeNormalSpin, this);
         bus.on(GameEvents.RESUME_FREE_SPIN_REELS, this._onResumeFreeSpinReels, this);
         bus.on(GameEvents.BET_CHANGED, this._onBetChanged, this);
+        bus.on(GameEvents.WIN_SYMBOL_MATCH_TIER, this._onWinSymbolMatchTier, this);
+        bus.on(GameEvents.SPEED_MODE_CHANGED, this._onCatSpeedModeChanged, this);
 
         // Khởi tạo AutoSpinManager sớm
         AutoSpinManager.instance;
@@ -496,6 +522,7 @@ export class SlotMachineController extends Component {
         // Lần áp dứt khoát được đảm bảo bởi applyInitialSymbols() gọi từ _onLoadingComplete().
         this._onEnterSuccess();
         this.scheduleOnce(this._applyReelFrameCatsVisibility, 0);
+        this._initReelFrameCats();
     }
 
     /**
@@ -612,6 +639,7 @@ export class SlotMachineController extends Component {
     onDestroy(): void {
         this._pendingReelStarts = [];
         this._stopLongSpinCameraZoom(true);
+        this._clearCatOneShotTimer();
         screen.off('window-resize', this._applyReelFrameCatsVisibility, this);
         screen.off('orientation-change', this._applyReelFrameCatsVisibility, this);
         EventBus.instance.offTarget(this);
@@ -627,7 +655,258 @@ export class SlotMachineController extends Component {
                 child.active = showCats;
             }
         }
+        if (showCats && this._reelFrameCatSpines.length > 0 && !this._catWinPlaying && this._catCurrentAnim == null) {
+            this._playReelFrameCatIdle01();
+        }
     };
+
+    private _initReelFrameCats(): void {
+        this._reelFrameCatSpines = [];
+        const frame = this.node.getChildByName('ReelFrameImg');
+        if (!frame?.isValid) return;
+        const entries: { skel: sp.Skeleton; x: number }[] = [];
+        for (const child of frame.children) {
+            if (child.name !== 'Cat' && child.name !== 'Cat-001') continue;
+            const skel = child.getComponent(sp.Skeleton) ?? child.getComponentInChildren(sp.Skeleton);
+            if (skel) entries.push({ skel, x: child.position.x });
+        }
+        entries.sort((a, b) => a.x - b.x);
+        this._reelFrameCatSpines = entries.map(e => e.skel);
+        for (const skel of this._reelFrameCatSpines) {
+            if (skel?.isValid) skel.timeScale = this._getCatTimeScale();
+        }
+        this._playReelFrameCatIdle01(true);
+    }
+
+    /** Cùng chỗ quyết định high/low với SoundManager.playSymbolMatchHigh/Low. */
+    /** Cat: low → Win_Lv2, high → Win_lv1. Xong → luôn về Idle_01. */
+    private _onWinSymbolMatchTier(tier: 'high' | 'low'): void {
+        const anim = tier === 'high' ? 'Win_lv1' : 'Win_Lv2';
+        this._catWinPlaying = true;
+        this._cancelCatIdle02Countdown();
+        const gen = ++this._catAnimGen;
+        this._playReelFrameCatAnim(anim, false, () => {
+            if (gen !== this._catAnimGen) return;
+            this._returnCatsToIdle01();
+        }, true);
+    }
+
+    private _playReelFrameCatIdle01(force = false): void {
+        this._catWinPlaying = false;
+        const played = this._playReelFrameCatAnim('Idle_01', true, undefined, force);
+        if ((played || force) && !this._catSpinning) {
+            this._startCatIdle02Countdown();
+        }
+    }
+
+    /** Force về Idle_01 sau one-shot (Win / Idle_02) — reset pose để không kẹt frame win. */
+    private _returnCatsToIdle01(): void {
+        this._catWinPlaying = false;
+        this._catCurrentAnim = null;
+        this._catCurrentLoop = false;
+        this._playReelFrameCatIdle01(true);
+    }
+
+    /** Hủy timer Idle_02 (spin / win / Idle_02 bắt đầu). */
+    private _cancelCatIdle02Countdown(): void {
+        this.unschedule(this._boundCatIdle02);
+    }
+
+    /**
+     * Idle_02 chỉ play sau reelFrameCatIdle02Interval kể từ khi Idle_01 bắt đầu.
+     * Mỗi lần gọi = reset countdown (spin xong, win xong, Idle_02 xong…).
+     */
+    private _startCatIdle02Countdown(): void {
+        this._cancelCatIdle02Countdown();
+        if (this._catSpinning || this._catWinPlaying) return;
+        const wait = Math.max(1, this.reelFrameCatIdle02Interval);
+        this.scheduleOnce(this._boundCatIdle02, wait);
+    }
+
+    private _onReelFrameCatIdle02(): void {
+        if (this._catSpinning) return;
+        if (this._catWinPlaying) {
+            this._startCatIdle02Countdown();
+            return;
+        }
+        this._cancelCatIdle02Countdown();
+        const gen = ++this._catAnimGen;
+        this._playReelFrameCatAnim('Idle_02', false, () => {
+            if (gen !== this._catAnimGen) return;
+            this._returnCatsToIdle01();
+        }, true);
+    }
+
+    /** Spin bắt đầu: hủy countdown + win/Idle_02, luôn giữ Idle_01. */
+    private _pauseCatIdleForSpin(): void {
+        this._catSpinning = true;
+        this._cancelCatIdle02Countdown();
+
+        const needsReset = this._catWinPlaying
+            || this._catCurrentAnim === 'Idle_02'
+            || this._isCatWinAnim(this._catCurrentAnim);
+        if (needsReset) {
+            this._catAnimGen++;
+            this._clearCatOneShotTimer();
+        }
+        this._catWinPlaying = false;
+
+        if (this._reelFrameCatSpines.length === 0) return;
+        if (this._catCurrentAnim === 'Idle_01' && this._catCurrentLoop) return;
+        this._catCurrentAnim = null;
+        this._catCurrentLoop = false;
+        this._playReelFrameCatAnim('Idle_01', true, undefined, true);
+    }
+
+    private _isCatWinAnim(anim: string | null): boolean {
+        if (!anim) return false;
+        const lower = anim.toLowerCase();
+        return lower.includes('win');
+    }
+
+    /** Reels dừng: coi như Idle_01 mới bắt đầu → reset countdown 30s. */
+    private _onReelsStoppedForCats(): void {
+        if (this._isTopUp || GameData.instance.currentMode === 'matsuri') return;
+        this._catSpinning = false;
+        this._catWinPlaying = false;
+        if (this._reelFrameCatSpines.length === 0) return;
+        if (this._catCurrentAnim !== 'Idle_01' || !this._catCurrentLoop) {
+            this._playReelFrameCatIdle01(true);
+        } else {
+            this._startCatIdle02Countdown();
+        }
+    }
+
+    private _getCatTimeScale(): number {
+        switch (AutoSpinManager.instance.speedMode) {
+            case SpeedMode.QUICK: return 1.2;
+            case SpeedMode.TURBO: return 1.5;
+            default: return 1;
+        }
+    }
+
+    private _clearCatOneShotTimer(): void {
+        if (this._catOneShotDoneCb) {
+            this.unschedule(this._catOneShotDoneCb);
+            this._catOneShotDoneCb = null;
+        }
+    }
+
+    private _scheduleCatOneShotDone(delay: number, gen: number, onDone: () => void): void {
+        this._clearCatOneShotTimer();
+        this._catOneShotDoneCb = () => {
+            this._catOneShotDoneCb = null;
+            if (gen !== this._catAnimGen) return;
+            onDone();
+        };
+        this.scheduleOnce(this._catOneShotDoneCb, Math.max(0.01, delay));
+    }
+
+    private _resolveCatAnim(skel: sp.Skeleton, preferred: string): string {
+        const aliases: Record<string, string[]> = {
+            Idle_01: ['Idle_01', 'idle_01'],
+            Idle_02: ['Idle_02', 'idle_02'],
+            Win_lv1: ['Win_lv1', 'Win_Lv1', 'win_lv1'],
+            Win_Lv2: ['Win_Lv2', 'Win_lv2', 'win_lv2'],
+        };
+        const names = aliases[preferred] ?? [preferred];
+        for (const name of names) {
+            try {
+                const find = (skel as unknown as { findAnimation?: (n: string) => unknown }).findAnimation;
+                if (typeof find === 'function' && find.call(skel, name)) return name;
+            } catch {
+                /* spine chưa init */
+            }
+        }
+        return preferred;
+    }
+
+    private _getCatAnimDuration(skel: sp.Skeleton, animName: string): number {
+        try {
+            const find = (skel as unknown as { findAnimation?: (n: string) => { duration?: number } }).findAnimation;
+            if (typeof find === 'function') {
+                const anim = find.call(skel, animName);
+                if (typeof anim?.duration === 'number' && anim.duration > 0) return anim.duration;
+            }
+        } catch {
+            /* ignore */
+        }
+        if (animName.includes('Idle_02') || animName.includes('idle_02')) return 1.0;
+        if (animName.toLowerCase().includes('win')) return 0.8;
+        return 2.0;
+    }
+
+    private _playReelFrameCatAnim(
+        animName: string,
+        loop: boolean,
+        onDone?: () => void,
+        force = false,
+    ): boolean {
+        if (!force && this._catCurrentAnim === animName && this._catCurrentLoop === loop) {
+            return false;
+        }
+
+        this._clearCatOneShotTimer();
+        const timeScale = this._getCatTimeScale();
+        const stagger = Math.max(0, this.reelFrameCatStaggerDelay);
+        let maxEndTime = 0;
+        let anyScheduled = false;
+        let doneFired = false;
+        const gen = this._catAnimGen;
+
+        const fireDoneOnce = () => {
+            if (doneFired || !onDone || loop) return;
+            if (gen !== this._catAnimGen) return;
+            doneFired = true;
+            this._clearCatOneShotTimer();
+            onDone();
+        };
+
+        for (let i = 0; i < this._reelFrameCatSpines.length; i++) {
+            const skel = this._reelFrameCatSpines[i];
+            if (!skel?.isValid) continue;
+            const delay = i * stagger;
+            const resolved = this._resolveCatAnim(skel, animName);
+            const rawDur = this._getCatAnimDuration(skel, resolved);
+            maxEndTime = Math.max(maxEndTime, delay + rawDur / Math.max(0.01, timeScale));
+
+            const playSkel = () => {
+                if (!skel.isValid || !skel.node.activeInHierarchy) return;
+                skel.timeScale = timeScale;
+                skel.setCompleteListener(null);
+                try {
+                    // Win/Idle_02 dùng slot khác Idle_01 — phải reset pose kẻo kẹt frame win
+                    skel.clearTracks();
+                    skel.setToSetupPose();
+                    skel.setAnimation(0, resolved, loop);
+                } catch {
+                    /* ignore */
+                }
+                if (!loop && onDone && i === 0) {
+                    skel.setCompleteListener((entry) => {
+                        if (entry?.animation?.name && entry.animation.name !== resolved) return;
+                        skel.setCompleteListener(null);
+                        fireDoneOnce();
+                    });
+                }
+            };
+
+            if (delay <= 0) playSkel();
+            else this.scheduleOnce(playSkel, delay);
+            anyScheduled = true;
+        }
+
+        if (!anyScheduled) return false;
+
+        this._catCurrentAnim = animName;
+        this._catCurrentLoop = loop;
+
+        if (!loop && onDone) {
+            // Fallback nếu complete listener miss — dùng duration thật + buffer
+            this._scheduleCatOneShotDone(maxEndTime + 0.08, gen, fireDoneOnce);
+        }
+        return true;
+    }
 
     get areAllReelsStopped(): boolean {
         return this._allReelsStopped && this.reels.every((reel) => reel?.isIdle ?? true);
@@ -1043,6 +1322,10 @@ export class SlotMachineController extends Component {
     // ─── PHASE 1: BẮT ĐẦU QUAY (ngay khi nhấn Spin, trước khi chờ server) ───
 
     private _onReelsStartSpin(): void {
+        this._pauseCatIdleForSpin();
+        // Hủy callback one-shot đang chờ — không restart Idle_01 nếu đã Idle_01 (tránh giật).
+        this._catAnimGen++;
+        this._clearCatOneShotTimer();
         if (this._isTopUp || GameData.instance.currentMode === 'matsuri') return;
 
         // Guard: reel chưa dừng hẳn từ spin trước → defer 0.2s rồi thử lại

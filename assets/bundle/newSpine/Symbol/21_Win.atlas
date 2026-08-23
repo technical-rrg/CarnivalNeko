@@ -1,0 +1,398 @@
+
+21_Win.png
+size: 1746,427
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+D
+  rotate: false
+  xy: 1718, 111
+  size: 25, 28
+  orig: 26, 29
+  offset: 0, 0
+  index: -1
+Flower/Flower 2_00000
+  rotate: true
+  xy: 2, 4
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00001
+  rotate: false
+  xy: 436, 141
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00002
+  rotate: false
+  xy: 580, 284
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00003
+  rotate: true
+  xy: 145, 4
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00004
+  rotate: false
+  xy: 573, 141
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00005
+  rotate: false
+  xy: 717, 284
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00006
+  rotate: true
+  xy: 288, 4
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00007
+  rotate: false
+  xy: 710, 141
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00008
+  rotate: false
+  xy: 1402, 287
+  size: 134, 138
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00009
+  rotate: false
+  xy: 1538, 292
+  size: 132, 133
+  orig: 151, 141
+  offset: 9, 0
+  index: -1
+Flower/Flower 2_00010
+  rotate: false
+  xy: 1283, 10
+  size: 129, 129
+  orig: 151, 141
+  offset: 10, 0
+  index: -1
+Flower/Flower 2_00011
+  rotate: true
+  xy: 1414, 22
+  size: 128, 125
+  orig: 151, 141
+  offset: 11, 0
+  index: -1
+Flower/Flower 2_00012
+  rotate: true
+  xy: 1525, 159
+  size: 126, 124
+  orig: 151, 141
+  offset: 12, 0
+  index: -1
+Flower/Flower 2_00013
+  rotate: true
+  xy: 1541, 31
+  size: 126, 124
+  orig: 151, 141
+  offset: 12, 0
+  index: -1
+Flower/Flower 2_00014
+  rotate: false
+  xy: 1395, 152
+  size: 128, 130
+  orig: 151, 141
+  offset: 11, 0
+  index: -1
+Flower/Flower 2_00015
+  rotate: true
+  xy: 1146, 11
+  size: 128, 135
+  orig: 151, 141
+  offset: 11, 0
+  index: -1
+Flower/Flower 2_00016
+  rotate: true
+  xy: 1003, 8
+  size: 131, 141
+  orig: 151, 141
+  offset: 10, 0
+  index: -1
+Flower/Flower 2_00017
+  rotate: false
+  xy: 295, 284
+  size: 141, 141
+  orig: 151, 141
+  offset: 7, 0
+  index: -1
+Flower/Flower 2_00018
+  rotate: false
+  xy: 2, 141
+  size: 144, 141
+  orig: 151, 141
+  offset: 4, 0
+  index: -1
+Flower/Flower 2_00019
+  rotate: false
+  xy: 2, 284
+  size: 145, 141
+  orig: 151, 141
+  offset: 3, 0
+  index: -1
+Flower/Flower 2_00020
+  rotate: false
+  xy: 148, 141
+  size: 143, 141
+  orig: 151, 141
+  offset: 4, 0
+  index: -1
+Flower/Flower 2_00021
+  rotate: false
+  xy: 293, 141
+  size: 141, 141
+  orig: 151, 141
+  offset: 5, 0
+  index: -1
+Flower/Flower 2_00022
+  rotate: false
+  xy: 149, 284
+  size: 144, 141
+  orig: 151, 141
+  offset: 4, 0
+  index: -1
+Flower/Flower 2_00023
+  rotate: false
+  xy: 438, 284
+  size: 140, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00024
+  rotate: false
+  xy: 854, 284
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00025
+  rotate: true
+  xy: 431, 4
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00026
+  rotate: false
+  xy: 847, 141
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00027
+  rotate: false
+  xy: 991, 284
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00028
+  rotate: true
+  xy: 574, 4
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00029
+  rotate: false
+  xy: 984, 141
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00030
+  rotate: false
+  xy: 1128, 284
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00031
+  rotate: true
+  xy: 717, 4
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00032
+  rotate: false
+  xy: 1121, 141
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00033
+  rotate: false
+  xy: 1265, 284
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00034
+  rotate: true
+  xy: 860, 4
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+Flower/Flower 2_00035
+  rotate: false
+  xy: 1258, 141
+  size: 135, 141
+  orig: 151, 141
+  offset: 8, 0
+  index: -1
+I
+  rotate: true
+  xy: 1718, 141
+  size: 14, 26
+  orig: 15, 31
+  offset: 0, 3
+  index: -1
+L
+  rotate: false
+  xy: 1661, 2
+  size: 20, 27
+  orig: 22, 31
+  offset: 1, 0
+  index: -1
+Layer 191
+  rotate: true
+  xy: 1672, 265
+  size: 160, 52
+  orig: 162, 58
+  offset: 1, 0
+  index: -1
+Leaf_01
+  rotate: false
+  xy: 1586, 2
+  size: 39, 27
+  orig: 39, 30
+  offset: 0, 3
+  index: -1
+Leaf_02
+  rotate: false
+  xy: 1667, 73
+  size: 39, 28
+  orig: 39, 30
+  offset: 0, 2
+  index: -1
+Leaf_03
+  rotate: true
+  xy: 1718, 229
+  size: 34, 26
+  orig: 34, 26
+  offset: 0, 0
+  index: -1
+Leaf_04
+  rotate: true
+  xy: 1718, 193
+  size: 34, 26
+  orig: 34, 26
+  offset: 0, 0
+  index: -1
+W
+  rotate: false
+  xy: 1667, 43
+  size: 34, 28
+  orig: 34, 30
+  offset: 0, 1
+  index: -1
+ef_04
+  rotate: true
+  xy: 1667, 103
+  size: 160, 49
+  orig: 162, 58
+  offset: 1, 0
+  index: -1
+flw2
+  rotate: true
+  xy: 1541, 2
+  size: 27, 43
+  orig: 27, 43
+  offset: 0, 0
+  index: -1
+g2
+  rotate: false
+  xy: 1726, 354
+  size: 15, 21
+  orig: 15, 21
+  offset: 0, 0
+  index: -1
+gold1
+  rotate: false
+  xy: 1718, 157
+  size: 23, 34
+  orig: 23, 34
+  offset: 0, 0
+  index: -1
+lightPoint_0
+  rotate: true
+  xy: 1627, 2
+  size: 27, 32
+  orig: 34, 33
+  offset: 5, 1
+  index: -1
+petal_01
+  rotate: true
+  xy: 1726, 336
+  size: 16, 15
+  orig: 17, 16
+  offset: 1, 0
+  index: -1
+petal_02
+  rotate: false
+  xy: 1726, 286
+  size: 13, 14
+  orig: 14, 15
+  offset: 1, 1
+  index: -1
+petal_03
+  rotate: false
+  xy: 1726, 400
+  size: 18, 25
+  orig: 20, 25
+  offset: 2, 0
+  index: -1
+petal_04
+  rotate: false
+  xy: 1726, 302
+  size: 15, 14
+  orig: 16, 15
+  offset: 0, 1
+  index: -1
+petal_05
+  rotate: false
+  xy: 1726, 318
+  size: 16, 16
+  orig: 19, 18
+  offset: 0, 1
+  index: -1
+petal_06
+  rotate: false
+  xy: 1726, 377
+  size: 16, 21
+  orig: 16, 22
+  offset: 0, 0
+  index: -1

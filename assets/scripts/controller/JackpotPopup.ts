@@ -30,7 +30,7 @@
  *      Không có anim "out" → đóng ngay, không treo game.
  */
 
-import { _decorator, Component, Node, Label, ParticleSystem, tween, Vec3, Tween, screen } from 'cc';
+import { _decorator, Component, Node, Label, ParticleSystem, tween, Vec3, Tween, screen, UIMeshRenderer } from 'cc';
 import { sp } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -183,6 +183,7 @@ export class JackpotPopup extends Component {
         // Lắng nghe screen events để cập nhật scale của orientation-based particle effect khi xoay/resize
         screen.on('window-resize', this._onScreenChange, this);
         screen.on('orientation-change', this._onScreenChange, this);
+        this._sanitizeBrokenParticleFx();
     }
 
     onDestroy(): void {
@@ -250,7 +251,10 @@ export class JackpotPopup extends Component {
         }
 
         // Activate effectNode before setup; deactivate when 'out' plays
-        if (this.effectNode) this.effectNode.active = true;
+        if (this.effectNode) {
+            this._sanitizeBrokenParticleFx();
+            this.effectNode.active = true;
+        }
 
         // Setup effect children visibility based on jackpot type
         this._setupEffectForType(jackpotType);
@@ -325,37 +329,60 @@ export class JackpotPopup extends Component {
     private _setupEffectForType(type: JackpotType): void {
         if (!this.effectNode) return;
 
-        // Only toggle children named '1','2','3','4'
-        const child1 = this.effectNode.getChildByName('1');
+        // Layer '1' / 'base1' dùng material đã xóa — chỉ dùng 2,3,4 còn hoạt động.
         const child2 = this.effectNode.getChildByName('2');
         const child3 = this.effectNode.getChildByName('3');
         const child4 = this.effectNode.getChildByName('4');
 
-        // Reset targeted children first
-        if (child1) child1.active = false;
-        if (child2) child2.active = false;
-        if (child3) child3.active = false;
-        if (child4) child4.active = false;
+        for (const child of this.effectNode.children) {
+            child.active = false;
+        }
 
         switch (type) {
             case JackpotType.GRAND:
-                if (child1) child1.active = true;
                 if (child2) child2.active = true;
                 if (child3) child3.active = true;
                 if (child4) child4.active = true;
                 break;
             case JackpotType.MAJOR:
-                if (child1) child1.active = true;
                 if (child2) child2.active = true;
                 if (child3) child3.active = true;
                 break;
             case JackpotType.MINOR:
-                if (child1) child1.active = true;
                 if (child2) child2.active = true;
                 break;
             case JackpotType.MINI:
-                if (child1) child1.active = true;
                 break;
+        }
+    }
+
+    /** Tắt hẳn particle/UIMeshRenderer thiếu material — tránh treo Batcher2D. */
+    private _sanitizeBrokenParticleFx(): void {
+        const roots = [this.effectNode, this.particleNode, this.particleNodeOrientationBased].filter(Boolean) as Node[];
+        for (const root of roots) {
+            this._disableBrokenParticleNodes(root);
+        }
+    }
+
+    private _disableBrokenParticleNodes(root: Node): void {
+        const stack: Node[] = [root];
+        while (stack.length > 0) {
+            const node = stack.pop()!;
+            stack.push(...node.children);
+
+            const ps = node.getComponent(ParticleSystem);
+            const uiMesh = node.getComponent(UIMeshRenderer);
+            if (!ps && !uiMesh) continue;
+
+            const broken = !ps?.enabled;
+            if (!broken) continue;
+
+            if (uiMesh?.enabled) uiMesh.enabled = false;
+            if (ps) {
+                ps.stop();
+                ps.clear();
+            }
+            node.active = false;
         }
     }
 
@@ -534,24 +561,26 @@ export class JackpotPopup extends Component {
         cb?.();
     }
 
-    /** Lấy tất cả ParticleSystem từ node (bản thân + children) */
-    private _getParticlesFrom(node: Node): any[] {
-        const results: any[] = [];
-        const self = node.getComponent('cc.ParticleSystem');
-        if (self) results.push(self);
-        for (const child of node.children) {
-            const ps = child.getComponent('cc.ParticleSystem');
-            if (ps) results.push(ps);
+    /** Lấy ParticleSystem enabled từ node và toàn bộ con. */
+    private _getParticlesFrom(node: Node): ParticleSystem[] {
+        return node.getComponentsInChildren(ParticleSystem).filter(ps => ps.enabled);
+    }
+
+    private _safePlayParticle(ps: ParticleSystem): void {
+        if (!ps?.enabled) return;
+        try {
+            ps.stop();
+            ps.play();
+        } catch (e) {
+            Log.w('[JackpotPopup] skip broken particle (missing material)', e);
         }
-        return results;
     }
 
     private _playParticleEffects(): void {
         if (this.particleNode) {
             this.particleNode.active = true;
             for (const p of this._getParticlesFrom(this.particleNode)) {
-                p.stop();
-                p.play();
+                this._safePlayParticle(p);
             }
         }
         const rateValue = this._getRateOverTimeValue(this._activeJackpotType);
@@ -563,8 +592,7 @@ export class JackpotPopup extends Component {
                 // rateOverTime là CurveRange — phải set mode Constant (0) rồi gán constant
                 p.rateOverTime.mode = 0;
                 p.rateOverTime.constant = rateValue;
-                p.stop();
-                p.play();
+                this._safePlayParticle(p);
             }
         }
     }
@@ -583,12 +611,9 @@ export class JackpotPopup extends Component {
     }
 
     private _playParticleInOut(): void {
-        if (this.particleNodeInOut) {
+        if (this.particleNodeInOut?.enabled) {
             this.particleNodeInOut.node.active = true;
-            // for (const p of this._getParticlesFrom(this.particleNodeInOut)) {
-            this.particleNodeInOut.stop();
-            this.particleNodeInOut.play();
-            // }
+            this._safePlayParticle(this.particleNodeInOut);
         }
     }
 

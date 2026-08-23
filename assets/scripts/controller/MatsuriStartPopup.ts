@@ -1,39 +1,34 @@
 /**
  * MatsuriStartPopup — thông báo trước khi vào Matsuri / TopUp Hold&Spin.
  *
- * Prefab: assets/bundle/MatsuriStartPopup.prefab (load qua PopupLoader).
- * Tap anywhere / Press to Start → MATSURI_START_POPUP_CLOSED → GameManager enter.
- * Tự đóng sau 30s kể từ lúc mở nếu người chơi chưa bấm.
+ * Prefab: assets/bundle/MatsuriStartPopup.prefab
+ * Gán hết trong Editor:
+ *   - titleSprite / gridSprite / pressButton → kéo node Title, Grid, Press
+ *   - mightyTitleFrame … ultimateTitleFrame → sprite tiêu đề từng loại feature
+ *   - grid5x3Frame / grid5x4Frame / grid5x5Frame → sprite kích thước lưới
+ *
+ * Intro: Title → Grid → Press scale 0→1 lần lượt (stagger 0.06s).
  */
 
 import {
-    _decorator, Component, Node, Label, Button, Color, Graphics, Canvas,
-    UITransform, UIOpacity, BlockInputEvents, Widget, tween, Tween, Vec3,
-    EventTouch, input, Input, EventMouse, view,
+    _decorator, Component, Node, Button, Sprite, SpriteFrame, Canvas,
+    UITransform, UIOpacity, Widget, tween, Tween, Vec3, view,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
-import { L } from '../core/LocalizationManager';
 import { Log } from '../core/Logger';
 import { CarnivalFeatureKind, CarnivalFeatureTrigger } from '../data/SlotTypes';
 import { SoundManager } from '../manager/SoundManager';
 
 const { ccclass, property } = _decorator;
 
-/** Thời gian chờ tối đa trước khi tự vào feature (giây). */
 const AUTO_CLOSE_SECONDS = 30;
-
-function shortFeatureName(kind: CarnivalFeatureKind): string {
-    switch (kind) {
-        case CarnivalFeatureKind.MIGHTY: return 'Mighty';
-        case CarnivalFeatureKind.MEGA: return 'Mega';
-        case CarnivalFeatureKind.SUPER: return 'Super';
-        case CarnivalFeatureKind.ULTRA: return 'Ultra';
-        case CarnivalFeatureKind.SUPREME: return 'Supreme';
-        case CarnivalFeatureKind.ULTIMATE: return 'Ultimate';
-        default: return 'Matsuri';
-    }
-}
+/** Thời gian scale 0→1 mỗi node (giây). */
+const SCALE_IN_DURATION = 0.18;
+/** Delay giữa lần lượt Title → Grid → Press (giây). */
+const SCALE_STAGGER = 0.06;
+/** Chờ layout settle trước intro (frame). */
+const SETTLE_FRAMES = 2;
 
 @ccclass('MatsuriStartPopup')
 export class MatsuriStartPopup extends Component {
@@ -44,123 +39,168 @@ export class MatsuriStartPopup extends Component {
     @property({ type: Node, tooltip: 'Panel content' })
     popupNode: Node | null = null;
 
-    @property({ type: Label, tooltip: 'Dòng 1: Mega Feature Award' })
-    titleLabel: Label | null = null;
+    @property({ type: Sprite, tooltip: 'Panel/Base/Title — Sprite hiển thị tiêu đề feature' })
+    titleSprite: Sprite | null = null;
 
-    @property({ type: Label, tooltip: 'Dòng 2: Matsuri Feature' })
-    featureLabel: Label | null = null;
+    @property({ type: Sprite, tooltip: 'Panel/Base/Grid — Sprite hiển thị 5×N' })
+    gridSprite: Sprite | null = null;
 
-    @property({ type: Label, tooltip: 'Dòng 3: with 5x4 Reel' })
-    reelLabel: Label | null = null;
+    @property({ type: Button, tooltip: 'Panel/Base/Press — nút vào feature' })
+    pressButton: Button | null = null;
 
-    @property({ type: Label, tooltip: 'Hint: PRESS TO START' })
-    hintLabel: Label | null = null;
+    @property({ type: SpriteFrame, tooltip: 'Title sprite — Mighty' })
+    mightyTitleFrame: SpriteFrame | null = null;
 
-    @property({ type: Button, tooltip: '(Tuỳ chọn) Nút Start riêng' })
-    startButton: Button | null = null;
+    @property({ type: SpriteFrame, tooltip: 'Title sprite — Mega' })
+    megaTitleFrame: SpriteFrame | null = null;
 
-    @property({ type: Node, tooltip: 'Layer bắt tap full-screen (nếu trống → dùng root)' })
-    clickOverlay: Node | null = null;
+    @property({ type: SpriteFrame, tooltip: 'Title sprite — Super' })
+    superTitleFrame: SpriteFrame | null = null;
+
+    @property({ type: SpriteFrame, tooltip: 'Title sprite — Ultra' })
+    ultraTitleFrame: SpriteFrame | null = null;
+
+    @property({ type: SpriteFrame, tooltip: 'Title sprite — Supreme' })
+    supremeTitleFrame: SpriteFrame | null = null;
+
+    @property({ type: SpriteFrame, tooltip: 'Title sprite — Ultimate' })
+    ultimateTitleFrame: SpriteFrame | null = null;
+
+    @property({ type: SpriteFrame, tooltip: 'Grid sprite — 5×3' })
+    grid5x3Frame: SpriteFrame | null = null;
+
+    @property({ type: SpriteFrame, tooltip: 'Grid sprite — 5×4' })
+    grid5x4Frame: SpriteFrame | null = null;
+
+    @property({ type: SpriteFrame, tooltip: 'Grid sprite — 5×5' })
+    grid5x5Frame: SpriteFrame | null = null;
 
     private _isOpen = false;
+    private _introDone = false;
     private _feature: CarnivalFeatureTrigger | null = null;
-    private _built = false;
     private _boundPress = () => this._closeAndEnter(true);
     private _autoCloseCb = () => this._closeAndEnter(false);
+    private _settleLeft = 0;
+    private _introCompleteCb = (): void => this._onIntroComplete();
 
     onLoad(): void {
-        this._ensureUi();
-        if (this.startButton) {
-            this.startButton.node.on(Button.EventType.CLICK, this._boundPress, this);
-        }
-        // Không set active=false ở đây — tránh race với showPopup khi onLoad bị defer.
+        this._resetContentIdle();
+        this.pressButton?.node.on(Button.EventType.CLICK, this._boundPress, this);
     }
 
     onDestroy(): void {
         this._cancelAutoClose();
-        this._unbindInput();
+        this.unschedule(this._onSettleTick);
+        this.unschedule(this._introCompleteCb);
+        this._unbindPressButton();
         EventBus.instance.offTarget(this);
     }
 
     showPopup(feature: CarnivalFeatureTrigger): void {
         if (this._isOpen) return;
-        this._ensureUi();
         this._feature = feature;
         this._isOpen = true;
+        this._introDone = false;
 
-        const rows = feature.matsuriRows || 3;
-        const short = shortFeatureName(feature.kind);
-        const awardTpl = L('matsuri_feature_award');
-        const award = awardTpl.includes('[matsuri_feature_award]')
-            ? `${short.toUpperCase()} FEATURE AWARD`
-            : awardTpl.replace('{name}', short.toUpperCase());
+        this._applySprites(feature);
+        this._setPressInteractable(false);
 
-        if (this.titleLabel) this.titleLabel.string = award;
-        if (this.featureLabel) {
-            const feat = L('matsuri_feature_type');
-            this.featureLabel.string = feat.includes('[matsuri_feature_type]')
-                ? 'Matsuri Feature'
-                : feat;
-        }
-        if (this.reelLabel) {
-            const reel = L('matsuri_with_reel', { cols: 5, rows });
-            this.reelLabel.string = reel.includes('[matsuri_with_reel]')
-                ? `with 5x${rows} Reel`
-                : reel;
-        }
-        if (this.hintLabel) {
-            const hint = L('press_to_start');
-            this.hintLabel.string = hint.includes('[press_to_start]')
-                ? 'PRESS TO START'
-                : hint;
-        }
-
-        // Overlay: hiện ngay, không scale — fit full Canvas (tránh Widget co theo parent PopupLoader)
         this.node.setScale(1, 1, 1);
         if (this.overlayNode) {
             this.overlayNode.setScale(1, 1, 1);
             this.overlayNode.active = true;
         }
-        if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
-            this.clickOverlay.setScale(1, 1, 1);
-            this.clickOverlay.active = true;
-        }
         this.node.active = true;
         this._fitOverlayFullscreen();
         EventBus.instance.emit(GameEvents.POPUP_OPENED);
 
-        const panel = this.popupNode;
-        if (panel) {
-            panel.setScale(0.2, 0.2, 1);
-            const op = panel.getComponent(UIOpacity) ?? panel.addComponent(UIOpacity);
-            op.opacity = 255;
-            Tween.stopAllByTarget(panel);
+        if (this.popupNode) {
+            this.popupNode.setScale(1, 1, 1);
+            Tween.stopAllByTarget(this.popupNode);
         }
 
-        // Scale-in frame sau — tránh tween chạy cùng instantiate/layout
-        this.scheduleOnce(() => {
-            this._fitOverlayFullscreen();
-            this._playPanelScaleIn();
-        }, 0);
+        this._prepareContentHidden();
 
-        if (this.hintLabel) {
-            const hn = this.hintLabel.node;
-            Tween.stopAllByTarget(hn);
-            tween(hn)
-                .repeatForever(
-                    tween(hn)
-                        .to(0.55, { scale: new Vec3(1.08, 1.08, 1) }, { easing: 'sineInOut' })
-                        .to(0.55, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' }),
-                )
-                .start();
-        }
-
-        // Bind sau 1 frame — tránh tap “lọt” từ burst/pot
-        this.scheduleOnce(() => this._bindInput(), 0.15);
+        this.unschedule(this._onSettleTick);
+        this._settleLeft = SETTLE_FRAMES;
+        this.schedule(this._onSettleTick, 0);
 
         this._scheduleAutoClose();
 
-        Log.d(`[MatsuriStartPopup] show "${feature.featureName}" 5x${rows} — auto-close ${AUTO_CLOSE_SECONDS}s`);
+        const rows = feature.matsuriRows || 3;
+        Log.d(`[MatsuriStartPopup] show "${feature.featureName}" 5x${rows}`);
+    }
+
+    private _onSettleTick = (): void => {
+        if (!this._isOpen) {
+            this.unschedule(this._onSettleTick);
+            return;
+        }
+        this._settleLeft -= 1;
+        if (this._settleLeft > 0) return;
+        this.unschedule(this._onSettleTick);
+        this._fitOverlayFullscreen();
+        this._playContentScaleInSequence();
+    };
+
+    private _introNodes(): Node[] {
+        return [this.titleSprite?.node, this.gridSprite?.node, this.pressButton?.node]
+            .filter((n): n is Node => !!n?.isValid);
+    }
+
+    private _ensureOpacity(node: Node): UIOpacity {
+        return node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
+    }
+
+    private _resetContentIdle(): void {
+        for (const n of this._introNodes()) {
+            this._stopNodeTweens(n);
+            n.setScale(0, 0, 1);
+            this._ensureOpacity(n).opacity = 0;
+        }
+    }
+
+    private _prepareContentHidden(): void {
+        this._resetContentIdle();
+    }
+
+    private _stopNodeTweens(node: Node): void {
+        Tween.stopAllByTarget(node);
+        const op = node.getComponent(UIOpacity);
+        if (op) Tween.stopAllByTarget(op);
+    }
+
+    private _applySprites(feature: CarnivalFeatureTrigger): void {
+        const titleFrame = this._resolveTitleFrame(feature.kind);
+        const gridFrame = this._resolveGridFrame(feature.matsuriRows || 3);
+
+        if (this.titleSprite && titleFrame) {
+            this.titleSprite.spriteFrame = titleFrame;
+        }
+        if (this.gridSprite && gridFrame) {
+            this.gridSprite.spriteFrame = gridFrame;
+        }
+    }
+
+    private _resolveTitleFrame(kind: CarnivalFeatureKind): SpriteFrame | null {
+        switch (kind) {
+            case CarnivalFeatureKind.MIGHTY: return this.mightyTitleFrame;
+            case CarnivalFeatureKind.MEGA: return this.megaTitleFrame;
+            case CarnivalFeatureKind.SUPER: return this.superTitleFrame;
+            case CarnivalFeatureKind.ULTRA: return this.ultraTitleFrame;
+            case CarnivalFeatureKind.SUPREME: return this.supremeTitleFrame;
+            case CarnivalFeatureKind.ULTIMATE: return this.ultimateTitleFrame;
+            default: return null;
+        }
+    }
+
+    private _resolveGridFrame(rows: number): SpriteFrame | null {
+        switch (rows) {
+            case 3: return this.grid5x3Frame;
+            case 4: return this.grid5x4Frame;
+            case 5: return this.grid5x5Frame;
+            default: return this.grid5x3Frame;
+        }
     }
 
     private _scheduleAutoClose(): void {
@@ -172,71 +212,88 @@ export class MatsuriStartPopup extends Component {
         this.unschedule(this._autoCloseCb);
     }
 
-    private _playPanelScaleIn(): void {
+    /** Title → Grid → Press: scale 0→1, node sau bắt đầu sớm hơn (stagger ngắn). */
+    private _playContentScaleInSequence(): void {
         if (!this._isOpen) return;
-        const panel = this.popupNode;
-        if (panel?.isValid) {
-            Tween.stopAllByTarget(panel);
-            tween(panel)
-                .to(0.28, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'backOut' })
-                .to(0.12, { scale: new Vec3(1, 1, 1) }, { easing: 'sineOut' })
+
+        const nodes = this._introNodes();
+        if (!nodes.length) {
+            this._onIntroComplete();
+            return;
+        }
+
+        this.unschedule(this._introCompleteCb);
+
+        let introEnd = 0;
+        nodes.forEach((node, index) => {
+            const delay = index * SCALE_STAGGER;
+            introEnd = Math.max(introEnd, delay + SCALE_IN_DURATION);
+
+            this._stopNodeTweens(node);
+            node.setScale(0, 0, 1);
+            const op = this._ensureOpacity(node);
+            op.opacity = 0;
+
+            tween(node)
+                .delay(delay)
+                .to(SCALE_IN_DURATION, { scale: new Vec3(1, 1, 1) }, { easing: 'sineOut' })
                 .start();
-        }
+
+            tween(op)
+                .delay(delay)
+                .to(SCALE_IN_DURATION, { opacity: 255 }, { easing: 'sineOut' })
+                .start();
+        });
+
+        this.scheduleOnce(this._introCompleteCb, introEnd);
     }
 
-    private _bindInput(): void {
+    private _onIntroComplete(): void {
+        if (!this._isOpen || this._introDone) return;
+        this._introDone = true;
+        this._setPressInteractable(true);
+        this._playPressPulse();
+        EventBus.instance.emit(GameEvents.MATSURI_START_POPUP_INTRO_DONE);
+        Log.d('[MatsuriStartPopup] intro done');
+    }
+
+    private _playPressPulse(): void {
         if (!this._isOpen) return;
-        const targets = [
-            this.clickOverlay,
-            this.overlayNode,
-            this.popupNode,
-            this.node,
-        ].filter((n): n is Node => !!n?.isValid);
-
-        for (const n of targets) {
-            n.off(Node.EventType.TOUCH_END, this._boundPress, this);
-            n.off(Node.EventType.MOUSE_UP, this._boundPress, this);
-            n.on(Node.EventType.TOUCH_END, this._boundPress, this);
-            n.on(Node.EventType.MOUSE_UP, this._boundPress, this);
-        }
-        // Global fallback (desktop / miss hit-test)
-        input.off(Input.EventType.TOUCH_END, this._onGlobalTouch, this);
-        input.off(Input.EventType.MOUSE_UP, this._onGlobalMouse, this);
-        input.on(Input.EventType.TOUCH_END, this._onGlobalTouch, this);
-        input.on(Input.EventType.MOUSE_UP, this._onGlobalMouse, this);
+        const pressNode = this.pressButton?.node;
+        if (!pressNode?.isValid) return;
+        Tween.stopAllByTarget(pressNode);
+        pressNode.setScale(1, 1, 1);
+        tween(pressNode)
+            .repeatForever(
+                tween(pressNode)
+                    .to(0.55, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'sineInOut' })
+                    .to(0.55, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' }),
+            )
+            .start();
     }
 
-    private _unbindInput(): void {
-        const targets = [
-            this.clickOverlay,
-            this.overlayNode,
-            this.popupNode,
-            this.node,
-        ].filter((n): n is Node => !!n?.isValid);
-        for (const n of targets) {
-            n.off(Node.EventType.TOUCH_END, this._boundPress, this);
-            n.off(Node.EventType.MOUSE_UP, this._boundPress, this);
-        }
-        input.off(Input.EventType.TOUCH_END, this._onGlobalTouch, this);
-        input.off(Input.EventType.MOUSE_UP, this._onGlobalMouse, this);
-        if (this.startButton?.node?.isValid) {
-            this.startButton.node.off(Button.EventType.CLICK, this._boundPress, this);
+    private _setPressInteractable(on: boolean): void {
+        if (this.pressButton) this.pressButton.interactable = on;
+    }
+
+    private _stopContentTweens(): void {
+        for (const n of this._introNodes()) {
+            this._stopNodeTweens(n);
         }
     }
 
-    private _onGlobalTouch = (_e: EventTouch): void => {
-        this._closeAndEnter(true);
-    };
-
-    private _onGlobalMouse = (_e: EventMouse): void => {
-        this._closeAndEnter(true);
-    };
+    private _unbindPressButton(): void {
+        this.pressButton?.node?.off(Button.EventType.CLICK, this._boundPress, this);
+    }
 
     private _closeAndEnter(fromUserInput: boolean): void {
         if (!this._isOpen) return;
+        if (fromUserInput && !this._introDone) return;
+
         this._isOpen = false;
         this._cancelAutoClose();
-        this._unbindInput();
+        this.unschedule(this._onSettleTick);
+        this.unschedule(this._introCompleteCb);
 
         const feature = this._feature;
         this._feature = null;
@@ -245,9 +302,10 @@ export class MatsuriStartPopup extends Component {
             SoundManager.instance?.playButtonClick();
         }
         EventBus.instance.emit(GameEvents.POPUP_CLOSED);
-        if (this.hintLabel) Tween.stopAllByTarget(this.hintLabel.node);
 
-        // Emit ngay — không chờ tween (tránh miss enter TopUp)
+        this._stopContentTweens();
+        this._setPressInteractable(false);
+
         if (feature) {
             Log.e(`[MatsuriStartPopup] ${fromUserInput ? 'PRESS' : 'AUTO'} → enter "${feature.featureName}"`);
             EventBus.instance.emit(GameEvents.MATSURI_START_POPUP_CLOSED, feature);
@@ -255,30 +313,11 @@ export class MatsuriStartPopup extends Component {
             Log.w('[MatsuriStartPopup] close nhưng feature=null');
         }
 
-        // Chỉ Panel scale-out → xong mới tắt Overlay
-        const hideOverlay = () => {
-            if (this.overlayNode) this.overlayNode.active = false;
-            if (this.clickOverlay) this.clickOverlay.active = false;
-            this.node.active = false;
-        };
-
-        const panel = this.popupNode;
-        if (panel) {
-            Tween.stopAllByTarget(panel);
-            tween(panel)
-                .to(0.12, { scale: new Vec3(1.05, 1.05, 1) }, { easing: 'sineOut' })
-                .to(0.14, { scale: new Vec3(0.01, 0.01, 1) }, { easing: 'sineIn' })
-                .call(hideOverlay)
-                .start();
-        } else {
-            hideOverlay();
-        }
+        this._resetContentIdle();
+        if (this.overlayNode) this.overlayNode.active = false;
+        this.node.active = false;
     }
 
-    /**
-     * Root/Overlay Widget align parent = PopupLoader (thường nhỏ) → bị thu size.
-     * Force target = Canvas + updateAlignment để giữ full màn (1920×1080 stretch).
-     */
     private _fitOverlayFullscreen(): void {
         let canvasNode: Node | null = this.node;
         while (canvasNode) {
@@ -311,101 +350,5 @@ export class MatsuriStartPopup extends Component {
 
         apply(this.node);
         apply(this.overlayNode);
-        if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
-            apply(this.clickOverlay);
-        }
-    }
-
-    private _ensureUi(): void {
-        if (this._built && this.popupNode?.isValid) return;
-        this._built = true;
-
-        if (this.overlayNode && this.popupNode && this.titleLabel) {
-            if (!this.overlayNode.getComponent(BlockInputEvents)) {
-                this.overlayNode.addComponent(BlockInputEvents);
-            }
-            // Không đụng contentSize prefab — chỉ bổ sung UITransform nếu thiếu
-            if (!this.overlayNode.getComponent(UITransform)) {
-                this.overlayNode.addComponent(UITransform);
-            }
-            if (!this.clickOverlay) this.clickOverlay = this.overlayNode;
-            return;
-        }
-
-        // Runtime fallback UI
-        const root = this.node;
-        let utf = root.getComponent(UITransform);
-        if (!utf) utf = root.addComponent(UITransform);
-        utf.setContentSize(1080, 1920);
-        if (!root.getComponent(Widget)) {
-            const w = root.addComponent(Widget);
-            w.isAlignTop = w.isAlignBottom = w.isAlignLeft = w.isAlignRight = true;
-            w.top = w.bottom = w.left = w.right = 0;
-            w.alignMode = Widget.AlignMode.ALWAYS;
-        }
-        if (!root.getComponent(BlockInputEvents)) {
-            root.addComponent(BlockInputEvents);
-        }
-
-        const overlay = new Node('Overlay');
-        overlay.setParent(root);
-        const oUt = overlay.addComponent(UITransform);
-        oUt.setContentSize(2000, 2000);
-        const oW = overlay.addComponent(Widget);
-        oW.isAlignTop = oW.isAlignBottom = oW.isAlignLeft = oW.isAlignRight = true;
-        oW.top = oW.bottom = oW.left = oW.right = 0;
-        oW.alignMode = Widget.AlignMode.ALWAYS;
-        const g = overlay.addComponent(Graphics);
-        g.fillColor = new Color(0, 0, 0, 180);
-        g.rect(-1000, -1000, 2000, 2000);
-        g.fill();
-        overlay.addComponent(BlockInputEvents);
-        this.overlayNode = overlay;
-        this.clickOverlay = overlay;
-
-        const panel = new Node('Panel');
-        panel.setParent(root);
-        const pUt = panel.addComponent(UITransform);
-        pUt.setContentSize(720, 420);
-        panel.addComponent(UIOpacity);
-        const pg = panel.addComponent(Graphics);
-        pg.fillColor = new Color(28, 18, 48, 245);
-        pg.roundRect(-360, -210, 720, 420, 28);
-        pg.fill();
-        pg.strokeColor = new Color(255, 200, 80, 220);
-        pg.lineWidth = 4;
-        pg.roundRect(-360, -210, 720, 420, 28);
-        pg.stroke();
-        this.popupNode = panel;
-
-        this.titleLabel = this._makeLabel(panel, 'Title', 42, 160, Color.WHITE, 110);
-        this.featureLabel = this._makeLabel(panel, 'Feature', 34, 60, new Color(255, 220, 120, 255), 50);
-        this.reelLabel = this._makeLabel(panel, 'Reel', 30, -20, new Color(220, 220, 230, 255), 50);
-        this.hintLabel = this._makeLabel(panel, 'Hint', 28, -130, new Color(255, 240, 160, 255), 50);
-    }
-
-    private _makeLabel(
-        parent: Node,
-        name: string,
-        fontSize: number,
-        y: number,
-        color: Color,
-        height: number,
-    ): Label {
-        const n = new Node(name);
-        n.setParent(parent);
-        n.setPosition(0, y, 0);
-        const ut = n.addComponent(UITransform);
-        ut.setContentSize(680, height);
-        const lab = n.addComponent(Label);
-        lab.string = '';
-        lab.fontSize = fontSize;
-        lab.lineHeight = fontSize + 8;
-        lab.color = color;
-        lab.horizontalAlign = Label.HorizontalAlign.CENTER;
-        lab.verticalAlign = Label.VerticalAlign.CENTER;
-        lab.overflow = Label.Overflow.SHRINK;
-        lab.enableWrapText = true;
-        return lab;
     }
 }

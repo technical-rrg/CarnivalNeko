@@ -864,7 +864,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": 184.456,
+      "y": 181.705,
       "z": 0
     },
     "_lrot": {
@@ -904,8 +904,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 630,
-      "height": 127.8
+      "width": 620,
+      "height": 149.1
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -954,19 +954,19 @@
     "__prefab": {
       "__id__": 41
     },
-    "_lineHeight": 30,
-    "_string": "TOUCH A COIN TO REVEAL MATSURI SYMBOL OR <img src = '86' height=60 offset=-12 />. \nMATCH 3 MATSURI SYMBOLS TO AWARD A JACKPOT OR BONUS. REVEAL 3 <img src = '86' height=60 offset=-12 />\nTO UPGRADE THE JACKPOT OR BONUS AWARDED BY ONE LEVEL EXCEPT\nTHE GRAND JACKPOT WHICH WILL BE AWARDED TWICE.",
+    "_lineHeight": 35,
+    "_string": "CHẠM ĐỒNG XU ĐỂ MỞ MATSURI SYMBOL HOẶC <img src = '86' height=50 offset=-5 />.\nGHÉP 3 MATSURI SYMBOL ĐỂ NHẬN JACKPOT/BONUS.\nMỞ ĐƯỢC 3 <img src = '86' height=50 offset=-5 />SẼ NÂNG THƯỞNG 1 CẤP.\nGRAND JACKPOT SẼ TRAO THƯỞNG GẤP ĐÔI.",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
-    "_fontSize": 16,
+    "_fontSize": 18,
     "_fontColor": {
       "__type__": "cc.Color",
       "r": 255,
-      "g": 255,
-      "b": 255,
+      "g": 248,
+      "b": 168,
       "a": 255
     },
-    "_maxWidth": 630,
+    "_maxWidth": 620,
     "_fontFamily": "Arial",
     "_font": {
       "__uuid__": "a07455e3-7bdb-4f73-a25e-a3caf09d91b1",

@@ -48,6 +48,9 @@ export const GameEvents = {
     WIN_SHOW_ALL_WAYS: 'win:show:all:ways',
     /** Cycling từng way một (payload: WaysPayWin) */
     WIN_CYCLE_ONE_WAY: 'win:cycle:one:way',
+    /** High/low win match — cùng quyết định với SoundManager.playSymbolMatchHigh/Low.
+     *  Payload: 'high' | 'low' */
+    WIN_SYMBOL_MATCH_TIER: 'win:symbol:match:tier',
 
     // ─── POT (legacy single pot / Pick) ───
     /** Pot level hoặc tổng counter thay đổi. Payload: { level:number, total:number } */
@@ -81,6 +84,11 @@ export const GameEvents = {
      * Payload: CarnivalFeatureTrigger — chờ MATSURI_START_POPUP_CLOSED rồi mới enter.
      */
     MATSURI_START_POPUP: 'matsuri:start:popup',
+    /**
+     * Slam-in Title/Grid/Press xong — an toàn để warm PickGame / StickyOverlay / BG Feature.
+     * No payload.
+     */
+    MATSURI_START_POPUP_INTRO_DONE: 'matsuri:start:popup:intro:done',
     /** Người chơi Press to Start — payload: CarnivalFeatureTrigger */
     MATSURI_START_POPUP_CLOSED: 'matsuri:start:popup:closed',
     /** Matsuri Hold&Spin bắt đầu (payload: CarnivalFeatureTrigger). */
@@ -98,6 +106,8 @@ export const GameEvents = {
      * Payload: { cells: StickyCell[] }
      */
     MATSURI_SEED_START: 'matsuri:seed:start',
+    /** Cat Spine bonus loop — MatsuriEffect bắn 1 quả cầu seed. No payload. */
+    MATSURI_SEED_CAT_ORB_FIRE: 'matsuri:seed:cat:orb:fire',
     /** 1 Start Gold vừa land trên overlay. Payload: StickyCell */
     MATSURI_SEED_CELL: 'matsuri:seed:cell',
     /** Seed Start Gold xong → GameManager lock + spin đầu. No payload. */

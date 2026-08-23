@@ -28,7 +28,9 @@
     ],
     "_active": true,
     "_components": [],
-    "_prefab": null,
+    "_prefab": {
+      "__id__": 45
+    },
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -58,7 +60,7 @@
     },
     "autoReleaseAssets": false,
     "_globals": {
-      "__id__": 45
+      "__id__": 46
     },
     "_id": "bea25370-bba7-4dc2-a090-048b36fb48e1"
   },
@@ -105,7 +107,7 @@
     "_prefab": null,
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 960,
+      "x": 959.9999999999999,
       "y": 540,
       "z": 0
     },
@@ -191,7 +193,7 @@
     "_priority": 0,
     "_fov": 45,
     "_fovAxis": 0,
-    "_orthoHeight": 678.7261146496816,
+    "_orthoHeight": 540,
     "_near": 0,
     "_far": 2000,
     "_color": {
@@ -1188,7 +1190,7 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 1920,
+      "width": 1919.9999999999998,
       "height": 1080
     },
     "_anchorPoint": {
@@ -1331,7 +1333,7 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 1920,
+      "width": 1919.9999999999998,
       "height": 1080
     },
     "_anchorPoint": {
@@ -1616,30 +1618,38 @@
     "_id": "Particle3DCameraComponent"
   },
   {
+    "__type__": "cc.PrefabInfo",
+    "root": null,
+    "asset": null,
+    "fileId": "bea25370-bba7-4dc2-a090-048b36fb48e1",
+    "instance": null,
+    "targetOverrides": null
+  },
+  {
     "__type__": "cc.SceneGlobals",
     "ambient": {
-      "__id__": 46
-    },
-    "shadows": {
       "__id__": 47
     },
-    "_skybox": {
+    "shadows": {
       "__id__": 48
     },
-    "fog": {
+    "_skybox": {
       "__id__": 49
     },
-    "octree": {
+    "fog": {
       "__id__": 50
     },
-    "skin": {
+    "octree": {
       "__id__": 51
     },
-    "lightProbeInfo": {
+    "skin": {
       "__id__": 52
     },
-    "postSettings": {
+    "lightProbeInfo": {
       "__id__": 53
+    },
+    "postSettings": {
+      "__id__": 54
     },
     "bakedWithStationaryMainLight": false,
     "bakedWithHighpLightmap": false

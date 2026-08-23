@@ -4617,15 +4617,12 @@
     "node": {
       "__id__": 358
     },
-    "_enabled": true,
+    "_enabled": false,
     "__prefab": {
       "__id__": 360
     },
     "_materials": [
-      {
-        "__uuid__": "80ad60fc-2211-4a8f-9c3d-5fd96e3400b1",
-        "__expectedType__": "cc.Material"
-      }
+      null
     ],
     "_visFlags": 0,
     "startColor": {
@@ -5311,10 +5308,7 @@
     "_velocityScale": 1,
     "_lengthScale": 1,
     "_mesh": null,
-    "_cpuMaterial": {
-      "__uuid__": "80ad60fc-2211-4a8f-9c3d-5fd96e3400b1",
-      "__expectedType__": "cc.Material"
-    },
+    "_cpuMaterial": null,
     "_gpuMaterial": null,
     "_mainTexture": {
       "__uuid__": "e3e71efb-9e4b-4020-a529-dd6b345076ab@6c48a",

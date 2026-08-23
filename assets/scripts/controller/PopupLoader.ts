@@ -11,7 +11,7 @@
  *   2. Không cần kéo gì vào Editor — tên prefab được định nghĩa trong PREFAB_NAMES.
  */
 
-import { _decorator, Component, Prefab, instantiate, Node, assetManager, Label } from 'cc';
+import { _decorator, Component, Prefab, instantiate, Node, assetManager, Label, Sprite, Button } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { JackpotType, PickGameState } from '../data/SlotTypes';
@@ -90,8 +90,8 @@ export class PopupLoader extends Component {
     /** Waiters khi đang cache Prefab (không instantiate). */
     private _prefabWaiters: Map<string, Array<(prefab: Prefab | null) => void>> = new Map();
 
-    /** Delay instantiate nặng — sau scale-in Start popup (~0.4s). */
-    private static readonly HEAVY_WARM_DELAY = 0.5;
+    /** Delay instantiate nặng — JackpotStart vẫn dùng; Matsuri chờ INTRO_DONE. */
+    private static readonly HEAVY_WARM_DELAY = 0.85;
 
     // ── LIFECYCLE ─────────────────────────────────────────────────────────
 
@@ -109,6 +109,7 @@ export class PopupLoader extends Component {
         EventBus.instance.on(GameEvents.TOPUP_TRANSITION_SHOW,   this._onTopUpTransitionShow,   this);
         EventBus.instance.on(GameEvents.TOPUP_END_POPUP,         this._onTopUpEndPopup,         this);
         EventBus.instance.on(GameEvents.MATSURI_START_POPUP,     this._onMatsuriStartPopup,     this);
+        EventBus.instance.on(GameEvents.MATSURI_START_POPUP_INTRO_DONE, this._onMatsuriStartIntroDone, this);
         EventBus.instance.on(GameEvents.PICK_GAME_START_POPUP,   this._onJackpotStartPopup,     this);
         EventBus.instance.on(GameEvents.CARNIVAL_RED_ENVELOPE,   this._onRedEnvelopePopup,      this);
         EventBus.instance.on(GameEvents.CARNIVAL_POT_BURST,      this._cacheStartPopups,        this);
@@ -447,15 +448,19 @@ export class PopupLoader extends Component {
         if (this._matsuriStartNode?.isValid) {
             this._matsuriStartNode.setSiblingIndex(this.node.children.length - 1);
             this._showMatsuriStart(this._matsuriStartNode, feature);
-            this._scheduleHeavyWarm();
+            // Không warm PickGame/TopUpEnd ở đây — chờ INTRO_DONE để tránh giật slam
             return;
         }
         this._loadPrefab(PREFAB_NAMES.matsuriStart, (node) => {
             this._matsuriStartNode = node;
             node.setSiblingIndex(this.node.children.length - 1);
             this._showMatsuriStart(node, feature);
-            this._scheduleHeavyWarm();
         });
+    }
+
+    /** Slam Title/Grid/Press xong → mới instantiate nặng. */
+    private _onMatsuriStartIntroDone(): void {
+        this._scheduleHeavyWarm();
     }
 
     /** Prefab thiếu script / UUID lệch → addComponent fallback để vẫn vào được TopUp. */
@@ -522,18 +527,14 @@ export class PopupLoader extends Component {
             return;
         }
 
-        const showFallback = () => {
-            if (this._redEnvelopeNode?.isValid) return;
-            Log.w('[PopupLoader] RED_ENVELOPE using runtime fallback node');
-            const node = new Node('RedEnvelopePopup');
-            this.node.addChild(node);
-            this._redEnvelopeNode = node;
-            this._showRedEnvelope(node, amount);
+        const failLoad = () => {
+            Log.e('[PopupLoader] RED_ENVELOPE prefab load failed — emit closed');
+            EventBus.instance.emit(GameEvents.CARNIVAL_RED_ENVELOPE_CLOSED);
         };
 
         const bundle = assetManager.getBundle(BUNDLE_NAME);
         if (!bundle) {
-            showFallback();
+            failLoad();
             return;
         }
         const prefabName = PREFAB_NAMES.redEnvelope;
@@ -543,7 +544,7 @@ export class PopupLoader extends Component {
             this._loadingSet.delete(prefabName);
             if (err || !prefab) {
                 Log.e(`[PopupLoader] Load prefab thất bại: ${prefabName}`, err);
-                showFallback();
+                failLoad();
                 return;
             }
             const node = instantiate(prefab);
@@ -556,11 +557,11 @@ export class PopupLoader extends Component {
     }
 
     private _showRedEnvelope(node: Node, amount: number): void {
-        let popup = node.getComponent(RedEnvelopePopup);
+        const popup = node.getComponent(RedEnvelopePopup);
         if (!popup) {
-            Log.w('[PopupLoader] RedEnvelopePopup missing on prefab — addComponent fallback');
-            popup = node.addComponent(RedEnvelopePopup);
-            this._wireRedEnvelopeNodes(node, popup);
+            Log.e('[PopupLoader] RedEnvelopePopup component missing on prefab');
+            EventBus.instance.emit(GameEvents.CARNIVAL_RED_ENVELOPE_CLOSED);
+            return;
         }
         popup.showPopup(amount);
         node.active = true;
@@ -568,58 +569,53 @@ export class PopupLoader extends Component {
         Log.e(`[PopupLoader] RedEnvelopePopup show amount=${amount}`);
     }
 
-    private _wireRedEnvelopeNodes(node: Node, popup: RedEnvelopePopup): void {
-        const overlay = node.getChildByName('Overlay');
-        const panel = node.getChildByName('Panel');
-        const title = node.getChildByName('Title')?.getComponent(Label);
-        if (overlay) {
-            popup.overlayNode = overlay;
-            popup.clickOverlay = overlay;
-        }
-        if (panel) {
-            popup.popupNode = panel;
-            const awarded = panel.getChildByName('Awarded')?.getComponent(Label);
-            const amount = panel.getChildByName('Amount')?.getComponent(Label);
-            if (awarded) popup.awardedLabel = awarded;
-            if (amount) popup.amountLabel = amount;
-        }
-        if (title) popup.titleLabel = title;
-    }
-
-    /** Wire Overlay/Panel/Labels theo tên node (khi script mới addComponent). */
+    /** Wire Overlay/Panel (fallback khi prefab thiếu script). */
     private _wireStartPopupNodes(
         node: Node,
         popup: MatsuriStartPopup | JackpotStartPopup,
     ): void {
         const overlay = node.getChildByName('Overlay');
         const panel = node.getChildByName('Panel');
-        if (overlay) {
-            popup.overlayNode = overlay;
-            popup.clickOverlay = overlay;
-        }
-        if (panel) {
-            popup.popupNode = panel;
-            const title = panel.getChildByName('TitleLabel')?.getComponent(Label)
-                ?? panel.getChildByName('Title')?.getComponent(Label);
-            const feature = panel.getChildByName('FeatureLabel')?.getComponent(Label)
-                ?? panel.getChildByName('Feature')?.getComponent(Label);
-            const reel = panel.getChildByName('ReelLabel')?.getComponent(Label)
-                ?? panel.getChildByName('Reel')?.getComponent(Label)
-                ?? panel.getChildByName('Desc')?.getComponent(Label);
-            const hint = panel.getChildByName('HintLabel')?.getComponent(Label)
-                ?? panel.getChildByName('Hint')?.getComponent(Label);
-            if (title) popup.titleLabel = title;
-            if (feature) popup.featureLabel = feature;
-            if (reel) popup.reelLabel = reel;
-            if (hint) popup.hintLabel = hint;
-            // Fallback theo thứ tự Label trong Panel
-            if (!popup.titleLabel || !popup.hintLabel) {
-                const labels = panel.getComponentsInChildren(Label);
-                if (!popup.titleLabel && labels[0]) popup.titleLabel = labels[0];
-                if (!popup.featureLabel && labels[1]) popup.featureLabel = labels[1];
-                if (!popup.reelLabel && labels[2]) popup.reelLabel = labels[2];
-                if (!popup.hintLabel && labels[3]) popup.hintLabel = labels[3];
+        if (overlay) popup.overlayNode = overlay;
+        if (panel) popup.popupNode = panel;
+
+        if (popup instanceof MatsuriStartPopup) {
+            const base = panel?.getChildByName('Base') ?? panel;
+            if (!popup.titleSprite) {
+                popup.titleSprite = base?.getChildByName('Title')?.getComponent(Sprite) ?? null;
             }
+            if (!popup.gridSprite) {
+                popup.gridSprite = base?.getChildByName('Grid')?.getComponent(Sprite) ?? null;
+            }
+            if (!popup.pressButton) {
+                popup.pressButton = base?.getChildByName('Press')?.getComponent(Button) ?? null;
+            }
+            return;
+        }
+
+        const title = panel?.getChildByName('TitleLabel')?.getComponent(Label)
+            ?? panel?.getChildByName('Title')?.getComponent(Label);
+        const feature = panel?.getChildByName('FeatureLabel')?.getComponent(Label)
+            ?? panel?.getChildByName('Feature')?.getComponent(Label);
+        const reel = panel?.getChildByName('ReelLabel')?.getComponent(Label)
+            ?? panel?.getChildByName('Reel')?.getComponent(Label)
+            ?? panel?.getChildByName('Desc')?.getComponent(Label);
+        const hint = panel?.getChildByName('HintLabel')?.getComponent(Label)
+            ?? panel?.getChildByName('Hint')?.getComponent(Label);
+        const jp = popup as JackpotStartPopup;
+        if (overlay) jp.clickOverlay = overlay;
+        if (title) jp.titleLabel = title;
+        if (feature) jp.featureLabel = feature;
+        if (reel) jp.reelLabel = reel;
+        if (hint) jp.hintLabel = hint;
+        const pressBtn = panel?.getChildByName('Press')?.getComponent(Button);
+        if (pressBtn) jp.startButton = pressBtn;
+        if (!jp.titleLabel || !jp.hintLabel) {
+            const labels = panel?.getComponentsInChildren(Label) ?? [];
+            if (!jp.titleLabel && labels[0]) jp.titleLabel = labels[0];
+            if (!jp.featureLabel && labels[1]) jp.featureLabel = labels[1];
+            if (!jp.reelLabel && labels[2]) jp.reelLabel = labels[2];
+            if (!jp.hintLabel && labels[3]) jp.hintLabel = labels[3];
         }
     }
 

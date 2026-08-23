@@ -14,6 +14,8 @@
 
  *   [-1×5, 7]     — Red Mystery Envelope (instant payout)
 
+ *   All Trail     — stop index thật, land tối đa Trail (PS 41/42/43) trên 5 reel
+
  *
 
  * Giữ tên @property cũ để prefab DebbugManager không mất binding.
@@ -142,11 +144,13 @@ export class SlotDebugPanel extends Component {
 
     @property(Button) btnWin: Button = null!;
 
+    /** Ép stop land tối đa Trail (PS 41/42/43) — label/active trong DebbugManager.prefab. */
+
+    @property(Button) btnAllTrail: Button = null!;
+
 
 
     // ── Unused legacy bindings — ẩn khi load ────────────────────────────────
-
-    @property(Button) btnMinorWin5: Button = null!;
 
     @property(Button) btnSingleWayWin: Button = null!;
 
@@ -198,7 +202,7 @@ export class SlotDebugPanel extends Component {
 
         this._ensureWinButtonVisible();
 
-        this._setStatus('Carnival Neko — Force Pot / Feature ([-1×5] hoặc [-1×5, type]).');
+        this._setStatus('Carnival Neko — Force Pot / Feature. All Trail = ép stop land tối đa Trail.');
 
         this._refreshMemberIdx();
 
@@ -218,7 +222,7 @@ export class SlotDebugPanel extends Component {
 
         const legacy = [
 
-            this.btnMinorWin5, this.btnSingleWayWin, this.btnNoWin,
+            this.btnSingleWayWin, this.btnNoWin,
 
             this.btnMultiLineWin, this.btnYellowFreeSpin,
 
@@ -287,6 +291,8 @@ export class SlotDebugPanel extends Component {
             this._bind(this.btnWin, this._onWinSpin);
 
             this._setButtonLabel(this.btnWin, 'Multi Line');
+
+            this._bind(this.btnAllTrail, this._onAllTrailSpin);
 
             this._bind(this.btnSendCustom, this.onSendDebugSpin);
 
@@ -368,6 +374,29 @@ export class SlotDebugPanel extends Component {
 
 
 
+    /**
+     * Ép DebugArray = stop index thật (không phải -1).
+     * Mỗi reel chọn stop có nhiều Trail (PS 41/42/43) nhất trên 3 ô visible.
+     * Server trả đúng grid đó → client bay hết Trail land được.
+     */
+    private _onAllTrailSpin(): void {
+
+        const found = this._searchMaxTrailStops();
+
+        if (!found) return;
+
+        this._firePreset(
+
+            found.arr,
+
+            `All Trail (${found.trailCount} ô: ${found.detail})`,
+
+        );
+
+    }
+
+
+
     private _onWinSpin(): void {
 
         const found = this._searchMultiLineStops();
@@ -443,6 +472,84 @@ export class SlotDebugPanel extends Component {
     //  MULTI LINE SEARCH
 
     // ════════════════════════════════════════════════════════════════════════
+
+
+
+    /** PS Trail IDs trên strip — 41 Blue / 42 Green / 43 Red. */
+
+    private _isPsTrail(psId: number): boolean {
+
+        return psId === 41 || psId === 42 || psId === 43;
+
+    }
+
+
+
+    /**
+     * Mỗi reel: duyệt hết strip, chọn center index làm 3 ô visible có nhiều Trail nhất.
+     * Reel không có Trail → giữ 0 (không bịa -1, -1 sẽ làm server bỏ qua stop).
+     */
+    private _searchMaxTrailStops(): { arr: number[]; trailCount: number; detail: string } | null {
+
+        const psStrips = this._getDebugPsStrips();
+
+        if (!psStrips) return null;
+
+        const arr: number[] = [];
+
+        let trailCount = 0;
+
+        const perReel: string[] = [];
+
+        for (let r = 0; r < REEL_COUNT; r++) {
+
+            const strip = psStrips[r] ?? [];
+
+            let bestIdx = 0;
+
+            let bestN = -1;
+
+            let bestIds: number[] = [];
+
+            for (let i = 0; i < strip.length; i++) {
+
+                const win = this._psWindow(strip, i);
+
+                const ids = win.filter((ps) => this._isPsTrail(ps));
+
+                if (ids.length > bestN) {
+
+                    bestN = ids.length;
+
+                    bestIdx = i;
+
+                    bestIds = ids;
+
+                }
+
+            }
+
+            arr.push(bestIdx);
+
+            trailCount += Math.max(0, bestN);
+
+            perReel.push(`r${r}:${Math.max(0, bestN)}[${bestIds.join('/')}]`);
+
+        }
+
+        if (trailCount <= 0) {
+
+            this._setStatus('⚠ Strip không có Trail PS 41/42/43 — Enter game / check PS.');
+
+            Log.w('[SlotDebugPanel] All Trail search: no trail on strips');
+
+            return null;
+
+        }
+
+        return { arr, trailCount, detail: perReel.join(' ') };
+
+    }
 
 
 

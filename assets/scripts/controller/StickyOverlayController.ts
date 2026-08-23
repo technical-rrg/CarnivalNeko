@@ -25,7 +25,7 @@
 
 import {
     _decorator, Component, Node, Sprite, SpriteFrame, UIOpacity, UITransform,
-    tween, Vec3, Tween, instantiate, Layout, screen, view, Widget,
+    tween, Vec3, Tween, instantiate, Layout, screen, view, Widget, sp, ParticleSystem,
 } from 'cc';
 import { EventBus }     from '../core/EventBus';
 import { GameEvents }   from '../core/GameEvents';
@@ -36,7 +36,7 @@ import { SymbolId }     from '../data/SlotTypes';
 import { SpriteNumber } from '../core/SpriteNumber';
 import { Log }          from '../core/Logger';
 import { SoundManager } from '../manager/SoundManager';
-import { AutoSpinManager } from '../manager/AutoSpinManager';
+import { AutoSpinManager, SpeedMode } from '../manager/AutoSpinManager';
 import { SlotMachineController } from './SlotMachineController';
 import { TopUpManager } from './TopUpManager';
 import {
@@ -63,6 +63,19 @@ const { ccclass, property } = _decorator;
 /** Base scale khi sticky vàng/xanh nằm trên overlay (đồng đỏ = 1). */
 const TOPUP_YELLOW_COIN_SCALE = 1;
 const TOPUP_GREEN_COIN_SCALE = 1;
+
+/** Spine VFX đồng vàng — land từ quả cầu seed / nhún trước collect. */
+const GOLD_COIN_SPINE_IMPACT = 'Coin_Impact';
+const GOLD_COIN_SPINE_IMPACT2 = 'Coin_Impact2';
+
+/** Spine VFX đồng xanh Matsuri — land / loop collect / flip sang vàng. */
+const GREEN_COIN_SPINE_IMPACT = 'Coin_Impact';
+const GREEN_COIN_SPINE_ANIM_LOOP = 'Coin_Anim_Loop';
+const GREEN_COIN_SPINE_TRANSITION_GOLD = 'Transition_GoldCoin';
+
+/** Cat Spine — ném quả cầu seed Matsuri. */
+const SEED_CAT_SPINE_RISEUP = 'riseup';
+const SEED_CAT_SPINE_BONUS = 'bonus';
 
 /** Pos/scale prefab lúc ngang — luôn restore, không capture runtime. */
 const LANDSCAPE_POS_X = 0;
@@ -147,6 +160,30 @@ export class StickyOverlayController extends Component {
     collectTotalSpriteNumber: SpriteNumber | null = null;
 
     @property({
+        type: Node,
+        tooltip:
+            'Template FX (inactive) tại CollectTotal — clone từ pool, trả pool sau khi play.',
+    })
+    collectFlyHitFx: Node | null = null;
+
+    @property({
+        tooltip: 'Tên anim Spine trên collectFlyHitFx (trống = anim đầu tiên trong skeleton).',
+    })
+    collectFlyHitFxAnim: string = '';
+
+    @property({
+        tooltip:
+            'Cứ N lần clone vàng chạm CollectTotal mới spawn 1 hit FX (mặc định 2).\n' +
+            'Đồng đầu tiên mỗi lượt collect luôn play FX.',
+    })
+    collectFlyHitFxEveryHits: number = 2;
+
+    @property({
+        tooltip: 'Số node tối đa giữ trong pool collect hit FX (dư sẽ destroy khi trả).',
+    })
+    collectFlyHitFxPoolMax: number = 8;
+
+    @property({
         type: [Node],
         tooltip: '3 ô remain (trái → phải). Mỗi ô: sprite Empty + child Fill. Gán từ Editor.',
     })
@@ -163,7 +200,8 @@ export class StickyOverlayController extends Component {
 
     @property({
         type: Node,
-        tooltip: 'Cat — hiện khi đang ném quả cầu seed (MATSURI_SEED_START → DONE). Gán từ Editor.',
+        tooltip: 'Cat Spine — hiện khi ném quả cầu seed (MATSURI_SEED_START → DONE).\n' +
+            'riseup → bonus từng vòng; mỗi vòng bonus xong bắn 1 quả cầu; hết cầu thì dừng anim.',
     })
     seedThrowCatNode: Node | null = null;
 
@@ -172,6 +210,87 @@ export class StickyOverlayController extends Component {
         tooltip: 'FramFront/Top — HUD remain + collect; ẩn lúc seed, hiện khi vào feature. Gán từ Editor.',
     })
     featureFrameTopNode: Node | null = null;
+
+    @property({
+        type: Node,
+        tooltip:
+            'Template Spine VFX đồng vàng (inactive). Clone thành child của coin:\n' +
+            'Coin_Impact = play ngay khi quả cầu land\n' +
+            'Coin_Impact2 = nhún lần lượt trước khi bắn tiền\n' +
+            'CreditLabel luôn sibling trên Spine.',
+    })
+    goldCoinSpineTemplate: Node | null = null;
+
+    @property({
+        group: { name: 'Gold Coin Spine Scale', id: 'gcss' },
+        tooltip: 'Scale Spine trên grid 5×3 (đồng to hơn). 1 = giữ scale template.',
+    })
+    goldCoinSpineScale5x3: number = 1;
+
+    @property({
+        group: { name: 'Gold Coin Spine Scale', id: 'gcss' },
+        tooltip: 'Scale Spine trên grid 5×4.',
+    })
+    goldCoinSpineScale5x4: number = 1;
+
+    @property({
+        group: { name: 'Gold Coin Spine Scale', id: 'gcss' },
+        tooltip: 'Scale Spine trên grid 5×5.',
+    })
+    goldCoinSpineScale5x5: number = 1;
+
+    @property({
+        type: Node,
+        tooltip:
+            'Template Spine VFX đồng xanh (inactive). Clone thành child của coin:\n' +
+            'Coin_Impact = vừa land\n' +
+            'Coin_Anim_Loop = khi đồng vàng đang phóng tiền\n' +
+            'Transition_GoldCoin = lật xanh → vàng (thay tween squeeze)\n' +
+            'CreditLabel luôn sibling trên Spine.',
+    })
+    greenCoinSpineTemplate: Node | null = null;
+
+    @property({
+        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        tooltip: 'Scale Spine đồng xanh trên grid 5×3.',
+    })
+    greenCoinSpineScale5x3: number = 1;
+
+    @property({
+        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        tooltip: 'Scale Spine đồng xanh trên grid 5×4.',
+    })
+    greenCoinSpineScale5x4: number = 1;
+
+    @property({
+        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        tooltip: 'Scale Spine đồng xanh trên grid 5×5.',
+    })
+    greenCoinSpineScale5x5: number = 1;
+
+    @property({
+        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        tooltip: 'Hiện CreditLabel sớm hơn bao nhiêu giây trước khi Transition_GoldCoin kết thúc (Normal speed).',
+    })
+    greenFlipCreditRevealLead: number = 0.28;
+
+    @property({
+        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        tooltip: 'Sau khi Credit hiện, bao lâu thì cắt Transition_GoldCoin và chuyển sang Gold (giây, Normal).',
+    })
+    greenFlipFxCutAfterCredit: number = 0.2;
+
+    @property({
+        group: { name: 'Seed Throw Cat', id: 'stc' },
+        tooltip: 'Tốc độ Spine Cat (1 = bình thường, 2 = nhanh gấp 2). Quick/Turbo nhân thêm.',
+    })
+    seedCatSpineTimeScale: number = 2;
+
+    @property({
+        group: { name: 'Seed Throw Cat', id: 'stc' },
+        tooltip: 'Bắn quả cầu sớm hơn bao nhiêu giây trước khi 1 vòng bonus kết thúc (Normal).',
+    })
+    seedCatBonusOrbFireLead: number = 0.18;
 
     // ── Portrait root transform (màn dọc) — ngang dùng scale/pos mặc định prefab ──
 
@@ -247,6 +366,20 @@ export class StickyOverlayController extends Component {
     private _matsuriDeferGoldLandBounce = false;
     /** Cache TopUpManager — tránh getComponentInChildren mỗi lần align/reveal. */
     private _cachedTopUpMgr: TopUpManager | null = null;
+    /** Clone Spine VFX đồng vàng đang chạy — dọn khi feature kết thúc. */
+    private _activeGoldSpineFx: Node[] = [];
+    /** Coin_Impact2 loop — giữ đến khi clone bay tiền của ô đó. */
+    private _goldImpact2FxBySlot: Map<Node, Node> = new Map();
+    /** Clone Spine VFX đồng xanh đang chạy — dọn khi feature kết thúc. */
+    private _activeGreenSpineFx: Node[] = [];
+    /** Coin_Anim_Loop — giữ khi đồng vàng đang phóng tiền. */
+    private _greenAnimLoopFxBySlot: Map<Node, Node> = new Map();
+    /** Collect hit FX — pool clone từ template, trả pool sau khi play xong. */
+    private _collectFlyHitFxHitCount = 0;
+    private _collectFlyHitFxPool: Node[] = [];
+    private _collectFlyHitFxPoolSeq = 0;
+    private _activeCollectFlyHitFx: Node[] = [];
+    private _collectFlyHitFxReturnTimers: Map<Node, () => void> = new Map();
 
     /** Bật khi đang seed — Gold pop-in nhẹ, bỏ full refresh trên TOPUP_TOTAL. */
     setMatsuriDeferGoldLandBounce(defer: boolean): void {
@@ -313,7 +446,258 @@ export class StickyOverlayController extends Component {
     /** Thời lượng pop seed vàng (giây) — MatsuriEffect chờ trước highlight; theo speed mode. */
     get matsuriSeedPopDuration(): number {
         const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
-        return Math.max(0.08, 0.22 * m);
+        const spineDur = this._getGoldCoinSpineAnimDuration(GOLD_COIN_SPINE_IMPACT);
+        const base = spineDur > 0 ? spineDur : 0.22;
+        return Math.max(0.08, base * m);
+    }
+
+    /** Matsuri seed: quả cầu land → Coin_Impact tại coin slot. */
+    playGoldCoinImpactAtSlot(slotNode: Node): Promise<void> {
+        return this._playGoldCoinSpineFx(slotNode, GOLD_COIN_SPINE_IMPACT);
+    }
+
+    /** Matsuri collect: Coin_Impact2 loop — giữ sáng đến khi bay tiền. */
+    playGoldCoinImpact2AtSlot(slotNode: Node): Promise<void> {
+        return this._startGoldCoinImpact2Loop(slotNode);
+    }
+
+    /** Ẩn Coin_Impact2 khi clone tiền của ô này bắt đầu bay. */
+    clearGoldCoinImpact2AtSlot(slotNode: Node): void {
+        if (!slotNode?.isValid) return;
+        const fx = this._goldImpact2FxBySlot.get(slotNode);
+        if (!fx?.isValid) {
+            this._goldImpact2FxBySlot.delete(slotNode);
+            return;
+        }
+        this._goldImpact2FxBySlot.delete(slotNode);
+        this._destroyGoldSpineFx(fx);
+    }
+
+    /**
+     * Gọi khi clone vàng THẬT SỰ chạm CollectTotal.
+     * Đồng đầu mỗi lượt collect luôn play; sau đó cứ N lần chạm → borrow pool → trả pool.
+     */
+    playCollectFlyHitFx(): void {
+        this._collectFlyHitFxHitCount++;
+        const every = Math.max(1, Math.floor(this.collectFlyHitFxEveryHits));
+        if (this._collectFlyHitFxHitCount < every) return;
+        this._collectFlyHitFxHitCount = 0;
+
+        const tmpl = this.collectFlyHitFx;
+        if (!tmpl?.isValid) return;
+        tmpl.active = false;
+
+        const fx = this._borrowCollectFlyHitFx(tmpl);
+        if (!fx) return;
+
+        const stale = this._collectFlyHitFxReturnTimers.get(fx);
+        if (stale) {
+            this.unschedule(stale);
+            this._collectFlyHitFxReturnTimers.delete(fx);
+        }
+
+        this._haltCollectFlyHitFxNode(fx);
+        fx.setParent(tmpl.parent);
+        fx.setPosition(tmpl.position);
+        fx.setRotation(tmpl.rotation);
+        fx.setScale(tmpl.scale);
+        fx.setSiblingIndex(tmpl.getSiblingIndex());
+        fx.active = true;
+        this._activeCollectFlyHitFx.push(fx);
+
+        this.scheduleOnce(() => {
+            if (!fx?.isValid) return;
+            this._playCollectFlyHitFxOnNode(fx);
+        }, 0);
+
+        const returnDelay = Math.min(1.2, this._getCollectFlyHitFxDuration(fx) + 0.12);
+        const returnCb = () => {
+            this._collectFlyHitFxReturnTimers.delete(fx);
+            this._returnCollectFlyHitFxClone(fx);
+        };
+        this._collectFlyHitFxReturnTimers.set(fx, returnCb);
+        this.scheduleOnce(returnCb, returnDelay);
+    }
+
+    private _borrowCollectFlyHitFx(tmpl: Node): Node | null {
+        while (this._collectFlyHitFxPool.length > 0) {
+            const n = this._collectFlyHitFxPool.pop()!;
+            if (n?.isValid) return n;
+        }
+        const fx = instantiate(tmpl);
+        fx.name = `${tmpl.name}_pooled_${this._collectFlyHitFxPoolSeq++}`;
+        fx.active = false;
+        return fx;
+    }
+
+    private _haltCollectFlyHitFxNode(fx: Node): void {
+        if (!fx?.isValid) return;
+        Tween.stopAllByTarget(fx);
+        for (const child of fx.children) {
+            Tween.stopAllByTarget(child);
+        }
+        for (const ps of fx.getComponentsInChildren(ParticleSystem)) {
+            ps.stop();
+            ps.clear();
+            ps.enabled = false;
+        }
+        for (const skel of fx.getComponentsInChildren(sp.Skeleton)) {
+            skel.setCompleteListener(null);
+            skel.clearTracks();
+            skel.setToSetupPose();
+        }
+    }
+
+    private _returnCollectFlyHitFxClone(fx: Node): void {
+        if (!fx?.isValid) {
+            const idxDead = this._activeCollectFlyHitFx.indexOf(fx);
+            if (idxDead >= 0) this._activeCollectFlyHitFx.splice(idxDead, 1);
+            this._collectFlyHitFxReturnTimers.delete(fx);
+            return;
+        }
+
+        const pending = this._collectFlyHitFxReturnTimers.get(fx);
+        if (pending) {
+            this.unschedule(pending);
+            this._collectFlyHitFxReturnTimers.delete(fx);
+        }
+
+        this._haltCollectFlyHitFxNode(fx);
+        fx.active = false;
+
+        const idx = this._activeCollectFlyHitFx.indexOf(fx);
+        if (idx >= 0) this._activeCollectFlyHitFx.splice(idx, 1);
+        this._pushCollectFlyHitFxToPool(fx);
+    }
+
+    private _playCollectFlyHitFxOnNode(fx: Node): void {
+        for (const ps of fx.getComponentsInChildren(ParticleSystem)) {
+            ps.enabled = true;
+            ps.stop();
+            ps.clear();
+            ps.loop = false;
+            ps.play();
+        }
+
+        const skel = fx.getComponent(sp.Skeleton) ?? fx.getComponentInChildren(sp.Skeleton);
+        if (!skel?.isValid) return;
+
+        const named = this.collectFlyHitFxAnim.trim();
+        let anim = named;
+        if (!anim) {
+            try {
+                anim = skel.skeletonData?.getRuntimeData()?.animations?.[0]?.name ?? '';
+            } catch {
+                anim = '';
+            }
+        }
+        if (!anim) return;
+
+        try {
+            skel.setCompleteListener(null);
+            skel.clearTracks();
+            skel.setAnimation(0, anim, false);
+        } catch {
+            // ignore missing anim
+        }
+    }
+
+    private _getCollectFlyHitFxDuration(fx: Node): number {
+        let maxDur = 0.45;
+        for (const ps of fx.getComponentsInChildren(ParticleSystem)) {
+            const emitDur = ps.duration > 0 ? ps.duration : 0.45;
+            const startLife = ps.startLifetime?.constant ?? 0;
+            maxDur = Math.max(maxDur, emitDur + startLife + 0.1);
+        }
+        const skel = fx.getComponent(sp.Skeleton) ?? fx.getComponentInChildren(sp.Skeleton);
+        if (skel?.isValid && skel.skeletonData) {
+            const named = this.collectFlyHitFxAnim.trim();
+            try {
+                const runtime = skel.skeletonData.getRuntimeData();
+                const animName = named || runtime?.animations?.[0]?.name;
+                const anim = animName ? runtime?.findAnimation(animName) : null;
+                if (anim?.duration) maxDur = Math.max(maxDur, anim.duration);
+            } catch {
+                // ignore
+            }
+        }
+        return Math.min(maxDur, 1.0);
+    }
+
+    /** Prime counter — lần chạm tiếp theo luôn spawn FX (đồng đầu mỗi lượt collect). */
+    private _primeCollectFlyHitFxForRound(): void {
+        const every = Math.max(1, Math.floor(this.collectFlyHitFxEveryHits));
+        this._collectFlyHitFxHitCount = every - 1;
+    }
+
+    private _cleanupCollectFlyHitFx(drainAll = false): void {
+        for (const cb of this._collectFlyHitFxReturnTimers.values()) {
+            this.unschedule(cb);
+        }
+        this._collectFlyHitFxReturnTimers.clear();
+        this._collectFlyHitFxHitCount = 0;
+
+        for (const fx of this._activeCollectFlyHitFx.slice()) {
+            if (!fx?.isValid) continue;
+            this._haltCollectFlyHitFxNode(fx);
+            fx.active = false;
+            const idx = this._activeCollectFlyHitFx.indexOf(fx);
+            if (idx >= 0) this._activeCollectFlyHitFx.splice(idx, 1);
+            if (drainAll) {
+                fx.destroy();
+            } else {
+                this._pushCollectFlyHitFxToPool(fx);
+            }
+        }
+
+        if (drainAll) {
+            for (const fx of this._collectFlyHitFxPool) {
+                if (fx?.isValid) fx.destroy();
+            }
+            this._collectFlyHitFxPool.length = 0;
+        }
+
+        if (this.collectFlyHitFx?.isValid) {
+            this.collectFlyHitFx.active = false;
+        }
+    }
+
+    private _pushCollectFlyHitFxToPool(fx: Node): void {
+        if (!fx?.isValid) return;
+        const maxPool = Math.max(1, Math.floor(this.collectFlyHitFxPoolMax));
+        if (this._collectFlyHitFxPool.length >= maxPool) {
+            fx.destroy();
+            return;
+        }
+        const tmpl = this.collectFlyHitFx;
+        if (tmpl?.isValid && tmpl.parent?.isValid) {
+            fx.setParent(tmpl.parent);
+        }
+        if (!this._collectFlyHitFxPool.includes(fx)) {
+            this._collectFlyHitFxPool.push(fx);
+        }
+    }
+
+    /** Matsuri: Green vừa land → Coin_Impact tại coin slot. */
+    playGreenCoinImpactAtSlot(slotNode: Node): Promise<void> {
+        return this._playGreenCoinSpineFxOnce(slotNode, GREEN_COIN_SPINE_IMPACT);
+    }
+
+    /** Matsuri collect: Coin_Anim_Loop — giữ đến khi bay tiền xong. */
+    playGreenCoinAnimLoopAtSlot(slotNode: Node): Promise<void> {
+        return this._startGreenCoinAnimLoop(slotNode);
+    }
+
+    /** Dừng Coin_Anim_Loop khi collect Gold xong. */
+    clearGreenCoinAnimLoopAtSlot(slotNode: Node): void {
+        if (!slotNode?.isValid) return;
+        const fx = this._greenAnimLoopFxBySlot.get(slotNode);
+        if (!fx?.isValid) {
+            this._greenAnimLoopFxBySlot.delete(slotNode);
+            return;
+        }
+        this._greenAnimLoopFxBySlot.delete(slotNode);
+        this._destroyGreenSpineFx(fx);
     }
 
     /**
@@ -367,6 +751,13 @@ export class StickyOverlayController extends Component {
     private _featureTopNode: Node | null = null;
     /** Đang ném quả cầu seed — Cat on, Top off. */
     private _inSeedThrowPhase = false;
+    /** Cat seed spine — gen để hủy sequence cũ. */
+    private _seedCatSeqGen = 0;
+    private _seedCatSkel: sp.Skeleton | null = null;
+    private _seedCatOrbRemaining = 0;
+    private _seedCatRiseupFailsafe: (() => void) | null = null;
+    private _seedCatOrbFireCb: (() => void) | null = null;
+    private _seedCatFadeOutDoneCb: (() => void) | null = null;
 
     private _lastFeatureRemain = -1;
     private _featureCollectTotal = 0;
@@ -887,20 +1278,237 @@ export class StickyOverlayController extends Component {
     }
 
     private _onMatsuriHudEnd(): void {
+        this._stopSeedThrowCatSequence();
         this._lastFeatureRemain = -1;
         this._featureCollectTotal = 0;
         this._inSeedThrowPhase = false;
         this._applyMatsuriFrameNodes();
     }
 
-    private _onMatsuriSeedStart(): void {
+    private _onMatsuriSeedStart(payload?: { cells?: { reel: number; row: number }[] }): void {
         this._inSeedThrowPhase = true;
         this._applyMatsuriFrameNodes();
+        const orbCount = payload?.cells?.length ?? 0;
+        if (orbCount > 0) this._startSeedThrowCatSequence(orbCount);
     }
 
     private _onMatsuriSeedDone(): void {
+        this._stopSeedThrowCatSequence();
         this._inSeedThrowPhase = false;
         this._syncFeatureHud();
+    }
+
+    private _resolveSeedThrowCatSkeleton(): sp.Skeleton | null {
+        const cat = this._findSeedThrowCat();
+        if (!cat?.isValid) return null;
+        return cat.getComponent(sp.Skeleton) ?? cat.getComponentInChildren(sp.Skeleton);
+    }
+
+    private _getSeedCatTimeScale(): number {
+        const base = Math.max(0.1, this.seedCatSpineTimeScale);
+        switch (AutoSpinManager.instance?.speedMode) {
+            case SpeedMode.QUICK: return base * 1.2;
+            case SpeedMode.TURBO: return base * 1.5;
+            default: return base;
+        }
+    }
+
+    /** Thời lượng anim trên wall-clock — có tính timeScale + speed mode. */
+    private _seedCatWallDuration(nativeDur: number, timeScale: number): number {
+        if (nativeDur <= 0) return 0;
+        const ts = Math.max(0.1, timeScale);
+        const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
+        return (nativeDur / ts) * m;
+    }
+
+    private _getSeedCatAnimDuration(skel: sp.Skeleton, animName: string): number {
+        if (!skel?.skeletonData) return 0;
+        try {
+            const anim = skel.skeletonData.getRuntimeData()?.findAnimation(animName);
+            return anim?.duration ?? 0;
+        } catch {
+            return 0;
+        }
+    }
+
+    /** riseup → bonus từng vòng; mỗi vòng bonus xong → MATSURI_SEED_CAT_ORB_FIRE; hết cầu → dừng anim. */
+    private _startSeedThrowCatSequence(orbCount: number): void {
+        this._stopSeedThrowCatSequence();
+        if (orbCount <= 0) return;
+
+        this._seedCatOrbRemaining = orbCount;
+        const gen = ++this._seedCatSeqGen;
+        const skel = this._resolveSeedThrowCatSkeleton();
+
+        if (!skel?.isValid) {
+            this._fallbackSeedCatOrbFires(gen, orbCount);
+            return;
+        }
+
+        this._seedCatSkel = skel;
+        const timeScale = this._getSeedCatTimeScale();
+        skel.timeScale = timeScale;
+        skel.setCompleteListener(null);
+
+        const riseupDur = this._getSeedCatAnimDuration(skel, SEED_CAT_SPINE_RISEUP);
+        this._seedCatRiseupFailsafe = () => {
+            if (gen !== this._seedCatSeqGen) return;
+            this._playSeedCatBonusRound(gen);
+        };
+        this.scheduleOnce(
+            this._seedCatRiseupFailsafe,
+            Math.max(0.35, this._seedCatWallDuration(riseupDur, timeScale) + 0.1),
+        );
+
+        try {
+            skel.setAnimation(0, SEED_CAT_SPINE_RISEUP, false);
+            skel.setCompleteListener((entry) => {
+                if (gen !== this._seedCatSeqGen) return;
+                if (entry?.animation?.name && entry.animation.name !== SEED_CAT_SPINE_RISEUP) return;
+                this._playSeedCatBonusRound(gen);
+            });
+        } catch {
+            this._playSeedCatBonusRound(gen);
+        }
+    }
+
+    /** Một vòng bonus (không loop) — xong vòng → bắn 1 quả cầu; còn cầu thì chơi vòng kế. */
+    private _playSeedCatBonusRound(gen: number): void {
+        if (gen !== this._seedCatSeqGen) return;
+        if (this._seedCatRiseupFailsafe) {
+            this.unschedule(this._seedCatRiseupFailsafe);
+            this._seedCatRiseupFailsafe = null;
+        }
+
+        const skel = this._seedCatSkel;
+        if (!skel?.isValid) {
+            this._fallbackSeedCatOrbFires(gen, this._seedCatOrbRemaining);
+            return;
+        }
+
+        if (this._seedCatOrbRemaining <= 0) {
+            this._finishSeedThrowCatSequence(gen);
+            return;
+        }
+
+        const bonusDur = this._getSeedCatAnimDuration(skel, SEED_CAT_SPINE_BONUS);
+        const timeScale = skel.timeScale || this._getSeedCatTimeScale();
+        const wallBonus = this._seedCatWallDuration(bonusDur, timeScale);
+        const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
+        const lead = Math.max(0.05, this.seedCatBonusOrbFireLead) * m;
+        const fireDelay = wallBonus > 0
+            ? Math.max(0.06, wallBonus - lead)
+            : 0.1 * m;
+
+        let orbFired = false;
+        const fireOrb = () => {
+            if (orbFired || gen !== this._seedCatSeqGen) return;
+            orbFired = true;
+            this._seedCatOrbFireCb = null;
+            this._emitSeedCatOrbFire(gen);
+        };
+        this._seedCatOrbFireCb = fireOrb;
+        this.scheduleOnce(fireOrb, fireDelay);
+
+        try {
+            skel.setAnimation(0, SEED_CAT_SPINE_BONUS, false);
+            skel.setCompleteListener((entry) => {
+                if (gen !== this._seedCatSeqGen) return;
+                if (entry?.animation?.name && entry.animation.name !== SEED_CAT_SPINE_BONUS) return;
+                if (this._seedCatOrbFireCb) {
+                    this.unschedule(this._seedCatOrbFireCb);
+                    this._seedCatOrbFireCb = null;
+                }
+                if (!orbFired) fireOrb();
+                if (this._seedCatOrbRemaining > 0) {
+                    this._playSeedCatBonusRound(gen);
+                } else {
+                    this._finishSeedThrowCatSequence(gen);
+                }
+            });
+        } catch {
+            if (this._seedCatOrbFireCb) {
+                this.unschedule(this._seedCatOrbFireCb);
+                this._seedCatOrbFireCb = null;
+            }
+            this._fallbackSeedCatOrbFires(gen, this._seedCatOrbRemaining);
+        }
+    }
+
+    /** Hết quả cầu — Cat fade out, Top fade in đồng thời; dừng Spine sau fade. */
+    private _finishSeedThrowCatSequence(gen: number): void {
+        if (gen !== this._seedCatSeqGen) return;
+
+        const skel = this._seedCatSkel;
+        if (skel?.isValid) skel.setCompleteListener(null);
+
+        this._inSeedThrowPhase = false;
+        const cat = this._findSeedThrowCat();
+        const top = this._findFeatureTop();
+        if (top?.isValid) top.active = true;
+        if (cat?.isValid) cat.active = true;
+        this._fadeMatsuriFrameNode(cat, false, true, false);
+        this._fadeMatsuriFrameNode(top, true, true, false);
+
+        if (this._seedCatFadeOutDoneCb) {
+            this.unschedule(this._seedCatFadeOutDoneCb);
+            this._seedCatFadeOutDoneCb = null;
+        }
+        const fadeDur = Math.max(0.05, this.matsuriFrameHudFadeDuration)
+            * (AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1);
+        this._seedCatFadeOutDoneCb = () => {
+            this._seedCatFadeOutDoneCb = null;
+            if (gen !== this._seedCatSeqGen) return;
+            if (skel?.isValid) skel.clearTracks();
+        };
+        this.scheduleOnce(this._seedCatFadeOutDoneCb, fadeDur);
+    }
+
+    private _emitSeedCatOrbFire(gen: number): void {
+        if (gen !== this._seedCatSeqGen || this._seedCatOrbRemaining <= 0) return;
+        this._seedCatOrbRemaining--;
+        EventBus.instance.emit(GameEvents.MATSURI_SEED_CAT_ORB_FIRE);
+    }
+
+    /** Không có Cat Spine — bắn lệch pha (mỗi nhịp ≈ 1 vòng bonus). */
+    private _fallbackSeedCatOrbFires(gen: number, count: number): void {
+        const skel = this._resolveSeedThrowCatSkeleton();
+        const bonusDur = skel ? this._getSeedCatAnimDuration(skel, SEED_CAT_SPINE_BONUS) : 0;
+        const timeScale = skel ? this._getSeedCatTimeScale() : 1;
+        const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
+        const lead = Math.max(0.05, this.seedCatBonusOrbFireLead) * m;
+        const round = bonusDur > 0
+            ? Math.max(0.15, this._seedCatWallDuration(bonusDur, timeScale) - lead)
+            : 0.35 * m;
+        for (let i = 0; i < count; i++) {
+            const t = i * round;
+            this.scheduleOnce(() => {
+                this._emitSeedCatOrbFire(gen);
+                if (i === count - 1) this._finishSeedThrowCatSequence(gen);
+            }, t);
+        }
+    }
+
+    private _stopSeedThrowCatSequence(): void {
+        this._seedCatSeqGen++;
+        this._seedCatOrbRemaining = 0;
+        if (this._seedCatRiseupFailsafe) {
+            this.unschedule(this._seedCatRiseupFailsafe);
+            this._seedCatRiseupFailsafe = null;
+        }
+        if (this._seedCatOrbFireCb) {
+            this.unschedule(this._seedCatOrbFireCb);
+            this._seedCatOrbFireCb = null;
+        }
+        if (this._seedCatFadeOutDoneCb) {
+            this.unschedule(this._seedCatFadeOutDoneCb);
+            this._seedCatFadeOutDoneCb = null;
+        }
+        if (this._seedCatSkel?.isValid) {
+            this._seedCatSkel.setCompleteListener(null);
+            this._seedCatSkel.clearTracks();
+        }
+        this._seedCatSkel = null;
     }
 
     private _onTopUpCountUpdated(count: number): void {
@@ -954,7 +1562,7 @@ export class StickyOverlayController extends Component {
             return;
         }
         sn.node.active = true;
-        sn.setData(this._featureCollectTotal, -1, 0, true);
+        sn.setData(this._featureCollectTotal, 0, 3, true);
     }
 
     // ── LIFECYCLE ──────────────────────────────────────────────────────────────
@@ -974,6 +1582,15 @@ export class StickyOverlayController extends Component {
         this._refreshGrandJackpotNote();
         this._hideAll();
         this._wireFeatureHud();
+        if (this.goldCoinSpineTemplate?.isValid) {
+            this.goldCoinSpineTemplate.active = false;
+        }
+        if (this.greenCoinSpineTemplate?.isValid) {
+            this.greenCoinSpineTemplate.active = false;
+        }
+        if (this.collectFlyHitFx?.isValid) {
+            this.collectFlyHitFx.active = false;
+        }
 
         EventBus.instance.on(GameEvents.TOPUP_TRANSITION_SHOW, this._onTransitionShow, this);
         EventBus.instance.on(GameEvents.TOPUP_TRANSITION_READY, this._onTransitionReady, this);
@@ -1224,6 +1841,8 @@ export class StickyOverlayController extends Component {
         this._featureCollectTotal = 0;
         this._inSeedThrowPhase = false;
         this._applyMatsuriFrameNodes();
+        this._cleanupGoldSpineFx();
+        this._cleanupGreenSpineFx();
         // Reset scale / frame / Y về baseline 5×5
         this._resetGridFitLayout();
         const topUpMgr = this.node.getComponentInChildren(TopUpManager);
@@ -1261,6 +1880,8 @@ export class StickyOverlayController extends Component {
             GameData.instance.stickyCells.set(key, { ...cell });
         }
         if (slotNode?.isValid) {
+            const sprite = slotNode.getComponent(Sprite);
+            if (sprite) sprite.enabled = true;
             this._applyCoin(slotNode, MATSURI_GOLD_SYMBOL, safeCredit);
             this._alignSlotToTopUpCell(idx);
             slotNode.setRotationFromEuler(0, 0, 0);
@@ -1269,11 +1890,17 @@ export class StickyOverlayController extends Component {
 
     /** Collect Gold xong → flip 1 Green (sequential: hút → lật → Green kế). */
     private _onMatsuriCollectStart(payload?: { flipGreenKey?: string }): void {
+        // Dọn FX sót từ vòng collect trước — trả pool, giữ node để tái dùng.
+        this._cleanupCollectFlyHitFx(false);
+        this._primeCollectFlyHitFxForRound();
         const key = payload?.flipGreenKey;
         this._matsuriNextFlipKey = key && key.length > 0 ? key : null;
     }
 
     private _onMatsuriCollectDone(): void {
+        // Chỉ reset counter — không destroy FX đang play (để hit cuối kịp hiện).
+        // FX sót sẽ bị dọn ở COLLECT_START vòng sau / _hideAll.
+        this._collectFlyHitFxHitCount = 0;
         if (this._matsuriFlipDonePending > 0) {
             return;
         }
@@ -1525,6 +2152,9 @@ export class StickyOverlayController extends Component {
 
     /** Ẩn tất cả 15 slot (không destroy, chỉ inactive) */
     private _hideAll(): void {
+        this._cleanupGoldSpineFx();
+        this._cleanupGreenSpineFx();
+        this._cleanupCollectFlyHitFx(true);
         for (const slot of this.coinSlots) {
             if (!slot) continue;
             Tween.stopAllByTarget(slot);
@@ -1668,6 +2298,7 @@ export class StickyOverlayController extends Component {
         if (sn && credit > 0) sn.setData(credit, -1, 2);
         const op = labelNode.getComponent(UIOpacity) ?? labelNode.addComponent(UIOpacity);
         op.opacity = visible ? 255 : 0;
+        if (visible) this._raiseCreditLabelAboveSpine(slotNode);
     }
 
     private _logGreenCredit(
@@ -1804,6 +2435,7 @@ export class StickyOverlayController extends Component {
         }
 
         this._slotCreditMap.set(slotNode, Math.max(0, displayCredit));
+        this._raiseCreditLabelAboveSpine(slotNode);
     }
 
     /**
@@ -1921,51 +2553,211 @@ export class StickyOverlayController extends Component {
         this._playCoinBounce(slotNode, symbolId, false, true);
     }
 
-    /** Matsuri seed: pop mượt 1 tween (backOut) — tránh 2 đoạn + stop tween gây giật. */
+    /** Matsuri seed: coin hiện tĩnh + Coin_Impact ngay khi quả cầu land. */
     private _playMatsuriGoldSeedPopIn(slotNode: Node, symbolId: number): void {
         const base = this._getBaseScale(symbolId);
-        const dur = this.matsuriSeedPopDuration;
+        const fadeDur = Math.min(this.matsuriSeedPopDuration * 0.45, 0.15);
         Tween.stopAllByTarget(slotNode);
-        slotNode.setScale(0.05, 0.05, 1);
+        slotNode.setScale(base, base, 1);
         const op = slotNode.getComponent(UIOpacity) ?? slotNode.addComponent(UIOpacity);
         Tween.stopAllByTarget(op);
         op.opacity = 0;
-        tween(op).to(dur * 0.45, { opacity: 255 }, { easing: 'sineOut' }).start();
-        tween(slotNode)
-            .to(dur, { scale: new Vec3(base, base, 1) }, { easing: 'backOut' })
-            .call(() => {
-                if (!slotNode?.isValid) return;
-                slotNode.setScale(base, base, 1);
-                if (op.isValid) op.opacity = 255;
-            })
-            .start();
+        if (fadeDur > 0) {
+            tween(op).to(fadeDur, { opacity: 255 }, { easing: 'sineOut' }).start();
+        } else {
+            op.opacity = 255;
+        }
+        SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
+        void this.playGoldCoinImpactAtSlot(slotNode);
     }
 
-    /** Matsuri: Green vừa land — pop scale + hiện xanh; ẩn CreditLabel. */
+    private _resolveGoldCoinSpineTemplate(): sp.Skeleton | null {
+        const tmpl = this.goldCoinSpineTemplate;
+        if (!tmpl?.isValid) return null;
+        return tmpl.getComponent(sp.Skeleton) ?? tmpl.getComponentInChildren(sp.Skeleton);
+    }
+
+    private _getGoldCoinSpineAnimDuration(animName: string): number {
+        const skel = this._resolveGoldCoinSpineTemplate();
+        if (!skel?.skeletonData) return 0;
+        try {
+            const anim = skel.skeletonData.getRuntimeData()?.findAnimation(animName);
+            return anim?.duration ?? 0;
+        } catch {
+            return 0;
+        }
+    }
+
+    /** Scale Spine lấy từ Inspector theo grid 5×3 / 5×4 / 5×5. */
+    private _fitGoldSpineToCoin(fx: Node, _slotNode: Node): void {
+        const r = this._rowCount;
+        const s = r >= 5
+            ? this.goldCoinSpineScale5x5
+            : r === 4
+                ? this.goldCoinSpineScale5x4
+                : this.goldCoinSpineScale5x3;
+        const fit = Math.max(0.01, s);
+        fx.setScale(fit, fit, 1);
+    }
+
+    /** CreditLabel luôn vẽ trên Spine (sibling sau cùng của coin slot). */
+    private _raiseCreditLabelAboveSpine(slotNode: Node): void {
+        const { labelNode } = this._resolveCreditLabel(slotNode);
+        if (!labelNode?.isValid) return;
+        let raise = labelNode;
+        while (raise.parent && raise.parent !== slotNode) {
+            raise = raise.parent;
+        }
+        if (raise.parent === slotNode) {
+            raise.setSiblingIndex(slotNode.children.length - 1);
+        }
+    }
+
+    private _playGoldCoinSpineFxOnce(slotNode: Node, animName: string): Promise<void> {
+        return new Promise(resolve => {
+            const tmpl = this.goldCoinSpineTemplate;
+            if (!tmpl?.isValid || !slotNode?.isValid) {
+                resolve();
+                return;
+            }
+
+            const fx = this._spawnGoldCoinSpineFxNode(slotNode, animName);
+            if (!fx) {
+                resolve();
+                return;
+            }
+
+            const skel = fx.getComponent(sp.Skeleton) ?? fx.getComponentInChildren(sp.Skeleton);
+            if (!skel) {
+                this._destroyGoldSpineFx(fx);
+                resolve();
+                return;
+            }
+
+            let finished = false;
+            const finish = () => {
+                if (finished) return;
+                finished = true;
+                this.unschedule(fallback);
+                if (skel.isValid) skel.setCompleteListener(null);
+                this._destroyGoldSpineFx(fx);
+                resolve();
+            };
+            const fallback = () => finish();
+
+            const animDur = this._getGoldCoinSpineAnimDuration(animName);
+            this.scheduleOnce(fallback, Math.max(0.5, animDur + 0.12));
+
+            skel.setCompleteListener((entry) => {
+                if (entry?.animation?.name && entry.animation.name !== animName) return;
+                finish();
+            });
+
+            try {
+                skel.setAnimation(0, animName, false);
+            } catch {
+                finish();
+            }
+        });
+    }
+
+    /** Coin_Impact2: loop giữ sáng — resolve ngay sau khi bắt đầu. */
+    private _startGoldCoinImpact2Loop(slotNode: Node): Promise<void> {
+        return new Promise(resolve => {
+            const tmpl = this.goldCoinSpineTemplate;
+            if (!tmpl?.isValid || !slotNode?.isValid) {
+                resolve();
+                return;
+            }
+
+            this.clearGoldCoinImpact2AtSlot(slotNode);
+
+            const fx = this._spawnGoldCoinSpineFxNode(slotNode, GOLD_COIN_SPINE_IMPACT2);
+            if (!fx) {
+                resolve();
+                return;
+            }
+
+            const skel = fx.getComponent(sp.Skeleton) ?? fx.getComponentInChildren(sp.Skeleton);
+            if (!skel) {
+                this._destroyGoldSpineFx(fx);
+                resolve();
+                return;
+            }
+
+            this._goldImpact2FxBySlot.set(slotNode, fx);
+
+            try {
+                skel.setCompleteListener(null);
+                skel.setAnimation(0, GOLD_COIN_SPINE_IMPACT2, true);
+            } catch {
+                this.clearGoldCoinImpact2AtSlot(slotNode);
+            }
+            resolve();
+        });
+    }
+
+    private _spawnGoldCoinSpineFxNode(slotNode: Node, animName: string): Node | null {
+        const tmpl = this.goldCoinSpineTemplate;
+        if (!tmpl?.isValid || !slotNode?.isValid) return null;
+
+        const fx = instantiate(tmpl);
+        fx.name = `GoldCoinSpineFx_${animName}`;
+        fx.setParent(slotNode);
+        fx.setPosition(0, 0, 0);
+        fx.setRotationFromEuler(0, 0, 0);
+        this._fitGoldSpineToCoin(fx, slotNode);
+        fx.setSiblingIndex(0);
+        fx.active = true;
+        this._raiseCreditLabelAboveSpine(slotNode);
+        this._activeGoldSpineFx.push(fx);
+        return fx;
+    }
+
+    private _playGoldCoinSpineFx(slotNode: Node, animName: string): Promise<void> {
+        return this._playGoldCoinSpineFxOnce(slotNode, animName);
+    }
+
+    private _destroyGoldSpineFx(fx: Node): void {
+        if (!fx?.isValid) return;
+        for (const [slot, node] of this._goldImpact2FxBySlot) {
+            if (node === fx) {
+                this._goldImpact2FxBySlot.delete(slot);
+                break;
+            }
+        }
+        const idx = this._activeGoldSpineFx.indexOf(fx);
+        if (idx >= 0) this._activeGoldSpineFx.splice(idx, 1);
+        fx.destroy();
+    }
+
+    private _cleanupGoldSpineFx(): void {
+        this._goldImpact2FxBySlot.clear();
+        const copy = this._activeGoldSpineFx.slice();
+        this._activeGoldSpineFx.length = 0;
+        for (const fx of copy) {
+            if (fx?.isValid) fx.destroy();
+        }
+    }
+
+    /** Matsuri: Green vừa land — hiện xanh + Coin_Impact; ẩn CreditLabel. */
     private _playMatsuriGreenLandOnly(slotNode: Node, idx: number): void {
         this._alignSlotToTopUpCell(idx);
         slotNode.setRotationFromEuler(0, 0, 0);
         this._setMatsuriCreditLabelVisible(slotNode, false);
 
         const base = this._getBaseScale(SymbolId.STICKY_GREEN);
-        const startS = base * gridMiniGreenReelVisualScale();
-        const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
         Tween.stopAllByTarget(slotNode);
-        slotNode.setScale(startS, startS, 1);
+        slotNode.setScale(base, base, 1);
         const op = slotNode.getComponent(UIOpacity) ?? slotNode.addComponent(UIOpacity);
         Tween.stopAllByTarget(op);
         op.opacity = 255;
         SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
-        tween(slotNode)
-            .to(Math.max(0.08, 0.22 * m), { scale: new Vec3(base, base, 1) }, { easing: 'backOut' })
-            .call(() => {
-                if (slotNode?.isValid) slotNode.setScale(base, base, 1);
-            })
-            .start();
+        void this.playGreenCoinImpactAtSlot(slotNode);
     }
 
     /**
-     * Matsuri: squeeze flip Green → Gold (sau khi collect Gold xong).
+     * Matsuri: Transition_GoldCoin spine — sau khi collect Gold xong (thay squeeze flip code).
      */
     private _playMatsuriGreenFlipToGold(
         slotNode: Node,
@@ -1976,16 +2768,14 @@ export class StickyOverlayController extends Component {
         this._matsuriFlippingKeys.add(key);
         this._matsuriPendingFlipKeys.delete(key);
         Tween.stopAllByTarget(slotNode);
+        this.clearGreenCoinAnimLoopAtSlot(slotNode);
         this._alignSlotToTopUpCell(idx);
         slotNode.setRotationFromEuler(0, 0, 0);
-        // Pre-bake số lúc scale đầy đủ, ẩn opacity — hiện ngay khi đổi sprite Gold.
         this._setMatsuriCreditLabelVisible(slotNode, false, credit);
 
         const greenS = this._getBaseScale(SymbolId.STICKY_GREEN);
         const goldS = this._getBaseScale(MATSURI_GOLD_SYMBOL);
-        const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
-        const holdDur = 0.06 * m;
-        const flipDur = 0.14 * m;
+        slotNode.setScale(greenS, greenS, 1);
 
         SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
 
@@ -1996,50 +2786,270 @@ export class StickyOverlayController extends Component {
             this._matsuriFlippingKeys.delete(key);
             this._onOneMatsuriFlipDone();
         };
+
         const flipTimeout = () => {
             if (!this._matsuriFlippingKeys.has(key)) return;
             try {
                 if (slotNode?.isValid) {
                     this._applyMatsuriFlipResult(slotNode, key, idx, credit);
                     slotNode.setScale(goldS, goldS, 1);
+                    this._setMatsuriCreditLabelVisible(slotNode, credit > 0, credit);
                 }
             } catch {
                 // failsafe only
             }
             finish();
         };
-        this.scheduleOnce(flipTimeout, holdDur + flipDur * 2 + Math.max(0.25, 0.4 * m));
 
-        slotNode.setScale(greenS, greenS, 1);
-        tween(slotNode)
-            .delay(holdDur)
-            .to(flipDur, { scale: new Vec3(0.02, greenS, 1) }, { easing: 'sineIn' })
-            .call(() => {
-                if (!slotNode?.isValid) return;
-                try {
-                    const frame = this._resolveCoinFrame(MATSURI_GOLD_SYMBOL);
-                    const sprite = slotNode.getComponent(Sprite);
-                    if (sprite && frame) {
-                        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-                        sprite.spriteFrame = frame;
-                    }
-                    this._setMatsuriCreditLabelVisible(slotNode, credit > 0);
-                    slotNode.setScale(0.02, goldS, 1);
-                } catch {
-                    // flip mid failsafe
-                }
-            })
-            .to(flipDur, { scale: new Vec3(goldS, goldS, 1) }, { easing: 'sineOut' })
-            .call(() => {
+        const animDur = this._getGreenCoinSpineAnimDuration(GREEN_COIN_SPINE_TRANSITION_GOLD);
+        const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
+        this.scheduleOnce(flipTimeout, Math.max(0.5, animDur * m + 0.2));
+
+        void this._playGreenCoinTransitionToGold(slotNode, key, idx, credit, goldS, finish, flipTimeout);
+    }
+
+    private _playGreenCoinTransitionToGold(
+        slotNode: Node,
+        key: string,
+        idx: number,
+        credit: number,
+        goldS: number,
+        finish: () => void,
+        flipTimeout: () => void,
+    ): Promise<void> {
+        return new Promise(resolve => {
+            const tmpl = this.greenCoinSpineTemplate;
+            if (!tmpl?.isValid || !slotNode?.isValid) {
+                this._applyMatsuriFlipResult(slotNode, key, idx, credit);
+                if (slotNode?.isValid) slotNode.setScale(goldS, goldS, 1);
+                finish();
+                resolve();
+                return;
+            }
+
+            const coinSprite = slotNode.getComponent(Sprite);
+            if (coinSprite) coinSprite.enabled = false;
+
+            const fx = this._spawnGreenCoinSpineFxNode(slotNode, GREEN_COIN_SPINE_TRANSITION_GOLD);
+            if (!fx) {
+                if (coinSprite) coinSprite.enabled = true;
+                this._applyMatsuriFlipResult(slotNode, key, idx, credit);
+                if (slotNode?.isValid) slotNode.setScale(goldS, goldS, 1);
+                finish();
+                resolve();
+                return;
+            }
+
+            const skel = fx.getComponent(sp.Skeleton) ?? fx.getComponentInChildren(sp.Skeleton);
+            if (!skel) {
+                if (coinSprite) coinSprite.enabled = true;
+                this._destroyGreenSpineFx(fx);
+                this._applyMatsuriFlipResult(slotNode, key, idx, credit);
+                if (slotNode?.isValid) slotNode.setScale(goldS, goldS, 1);
+                finish();
+                resolve();
+                return;
+            }
+
+            let done = false;
+            let creditRevealed = false;
+            const complete = () => {
+                if (done) return;
+                done = true;
+                this.unschedule(revealCreditEarly);
                 this.unschedule(flipTimeout);
+                this.unschedule(fallback);
+                if (skel.isValid) skel.setCompleteListener(null);
+                this._destroyGreenSpineFx(fx);
                 if (slotNode?.isValid) {
-                    slotNode.setScale(goldS, goldS, 1);
                     this._applyMatsuriFlipResult(slotNode, key, idx, credit);
-                    this._setMatsuriCreditLabelVisible(slotNode, credit > 0, credit);
+                    slotNode.setScale(goldS, goldS, 1);
+                    if (!creditRevealed) {
+                        this._setMatsuriCreditLabelVisible(slotNode, credit > 0, credit);
+                    } else {
+                        this._raiseCreditLabelAboveSpine(slotNode);
+                    }
                 }
                 finish();
-            })
-            .start();
+                resolve();
+            };
+
+            const revealCreditEarly = () => {
+                if (creditRevealed || !slotNode?.isValid) return;
+                creditRevealed = true;
+                this._setMatsuriCreditLabelVisible(slotNode, credit > 0, credit);
+                const cutDelay = Math.max(0.05, this.greenFlipFxCutAfterCredit * m);
+                this.scheduleOnce(complete, cutDelay);
+            };
+
+            const animDur = this._getGreenCoinSpineAnimDuration(GREEN_COIN_SPINE_TRANSITION_GOLD);
+            const m = AutoSpinManager.instance?.getTimingMultiplier?.() ?? 1;
+            const revealLead = Math.max(0.05, this.greenFlipCreditRevealLead);
+            const revealDelay = animDur > 0
+                ? Math.max(0.06, (animDur - revealLead) * m)
+                : 0.06 * m;
+            this.scheduleOnce(revealCreditEarly, revealDelay);
+
+            const fallback = () => complete();
+            this.scheduleOnce(fallback, Math.max(0.5, animDur * m + 0.12));
+
+            try {
+                skel.setCompleteListener(null);
+                skel.setAnimation(0, GREEN_COIN_SPINE_TRANSITION_GOLD, false);
+            } catch {
+                complete();
+            }
+        });
+    }
+
+    private _resolveGreenCoinSpineTemplate(): sp.Skeleton | null {
+        const tmpl = this.greenCoinSpineTemplate;
+        if (!tmpl?.isValid) return null;
+        return tmpl.getComponent(sp.Skeleton) ?? tmpl.getComponentInChildren(sp.Skeleton);
+    }
+
+    private _getGreenCoinSpineAnimDuration(animName: string): number {
+        const skel = this._resolveGreenCoinSpineTemplate();
+        if (!skel?.skeletonData) return 0;
+        try {
+            const anim = skel.skeletonData.getRuntimeData()?.findAnimation(animName);
+            return anim?.duration ?? 0;
+        } catch {
+            return 0;
+        }
+    }
+
+    private _fitGreenSpineToCoin(fx: Node, _slotNode: Node): void {
+        const r = this._rowCount;
+        const s = r >= 5
+            ? this.greenCoinSpineScale5x5
+            : r === 4
+                ? this.greenCoinSpineScale5x4
+                : this.greenCoinSpineScale5x3;
+        const fit = Math.max(0.01, s);
+        fx.setScale(fit, fit, 1);
+    }
+
+    private _playGreenCoinSpineFxOnce(slotNode: Node, animName: string): Promise<void> {
+        return new Promise(resolve => {
+            const tmpl = this.greenCoinSpineTemplate;
+            if (!tmpl?.isValid || !slotNode?.isValid) {
+                resolve();
+                return;
+            }
+
+            const fx = this._spawnGreenCoinSpineFxNode(slotNode, animName);
+            if (!fx) {
+                resolve();
+                return;
+            }
+
+            const skel = fx.getComponent(sp.Skeleton) ?? fx.getComponentInChildren(sp.Skeleton);
+            if (!skel) {
+                this._destroyGreenSpineFx(fx);
+                resolve();
+                return;
+            }
+
+            let finished = false;
+            const finish = () => {
+                if (finished) return;
+                finished = true;
+                this.unschedule(fallback);
+                if (skel.isValid) skel.setCompleteListener(null);
+                this._destroyGreenSpineFx(fx);
+                resolve();
+            };
+            const fallback = () => finish();
+
+            const animDur = this._getGreenCoinSpineAnimDuration(animName);
+            this.scheduleOnce(fallback, Math.max(0.5, animDur + 0.12));
+
+            skel.setCompleteListener((entry) => {
+                if (entry?.animation?.name && entry.animation.name !== animName) return;
+                finish();
+            });
+
+            try {
+                skel.setAnimation(0, animName, false);
+            } catch {
+                finish();
+            }
+        });
+    }
+
+    private _startGreenCoinAnimLoop(slotNode: Node): Promise<void> {
+        return new Promise(resolve => {
+            const tmpl = this.greenCoinSpineTemplate;
+            if (!tmpl?.isValid || !slotNode?.isValid) {
+                resolve();
+                return;
+            }
+
+            this.clearGreenCoinAnimLoopAtSlot(slotNode);
+
+            const fx = this._spawnGreenCoinSpineFxNode(slotNode, GREEN_COIN_SPINE_ANIM_LOOP);
+            if (!fx) {
+                resolve();
+                return;
+            }
+
+            const skel = fx.getComponent(sp.Skeleton) ?? fx.getComponentInChildren(sp.Skeleton);
+            if (!skel) {
+                this._destroyGreenSpineFx(fx);
+                resolve();
+                return;
+            }
+
+            this._greenAnimLoopFxBySlot.set(slotNode, fx);
+
+            try {
+                skel.setCompleteListener(null);
+                skel.setAnimation(0, GREEN_COIN_SPINE_ANIM_LOOP, true);
+            } catch {
+                this.clearGreenCoinAnimLoopAtSlot(slotNode);
+            }
+            resolve();
+        });
+    }
+
+    private _spawnGreenCoinSpineFxNode(slotNode: Node, animName: string): Node | null {
+        const tmpl = this.greenCoinSpineTemplate;
+        if (!tmpl?.isValid || !slotNode?.isValid) return null;
+
+        const fx = instantiate(tmpl);
+        fx.name = `GreenCoinSpineFx_${animName}`;
+        fx.setParent(slotNode);
+        fx.setPosition(0, 0, 0);
+        fx.setRotationFromEuler(0, 0, 0);
+        this._fitGreenSpineToCoin(fx, slotNode);
+        fx.setSiblingIndex(0);
+        fx.active = true;
+        this._raiseCreditLabelAboveSpine(slotNode);
+        this._activeGreenSpineFx.push(fx);
+        return fx;
+    }
+
+    private _destroyGreenSpineFx(fx: Node): void {
+        if (!fx?.isValid) return;
+        for (const [slot, node] of this._greenAnimLoopFxBySlot) {
+            if (node === fx) {
+                this._greenAnimLoopFxBySlot.delete(slot);
+                break;
+            }
+        }
+        const idx = this._activeGreenSpineFx.indexOf(fx);
+        if (idx >= 0) this._activeGreenSpineFx.splice(idx, 1);
+        fx.destroy();
+    }
+
+    private _cleanupGreenSpineFx(): void {
+        this._greenAnimLoopFxBySlot.clear();
+        const copy = this._activeGreenSpineFx.slice();
+        this._activeGreenSpineFx.length = 0;
+        for (const fx of copy) {
+            if (fx?.isValid) fx.destroy();
+        }
     }
 
     /**

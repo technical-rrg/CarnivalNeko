@@ -81,7 +81,9 @@ export class LanguageChange extends Component {
         if (!this.translationKey) return;
         const text = L(this.translationKey, this.translationParams);
         if (this._richText) {
-            this._richText.string = text.replace(/\r\n|\n/g, '<br/>');
+            // Normalize \r\r\n / \r\n / \r → \n first so leftover CR không thành <br/> dư
+            const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '');
+            this._richText.string = normalized.replace(/\n/g, '<br/>');
         } else if (this._label) {
             this._label.string = text;
         }

@@ -501,6 +501,8 @@ export class PayTablePopUp extends Component {
         return raw
             .replace(/<Sprite=0>/g, imgTag(45, 90, 90, 14))
             .replace(/<Sprite=1>/g, imgTag(44, 90, 90, 14))
-            .replace(/\r\n|\n/g, '<br/>');
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '')
+            .replace(/\n/g, '<br/>');
     }
 }

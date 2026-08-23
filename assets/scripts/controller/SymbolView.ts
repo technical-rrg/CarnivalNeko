@@ -80,11 +80,20 @@ export class SymbolView extends Component {
     static readonly OUTSIDE_REEL_SCALE = 0.8;
 
     /**
-     * Base scale hiệu lực theo vị trí ô hiện tại (hoặc symbolId truyền vào — giữ tương thích).
-     * ExtraTop1 / ExtraBot1 (rowIndex < 0) → 0.8;
-     * Top / Mid / Bot và mặc định → defaultScale (1).
+     * Scale hiển thị thực tế của symbol (ưu tiên node.scale — khớp Transform trong Editor).
+     * ExtraTop1 / ExtraBot1 (rowIndex < 0) → 0.8; fallback → defaultScale.
      */
     getBaseScale(_forSymbolId?: number): number {
+        if (this.rowIndex < 0) {
+            return SymbolView.OUTSIDE_REEL_SCALE;
+        }
+        const sx = this.node.scale.x;
+        if (Number.isFinite(sx) && sx > 0) return sx;
+        return this.defaultScale;
+    }
+
+    /** Scale cấu hình (Inspector defaultScale) — dùng khi reset symbol, không đọc node.scale. */
+    getConfiguredScale(_forSymbolId?: number): number {
         if (this.rowIndex < 0) {
             return SymbolView.OUTSIDE_REEL_SCALE;
         }
@@ -423,7 +432,7 @@ export class SymbolView extends Component {
         if (SymbolView.landBounceParent && this.node.parent === SymbolView.landBounceParent) {
             SymbolView.restoreToReelHome(this.node);
         }
-        const base = this.getBaseScale(symbolId);
+        const base = this.getConfiguredScale(symbolId);
         this.node.setScale(base, base, 1);
         // Reset rotation tuyệt đối để tránh bị nghiêng méo do kế thừa từ parent hoặc lần trước
         this.node.setRotationFromEuler(0, 0, 0);
@@ -765,7 +774,7 @@ export class SymbolView extends Component {
             }
         }
         if (!sameSticky) {
-            const base = this.getBaseScale(symbolId);
+            const base = this.getConfiguredScale(symbolId);
             this.node.setScale(base, base, 1);
         }
 

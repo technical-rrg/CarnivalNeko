@@ -110,16 +110,8 @@ export function resolveMockCarnivalFeature(
 
     if (kind === CarnivalFeatureKind.NONE) return null;
 
-    // Ưu tiên burst pots theo màu Trail vừa land (nếu match kind); fallback theo kind
-    const colorsLanded = new Set(trails.map(t => t.color));
-    let burst = burstPotsForKind(kind);
-    // Đảm bảo hiển thị burst đúng màu design của kind
-    if (burst.length === 0) {
-        burst = [...colorsLanded];
-    }
-
     data.carnivalTrailSpinCount = 0;
-    return buildCarnivalFeatureTrigger(kind, burst);
+    return buildCarnivalFeatureTrigger(kind, burstPotsForKind(kind));
 }
 
 /**

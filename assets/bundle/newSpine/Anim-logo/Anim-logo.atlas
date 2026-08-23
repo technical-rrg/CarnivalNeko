@@ -1,0 +1,202 @@
+
+Anim-logo.png
+size: 173,834
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+A
+  rotate: true
+  xy: 2, 2
+  size: 50, 56
+  orig: 50, 58
+  offset: 0, 1
+  index: -1
+A2
+  rotate: true
+  xy: 112, 401
+  size: 51, 57
+  orig: 51, 58
+  offset: 0, 0
+  index: -1
+BG
+  rotate: true
+  xy: 2, 326
+  size: 272, 108
+  orig: 278, 115
+  offset: 2, 4
+  index: -1
+C
+  rotate: true
+  xy: 112, 454
+  size: 50, 58
+  orig: 50, 59
+  offset: 0, 1
+  index: -1
+E
+  rotate: true
+  xy: 88, 146
+  size: 66, 82
+  orig: 66, 83
+  offset: 0, 1
+  index: -1
+Ear
+  rotate: true
+  xy: 88, 90
+  size: 54, 63
+  orig: 54, 63
+  offset: 0, 0
+  index: -1
+Flower
+  rotate: false
+  xy: 61, 34
+  size: 56, 54
+  orig: 58, 54
+  offset: 1, 0
+  index: -1
+Hand_L
+  rotate: false
+  xy: 112, 506
+  size: 59, 92
+  orig: 59, 92
+  offset: 0, 0
+  index: -1
+I
+  rotate: false
+  xy: 134, 746
+  size: 31, 57
+  orig: 31, 57
+  offset: 0, 0
+  index: -1
+K
+  rotate: false
+  xy: 92, 214
+  size: 77, 84
+  orig: 78, 84
+  offset: 0, 0
+  index: -1
+L
+  rotate: true
+  xy: 2, 54
+  size: 46, 57
+  orig: 46, 57
+  offset: 0, 0
+  index: -1
+Layer 15
+  rotate: true
+  xy: 134, 706
+  size: 38, 28
+  orig: 38, 29
+  offset: 0, 1
+  index: -1
+N
+  rotate: true
+  xy: 112, 349
+  size: 50, 57
+  orig: 50, 57
+  offset: 0, 0
+  index: -1
+NN
+  rotate: true
+  xy: 2, 165
+  size: 76, 84
+  orig: 76, 84
+  offset: 0, 0
+  index: -1
+O
+  rotate: true
+  xy: 2, 243
+  size: 81, 88
+  orig: 81, 88
+  offset: 0, 0
+  index: -1
+R
+  rotate: true
+  xy: 112, 300
+  size: 47, 57
+  orig: 47, 57
+  offset: 0, 0
+  index: -1
+V
+  rotate: false
+  xy: 119, 32
+  size: 50, 56
+  orig: 51, 57
+  offset: 0, 1
+  index: -1
+catbody
+  rotate: false
+  xy: 2, 717
+  size: 130, 115
+  orig: 130, 118
+  offset: 0, 0
+  index: -1
+catbodysd
+  rotate: false
+  xy: 2, 600
+  size: 130, 115
+  orig: 130, 118
+  offset: 0, 0
+  index: -1
+flower_05
+  rotate: false
+  xy: 154, 649
+  size: 14, 12
+  orig: 15, 13
+  offset: 0, 1
+  index: -1
+flower_07
+  rotate: false
+  xy: 134, 649
+  size: 13, 10
+  orig: 13, 11
+  offset: 0, 1
+  index: -1
+flower_08
+  rotate: false
+  xy: 154, 663
+  size: 17, 13
+  orig: 17, 15
+  offset: 0, 1
+  index: -1
+flower_09
+  rotate: false
+  xy: 134, 637
+  size: 13, 10
+  orig: 14, 12
+  offset: 1, 1
+  index: -1
+flower_10
+  rotate: true
+  xy: 134, 661
+  size: 15, 18
+  orig: 17, 19
+  offset: 1, 1
+  index: -1
+gold
+  rotate: false
+  xy: 2, 102
+  size: 84, 61
+  orig: 88, 61
+  offset: 2, 0
+  index: -1
+light
+  rotate: true
+  xy: 149, 636
+  size: 11, 12
+  orig: 20, 20
+  offset: 4, 4
+  index: -1
+lightPoint_0
+  rotate: true
+  xy: 134, 805
+  size: 27, 32
+  orig: 34, 33
+  offset: 5, 1
+  index: -1
+rig
+  rotate: false
+  xy: 134, 678
+  size: 26, 26
+  orig: 28, 28
+  offset: 0, 2
+  index: -1

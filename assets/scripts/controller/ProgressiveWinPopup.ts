@@ -44,7 +44,7 @@
  *   5. Spine play "out" → delay → deactivate node → callback().
  */
 
-import { _decorator, Component, Node, Label, tween, Vec3, Tween } from 'cc';
+import { _decorator, Component, Node, Label, tween, Vec3, Tween, ParticleSystem } from 'cc';
 import { sp } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -138,6 +138,10 @@ export class ProgressiveWinPopup extends Component {
     @property({ tooltip: 'Index ký hiệu tiền tệ trong SpriteNumber.currencySprites.\n-1 = không dùng ký hiệu tiền tệ.' })
     currencyIndex: number = 0;
 
+    /** Scale AmountDisplay (SpriteNumber) — dùng setDisplayScale để không bị setData ghi đè */
+    @property({ tooltip: 'Scale số tiền (SpriteNumber.setDisplayScale). Vd 1.3 = lớn hơn 30%.' })
+    amountDisplayScale: number = 1.3;
+
     /** Node trong suốt bắt click đóng popup */
     @property({ type: Node, tooltip: 'Node trong suốt bắt click đóng\n→ Tạo Widget fill + kéo vào đây' })
     clickOverlay: Node | null = null;
@@ -153,6 +157,13 @@ export class ProgressiveWinPopup extends Component {
     /** Node chứa Particle Set 3 (MONSTER / MAX) */
     @property({ type: Node, tooltip: 'Particle Set 3 → MONSTER, MAX\n→ Kéo Node gắn ParticleSystem vào đây' })
     particleSet3: Node | null = null;
+
+    /** FX burst khi vào / chuyển tier (nested prefab Popup_Fx_In) */
+    @property({ type: Node, tooltip: 'Popup_Fx_In — play 1 lần mỗi khi chuyển win level\n→ Kéo node Popup_Fx_In vào đây' })
+    popupFxIn: Node | null = null;
+
+    @property({ tooltip: 'Delay (giây) trước khi play Popup_Fx_In khi chuyển tier mới' })
+    popupFxTransitionDelay: number = 0.2;
 
     // ── ANIMATION PARAMS ─────────────────────────────────────────────────────
 
@@ -212,10 +223,16 @@ export class ProgressiveWinPopup extends Component {
     /** Callback đồng bộ vị trí mỗi frame */
     private _syncPosCb: (() => void) | null = null;
 
+    /** scheduleOnce play Popup_Fx_In sau delay chuyển tier */
+    private _popupFxPlayCb: (() => void) | null = null;
+
     // ── LIFECYCLE ────────────────────────────────────────────────────────────
 
     onLoad(): void {
         this.node.active = false;
+        if (!this.popupFxIn) {
+            this.popupFxIn = this.node.getChildByName('Popup_Fx_In');
+        }
         // PROGRESSIVE_WIN_SHOW được PopupLoader xử lý khi lần đầu instantiate prefab.
         // Từ lần thứ hai trở đi, popup đã tồn tại và tự đăng ký listener này.
         EventBus.instance.on(GameEvents.PROGRESSIVE_WIN_SHOW, this._onProgressiveWinShow, this);
@@ -253,11 +270,12 @@ export class ProgressiveWinPopup extends Component {
         }
 
         if (this.amountDisplay) {
+            this._applyAmountDisplayScale();
             this.amountDisplay.setData(0, this.currencyIndex);
             this.amountDisplay.node.active = false;
             Tween.stopAllByTarget(this.amountDisplay.node);
-            this.amountDisplay.node.setScale(1, 1, 1);
         }
+        this._stopPopupFxIn();
 
         // Always start with BIG WIN spine
         const startTier = this._segments[0].tier;
@@ -281,6 +299,7 @@ export class ProgressiveWinPopup extends Component {
 
         // Play particle effects for starting tier
         this._playParticleEffects();
+        this._playPopupFxIn();
 
         const startSpine = this._activeSpine;
         if (startSpine) {
@@ -426,6 +445,15 @@ export class ProgressiveWinPopup extends Component {
         }
     }
 
+    /** Áp scale cho SpriteNumber — setDisplayScale để setData/shrinkToFit không ghi đè về 1. */
+    private _applyAmountDisplayScale(): void {
+        if (!this.amountDisplay) return;
+        const s = Number.isFinite(this.amountDisplayScale) && this.amountDisplayScale > 0
+            ? this.amountDisplayScale
+            : 1;
+        this.amountDisplay.setDisplayScale(s);
+    }
+
     /** Đồng bộ parent AmountDisplay theo nodeA (giữ local position đã set trong Editor). */
     private _syncAmountDisplayPosition(): void {
         if (!this._activeNodeA || !this.amountDisplay) return;
@@ -482,6 +510,7 @@ export class ProgressiveWinPopup extends Component {
 
         if (this.tierLabel) this.tierLabel.string = L(tier);
         this._switchParticleSet(tier);
+        this._playPopupFxIn(this.popupFxTransitionDelay);
 
         if (newSpine) {
             newSpine.node.active = true;
@@ -680,6 +709,7 @@ export class ProgressiveWinPopup extends Component {
         if (spine) {
             // Stop particle effects ngay lập tức
             this._stopParticleEffects();
+            this._stopPopupFxIn();
             
             // Play "out" animation ngay, không đợi xong
             spine.setAnimation(0, 'out', false);
@@ -688,8 +718,9 @@ export class ProgressiveWinPopup extends Component {
             // Scale amountDisplay thu nhỏ theo chiều X về 0 (Y giữ nguyên), nhanh hơn 'out'
             if (this.amountDisplay) {
                 Tween.stopAllByTarget(this.amountDisplay.node);
+                const sy = this.amountDisplay.node.scale.y;
                 tween(this.amountDisplay.node)
-                    .to(0.1, { scale: new Vec3(0, 1, 1) })
+                    .to(0.1, { scale: new Vec3(0, sy, 1) })
                     .start();
             }
             spine.setCompleteListener(null); // Không nghe completion, delay thôi
@@ -714,7 +745,7 @@ export class ProgressiveWinPopup extends Component {
         // Reset scale của amountDisplay để sẵn sàng cho lần show tiếp theo
         if (this.amountDisplay) {
             Tween.stopAllByTarget(this.amountDisplay.node);
-            this.amountDisplay.node.setScale(1, 1, 1);
+            this._applyAmountDisplayScale();
         }
         const cb = this._callback;
         this._callback = null;
@@ -786,9 +817,52 @@ export class ProgressiveWinPopup extends Component {
         }
     }
 
+    /** Play Popup_Fx_In particle burst một lần. delay>0 = chờ trước khi play (chuyển tier). */
+    private _playPopupFxIn(delay = 0): void {
+        if (!this.popupFxIn) return;
+        if (this._popupFxPlayCb) {
+            this.unschedule(this._popupFxPlayCb);
+            this._popupFxPlayCb = null;
+        }
+        if (delay > 0) {
+            this._popupFxPlayCb = () => {
+                this._popupFxPlayCb = null;
+                this._playPopupFxInNow();
+            };
+            this.scheduleOnce(this._popupFxPlayCb, delay);
+            return;
+        }
+        this._playPopupFxInNow();
+    }
+
+    private _playPopupFxInNow(): void {
+        if (!this.popupFxIn) return;
+        this.popupFxIn.active = true;
+        const systems = this.popupFxIn.getComponentsInChildren(ParticleSystem);
+        for (const ps of systems) {
+            ps.stop();
+            ps.clear();
+            ps.play();
+        }
+    }
+
+    private _stopPopupFxIn(): void {
+        if (this._popupFxPlayCb) {
+            this.unschedule(this._popupFxPlayCb);
+            this._popupFxPlayCb = null;
+        }
+        if (!this.popupFxIn) return;
+        const systems = this.popupFxIn.getComponentsInChildren(ParticleSystem);
+        for (const ps of systems) {
+            ps.stop();
+        }
+        this.popupFxIn.active = false;
+    }
+
     private _cleanup(): void {
         this._restoreAmountDisplayParent();
         this._stopCountUp();
+        this._stopPopupFxIn();
         if (this._autoCloseCb) {
             this.unschedule(this._autoCloseCb);
             this._autoCloseCb = null;

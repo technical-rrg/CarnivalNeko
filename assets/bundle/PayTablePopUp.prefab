@@ -1297,7 +1297,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "5 - 4.5\n4 - 3.5\n3 - 3\n",
+    "_string": "5 - 4.5\n4 - 3.5\n3 - 3.0\n",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -4140,7 +4140,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "5 - 1.25\n4 - 1\n3 - 0.75\n",
+    "_string": "5 - 1.25\n4 - 1.00\n3 - 0.75\n",
     "_horizontalAlign": 0,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -4679,7 +4679,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "5 - 1.25\n4 - 1\n3 - 0.75\n",
+    "_string": "5 - 1.25\n4 - 1.00\n3 - 0.75\n",
     "_horizontalAlign": 0,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -5218,7 +5218,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "5 - 1.25\n4 - 1\n3 - 0.75\n",
+    "_string": "5 - 1.25\n4 - 1.00\n3 - 0.75\n",
     "_horizontalAlign": 0,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -5757,7 +5757,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "5 - 1.25\n4 - 1\n3 - 0.75\n",
+    "_string": "5 - 1.25\n4 - 1.00\n3 - 0.75\n",
     "_horizontalAlign": 0,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -6296,7 +6296,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "5 - 1.25\n4 - 1\n3 - 0.75\n",
+    "_string": "5 - 1.25\n4 - 1.00\n3 - 0.75\n",
     "_horizontalAlign": 0,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -6835,7 +6835,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "5 - 1.25\n4 - 1\n3 - 0.75\n",
+    "_string": "5 - 1.25\n4 - 1.00\n3 - 0.75\n",
     "_horizontalAlign": 0,
     "_verticalAlign": 1,
     "_actualFontSize": 24,
@@ -9506,7 +9506,7 @@
         "__id__": 509
       }
     ],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 521

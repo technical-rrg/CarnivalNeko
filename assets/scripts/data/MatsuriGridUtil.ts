@@ -82,6 +82,20 @@ export function clampMatsuriRows(rows: number): number {
 }
 
 /**
+ * Thứ tự effect (giữ đúng logic cũ trước spine VFX):
+ *   cột trái → phải, trong cột trên → dưới.
+ * row 0 = visual top trên grid Matsuri (không theo comment StickyOverlay row 0 = bottom).
+ */
+export function sortMatsuriCellsTopBottomLeftRight(
+    cells: StickyCell[],
+    _getSlot?: (reel: number, row: number) => unknown,
+): StickyCell[] {
+    return [...cells].sort((a, b) =>
+        a.reel !== b.reel ? a.reel - b.reel : a.row - b.row,
+    );
+}
+
+/**
  * Scale root StickyOverlay — luôn 1.
  * Khung / grid đã trừ height + canh giữa theo số hàng, không thu nhỏ root nữa.
  */

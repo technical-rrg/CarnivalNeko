@@ -4,11 +4,13 @@
  * FLOW:
  *   1. GameManager emit CARNIVAL_TRAIL_START { trails, potLevels }
  *   2. Mỗi reel stop có Trail → CARNIVAL_TRAIL_ONE (hoặc batch sau REELS_STOPPED)
- *   3. Flip TRAIL_NORMAL → TRAIL_BLUE/RED/GREEN (tween trên proxy — KHÔNG tween symbolNode
- *      vì SymbolView.setSymbol() gọi Tween.stopAllByTarget và sẽ cắt chuỗi bay)
- *   4. instantiate(particleTemplate) → child của CarnivalTrailController → bay tới Pot
- *   5. CARNIVAL_TRAIL_ONE_HIT → CarnivalPotBoard Spine impact
- *   6. CARNIVAL_TRAIL_FLY_DONE
+ *   3. Flip TRAIL_NORMAL → TRAIL_BLUE/RED/GREEN bằng Spine Flip_41/42/43
+ *      (không tween scale symbolNode — setSymbol() gọi Tween.stopAllByTarget và sẽ cắt chuỗi bay)
+ *   4. instantiate FlipCoin_Blue/Green/Red (Flip_41/42/43) tại symbol → play "animation"
+ *      → trail bay song song (mặc định ngay khi flip bắt đầu, không chờ flip xong)
+ *   5. instantiate(particleTemplate) → child của CarnivalTrailController → bay tới Pot
+ *   6. CARNIVAL_TRAIL_ONE_HIT → CarnivalPotBoard Spine impact
+ *   7. CARNIVAL_TRAIL_FLY_DONE
  *
  * ĐƯỜNG BAY (dạng dấu hỏi "?"):
  *   Một cubic Bezier liên tục: từ Trail (dưới) vòng cung lên hơi cao hơn Pot rồi đổ xuống.
@@ -21,11 +23,13 @@
  *   2. Kéo 5 ReelController → reels
  *   3. Kéo 3 Pot → bluePot / redPot / greenPot
  *   4. Child inactive (Sprite / ParticleSystem) → particleTemplate
+ *   5. Child inactive FlipCoin_Blue / FlipCoin_Green / FlipCoin_Red (sp.Skeleton Flip_41/42/43)
  */
 
 import {
     _decorator, Component, Node, Vec3, tween,
     Color, Sprite, instantiate, ParticleSystem, UIOpacity, UITransform, Camera,
+    sp, assetManager,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -45,6 +49,23 @@ const { ccclass, property } = _decorator;
 
 /** Camera 3D vẽ particle trail (layer DEFAULT). Mặc định scene: pos (960,540) gốc trái canvas 1920×1080. */
 const PARTICLE_3D_CAMERA_NAME = 'Particle3DCamera';
+const SPINE_BUNDLE = 'MainBundle';
+const FLIP_ANIM_DEFAULT = 'animation';
+const FLIP_SPINE_PATH: Record<TrailColor, string> = {
+    [TrailColor.BLUE]: 'newSpine/Flip_COIN/Flip_41',
+    [TrailColor.GREEN]: 'newSpine/Flip_COIN/Flip_42',
+    [TrailColor.RED]: 'newSpine/Flip_COIN/Flip_43',
+};
+const FLIP_SPINE_UUID: Record<TrailColor, string> = {
+    [TrailColor.BLUE]: 'ed611649-4a84-499e-bf4f-9d15c49209f5',
+    [TrailColor.GREEN]: 'fba29b93-2ae5-49f3-9057-84f868ab5b95',
+    [TrailColor.RED]: 'c85f2ad7-7168-4a60-97fd-0400a76cf8e7',
+};
+const FLIP_TEMPLATE_NAME: Record<TrailColor, string> = {
+    [TrailColor.BLUE]: 'FlipCoin_Blue',
+    [TrailColor.GREEN]: 'FlipCoin_Green',
+    [TrailColor.RED]: 'FlipCoin_Red',
+};
 
 @ccclass('CarnivalTrailController')
 export class CarnivalTrailController extends Component {
@@ -67,14 +88,52 @@ export class CarnivalTrailController extends Component {
     })
     particleTemplate: Node | null = null;
 
-    @property({ tooltip: 'Flip half duration (giây)' })
+    @property({
+        type: Node,
+        tooltip: 'Template Spine flip Blue (Flip_41). Child inactive — instantiate mỗi lần flip.',
+    })
+    flipBlueTemplate: Node | null = null;
+
+    @property({
+        type: Node,
+        tooltip: 'Template Spine flip Green (Flip_42). Child inactive — instantiate mỗi lần flip.',
+    })
+    flipGreenTemplate: Node | null = null;
+
+    @property({
+        type: Node,
+        tooltip: 'Template Spine flip Red (Flip_43). Child inactive — instantiate mỗi lần flip.',
+    })
+    flipRedTemplate: Node | null = null;
+
+    @property({ tooltip: 'Scale Spine flip so với symbol (1 = khớp world scale symbol)' })
+    flipScale: number = 1;
+
+    @property({ tooltip: 'Tốc độ Spine flip (1 = bình thường, 1.5 = nhanh gấp 1.5 lần)' })
+    flipTimeScale: number = 1.5;
+
+    @property({ tooltip: 'Fallback scale-flip nửa nhịp (giây) — chỉ khi Spine chưa load được' })
     flipHalfDuration: number = 0.12;
 
     @property({
         tooltip: 'Sau khi reel dừng + hiện TRAIL_NORMAL xong, chờ bao lâu (giây) rồi mới flip/bay.\n'
-               + 'Hay chỉnh: giảm để trail bắn sớm hơn sau khi symbol land.',
+               + '0 = flip/bay ngay sau khi symbol settle.',
     })
-    postStopHoldDuration: number = 0.05;
+    postStopHoldDuration: number = 0;
+
+    @property({
+        tooltip: 'Tỉ lệ anim flip (0–1) trôi qua rồi mới bay.\n'
+               + '0 = bay ngay khi flip bắt đầu. 1 = chờ flip xong.\n'
+               + 'Kết hợp thêm Fly Start Extra Delay (giây).',
+        range: [0, 1, 0.05],
+    })
+    flyStartAfterFlipRatio: number = 0.25;
+
+    @property({
+        tooltip: 'Delay cố định (giây) sau khi flip bắt đầu, cộng thêm trước khi trail bay.\n'
+               + 'Canh “một chút” muộn hơn ratio thuần — không chờ hết flip.',
+    })
+    flyStartExtraDelay: number = 0.06;
 
     @property({ tooltip: 'Thời gian particle bay Normal (giây) — khớp Wild Trail' })
     flyDurationNormal: number = 0.8;
@@ -114,15 +173,29 @@ export class CarnivalTrailController extends Component {
 
     @property({
         tooltip: 'Thời gian giữ particle sau khi chạm Pot (giây).\n'
-               + 'Chạm Pot → loop=false, dừng emit, để particle/trail diễn hết rồi mới destroy.\n'
-               + 'Thực tế lấy max(giá trị này, startLifetime + trailLife).',
+               + 'Chạm Pot → Coins_Trail*: stop ngay | qilin*: loop=false tàn dần.\n'
+               + 'Thực tế lấy max(giá trị này, startLifetime + trailLife của qilin*).',
     })
     particleFadeOutDuration: number = 1.2;
+
+    @property({
+        tooltip: 'Prefix tên child particle — stop()+clear ngay khi chạm Pot (vd. Coins_Trail).',
+    })
+    particleHitStopPrefixes: string[] = ['Coins_Trail'];
+
+    @property({
+        tooltip: 'Prefix tên child particle — loop=false, dừng emit, tàn dần khi chạm Pot (vd. qilin).',
+    })
+    particleHitLoopOffPrefixes: string[] = ['qilin'];
 
     private _pending: CarnivalTrailHit[] = [];
     private _flyingCount = 0;
     private _started = false;
+    private _flipGen = 0;
     private _activeParticles: Node[] = [];
+    private _activeFlips: Node[] = [];
+    private _flipData = new Map<TrailColor, sp.SkeletonData>();
+    private _flipLoad: Map<TrailColor, Promise<sp.SkeletonData | null>> = new Map();
 
     onLoad(): void {
         const bus = EventBus.instance;
@@ -134,6 +207,8 @@ export class CarnivalTrailController extends Component {
 
     start(): void {
         this._autoWireIfNeeded();
+        this._ensureFlipTemplates();
+        void this._preloadFlipSpines();
         if (this.particleTemplate?.isValid) {
             this.particleTemplate.active = false;
         }
@@ -141,13 +216,15 @@ export class CarnivalTrailController extends Component {
         Log.e(
             `[CarnivalTrail] ready | reels=${this.reels?.length ?? 0}` +
             ` pots=B${!!this.bluePot}/R${!!this.redPot}/G${!!this.greenPot}` +
-            ` template=${this.particleTemplate ? this.particleTemplate.name : 'NULL'}`
+            ` template=${this.particleTemplate ? this.particleTemplate.name : 'NULL'}` +
+            ` flip=B${!!this.flipBlueTemplate}/G${!!this.flipGreenTemplate}/R${!!this.flipRedTemplate}`
         );
     }
 
     onDestroy(): void {
         EventBus.instance.offTarget(this);
         this._clearParticles();
+        this._clearFlips();
     }
 
     lateUpdate(): void {
@@ -171,13 +248,16 @@ export class CarnivalTrailController extends Component {
         // Template mặc định: child inactive đầu tiên (trừ khi đã gán)
         if (!this.particleTemplate) {
             for (const child of this.node.children) {
-                if (!child.active) {
+                if (!child.active && !child.name.startsWith('FlipCoin_')) {
                     this.particleTemplate = child;
                     Log.e(`[CarnivalTrail] auto-wired particleTemplate="${child.name}"`);
                     break;
                 }
             }
         }
+        this.flipBlueTemplate = this.flipBlueTemplate ?? this.node.getChildByName(FLIP_TEMPLATE_NAME[TrailColor.BLUE]);
+        this.flipGreenTemplate = this.flipGreenTemplate ?? this.node.getChildByName(FLIP_TEMPLATE_NAME[TrailColor.GREEN]);
+        this.flipRedTemplate = this.flipRedTemplate ?? this.node.getChildByName(FLIP_TEMPLATE_NAME[TrailColor.RED]);
     }
 
     private _onReelsStartSpin(): void {
@@ -185,7 +265,9 @@ export class CarnivalTrailController extends Component {
         this._pending = [];
         this._flyingCount = 0;
         this._started = false;
+        this._flipGen++;
         this._clearParticles();
+        this._clearFlips();
     }
 
     private _onTrailStart(payload: { trails?: CarnivalTrailHit[] }): void {
@@ -249,8 +331,6 @@ export class CarnivalTrailController extends Component {
 
         const view = symbolNode.getComponent(SymbolView);
         const coloredId = trailColorToSymbolId(hit.color);
-        const baseX = symbolNode.scale.x;
-        const baseY = symbolNode.scale.y;
 
         // Đảm bảo vẫn đang ở NORMAL trước khi bắt đầu flip
         if (view) {
@@ -258,7 +338,6 @@ export class CarnivalTrailController extends Component {
             this._resetSpriteColor(view);
         }
 
-        const half = this.flipHalfDuration;
         let flyStarted = false;
         const startFly = () => {
             if (flyStarted) return;
@@ -268,34 +347,259 @@ export class CarnivalTrailController extends Component {
                 this._emitHitAndMaybeDone(hit.color);
             });
         };
-        // ★ Tween PROXY — không tween symbolNode (setSymbol sẽ stopAllByTarget và cắt chuỗi bay)
-        const proxy = { s: baseX };
-        tween(proxy)
-            .to(half, { s: 0.05 }, {
-                easing: 'sineIn',
-                onUpdate: () => {
-                    if (symbolNode.isValid) symbolNode.setScale(proxy.s, baseY, 1);
-                },
-            })
-            .call(() => {
-                if (view?.isValid) {
-                    view.setSymbol(coloredId);
-                    this._resetSpriteColor(view);
+
+        const gen = this._flipGen;
+        void this._playFlipThenFly(symbolNode, view, hit.color, coloredId, startFly, gen);
+    }
+
+    private async _playFlipThenFly(
+        symbolNode: Node,
+        view: SymbolView | null,
+        color: TrailColor,
+        coloredId: SymbolId,
+        startFly: () => void,
+        gen: number,
+    ): Promise<void> {
+        const data = await this._ensureFlipData(color);
+        if (gen !== this._flipGen || !symbolNode.isValid) return;
+        if (data) {
+            this._playSpineFlip(symbolNode, view, color, coloredId, data, startFly, gen);
+            return;
+        }
+        Log.e(`[CarnivalTrail] Flip spine missing ${FLIP_SPINE_PATH[color]} — skip scale-flip, show color + fly`);
+        if (view?.isValid) {
+            view.setSymbol(coloredId);
+            this._resetSpriteColor(view);
+        }
+        startFly();
+    }
+
+    private _playSpineFlip(
+        symbolNode: Node,
+        view: SymbolView | null,
+        color: TrailColor,
+        coloredId: SymbolId,
+        data: sp.SkeletonData,
+        startFly: () => void,
+        gen: number,
+    ): void {
+        const flipNode = new Node(`CarnivalTrailFlip_${TrailColor[color]}`);
+        flipNode.layer = symbolNode.layer || this.node.layer;
+        const ut = flipNode.addComponent(UITransform);
+        ut.setContentSize(180, 180);
+        const skel = flipNode.addComponent(sp.Skeleton);
+        skel.premultipliedAlpha = false;
+        skel.skeletonData = data;
+
+        flipNode.setParent(symbolNode, false);
+        flipNode.setPosition(0, 0, 0);
+        flipNode.setScale(this.flipScale, this.flipScale, 1);
+        flipNode.setSiblingIndex(symbolNode.children.length - 1);
+        flipNode.active = true;
+        this._activeFlips.push(flipNode);
+
+        if (view?.isValid) view.setSpriteVisible(false);
+
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            this._destroyFlip(flipNode);
+            if (gen !== this._flipGen) return;
+            if (view?.isValid) {
+                view.setSymbol(coloredId);
+                this._resetSpriteColor(view);
+            }
+        };
+
+        const animName = this._resolveFlipAnimName(skel) ?? FLIP_ANIM_DEFAULT;
+        const timeScale = Math.max(0.1, this.flipTimeScale);
+        skel.timeScale = timeScale;
+        skel.setCompleteListener(null);
+        let duration = 0.67;
+        try {
+            const entry = skel.setAnimation(0, animName, false);
+            duration = entry?.animation?.duration ?? duration;
+            Log.e(`[CarnivalTrail] PLAY flip ${TrailColor[color]} anim="${animName}" dur=${duration.toFixed(2)} x${timeScale}`);
+        } catch (err) {
+            Log.e(`[CarnivalTrail] setAnimation failed ${animName}`, err);
+            startFly();
+            finish();
+            return;
+        }
+        const playDuration = duration / timeScale;
+        this._scheduleFlyAfterFlip(startFly, playDuration, gen, symbolNode);
+        this.scheduleOnce(() => {
+            if (flipNode.isValid) finish();
+        }, playDuration + 0.02);
+        skel.setCompleteListener(() => {
+            skel.setCompleteListener(null);
+            if (flipNode.isValid) finish();
+        });
+    }
+
+    /** Bay sau một phần flip + delay cố định — giữa “quá sớm” và “chờ flip xong”. */
+    private _scheduleFlyAfterFlip(
+        startFly: () => void,
+        flipDuration: number,
+        gen: number,
+        symbolNode: Node,
+    ): void {
+        const ratio = Math.max(0, Math.min(1, this.flyStartAfterFlipRatio));
+        const delay = flipDuration * ratio + Math.max(0, this.flyStartExtraDelay);
+        if (delay <= 0.001) {
+            startFly();
+            return;
+        }
+        this.scheduleOnce(() => {
+            if (gen !== this._flipGen || !symbolNode.isValid) return;
+            startFly();
+        }, delay);
+    }
+
+    private _ensureFlipTemplates(): void {
+        const colors: TrailColor[] = [TrailColor.BLUE, TrailColor.GREEN, TrailColor.RED];
+        for (const color of colors) {
+            let node = this._flipTemplateFor(color);
+            if (!node?.isValid) {
+                node = this._createFlipTemplate(FLIP_TEMPLATE_NAME[color], null);
+                node.setParent(this.node);
+                this._setFlipTemplate(color, node);
+            }
+            node.active = false;
+        }
+    }
+
+    private _createFlipTemplate(name: string, data: sp.SkeletonData | null): Node {
+        const node = new Node(name);
+        node.layer = this.node.layer;
+        node.active = false;
+        const ut = node.addComponent(UITransform);
+        ut.setContentSize(180, 180);
+        const skel = node.addComponent(sp.Skeleton);
+        skel.premultipliedAlpha = false;
+        if (data) skel.skeletonData = data;
+        return node;
+    }
+
+    private _preloadFlipSpines(): Promise<void> {
+        return Promise.all([
+            this._ensureFlipData(TrailColor.BLUE),
+            this._ensureFlipData(TrailColor.GREEN),
+            this._ensureFlipData(TrailColor.RED),
+        ]).then(() => undefined);
+    }
+
+    private _ensureFlipData(color: TrailColor): Promise<sp.SkeletonData | null> {
+        const cached = this._flipData.get(color);
+        if (cached) return Promise.resolve(cached);
+
+        const template = this._flipTemplateFor(color);
+        const existing = template?.getComponent(sp.Skeleton) ?? template?.getComponentInChildren(sp.Skeleton);
+        if (existing?.skeletonData) {
+            this._flipData.set(color, existing.skeletonData);
+            return Promise.resolve(existing.skeletonData);
+        }
+
+        const inflight = this._flipLoad.get(color);
+        if (inflight) return inflight;
+
+        const path = FLIP_SPINE_PATH[color];
+        const uuid = FLIP_SPINE_UUID[color];
+        const promise = new Promise<sp.SkeletonData | null>((resolve) => {
+            const done = (data: sp.SkeletonData | null, via: string) => {
+                this._flipLoad.delete(color);
+                if (data) {
+                    this._flipData.set(color, data);
+                    const tmpl = this._flipTemplateFor(color);
+                    const skel = tmpl?.getComponent(sp.Skeleton) ?? tmpl?.getComponentInChildren(sp.Skeleton);
+                    if (skel && !skel.skeletonData) skel.skeletonData = data;
+                    Log.e(`[CarnivalTrail] loaded flip spine via ${via}: ${path}`);
                 }
-                if (symbolNode.isValid) symbolNode.setScale(0.05, baseY, 1);
-                // Bắn trail ngay khi flip ra màu — không chờ scale-out xong
-                startFly();
-            })
-            .to(half, { s: baseX }, {
-                easing: 'sineOut',
-                onUpdate: () => {
-                    if (symbolNode.isValid) symbolNode.setScale(proxy.s, baseY, 1);
-                },
-            })
-            .call(() => {
-                if (symbolNode.isValid) symbolNode.setScale(baseX, baseY, 1);
-            })
-            .start();
+                resolve(data);
+            };
+
+            const bundle = assetManager.getBundle(SPINE_BUNDLE);
+            if (bundle) {
+                bundle.load(path, sp.SkeletonData, (err: Error | null, data: sp.SkeletonData) => {
+                    if (!err && data) {
+                        done(data, 'bundle');
+                        return;
+                    }
+                    Log.w(`[CarnivalTrail] bundle.load failed ${path}`, err);
+                    assetManager.loadAny({ uuid }, (uuidErr: Error | null, uuidData: sp.SkeletonData) => {
+                        if (uuidErr || !uuidData) {
+                            Log.e(`[CarnivalTrail] loadAny uuid failed ${uuid}`, uuidErr);
+                            done(null, 'fail');
+                            return;
+                        }
+                        done(uuidData, 'uuid');
+                    });
+                });
+                return;
+            }
+
+            Log.w(`[CarnivalTrail] Bundle '${SPINE_BUNDLE}' missing — try uuid ${uuid}`);
+            assetManager.loadAny({ uuid }, (uuidErr: Error | null, uuidData: sp.SkeletonData) => {
+                if (uuidErr || !uuidData) {
+                    Log.e(`[CarnivalTrail] loadAny uuid failed ${uuid}`, uuidErr);
+                    done(null, 'fail');
+                    return;
+                }
+                done(uuidData, 'uuid');
+            });
+        });
+        this._flipLoad.set(color, promise);
+        return promise;
+    }
+
+    private _flipTemplateFor(color: TrailColor): Node | null {
+        switch (color) {
+            case TrailColor.BLUE: return this.flipBlueTemplate;
+            case TrailColor.GREEN: return this.flipGreenTemplate;
+            case TrailColor.RED: return this.flipRedTemplate;
+            default: return null;
+        }
+    }
+
+    private _setFlipTemplate(color: TrailColor, node: Node): void {
+        switch (color) {
+            case TrailColor.BLUE: this.flipBlueTemplate = node; break;
+            case TrailColor.GREEN: this.flipGreenTemplate = node; break;
+            case TrailColor.RED: this.flipRedTemplate = node; break;
+        }
+    }
+
+    private _resolveFlipAnimName(skel: sp.Skeleton): string | null {
+        const tryName = (name: string): string | null => {
+            try {
+                const find = (skel as unknown as { findAnimation?: (n: string) => unknown }).findAnimation;
+                if (typeof find === 'function' && find.call(skel, name)) return name;
+            } catch {
+                /* spine chưa init — vẫn cho setAnimation thử */
+            }
+            return null;
+        };
+        return tryName(FLIP_ANIM_DEFAULT) ?? tryName('Flip') ?? tryName('flip') ?? FLIP_ANIM_DEFAULT;
+    }
+
+    private _destroyFlip(node: Node): void {
+        const idx = this._activeFlips.indexOf(node);
+        if (idx >= 0) this._activeFlips.splice(idx, 1);
+        if (!node?.isValid) return;
+        const skel = node.getComponent(sp.Skeleton) ?? node.getComponentInChildren(sp.Skeleton);
+        if (skel) skel.setCompleteListener(null);
+        node.destroy();
+    }
+
+    private _clearFlips(): void {
+        for (const n of this._activeFlips) {
+            if (!n?.isValid) continue;
+            const skel = n.getComponent(sp.Skeleton) ?? n.getComponentInChildren(sp.Skeleton);
+            if (skel) skel.setCompleteListener(null);
+            n.destroy();
+        }
+        this._activeFlips.length = 0;
     }
 
     /**
@@ -405,7 +709,7 @@ export class CarnivalTrailController extends Component {
                 onUpdate: () => updatePos(flyProxy.t),
             })
             .call(() => {
-                // Chạm Pot → không destroy ngay: loop=false, để particle diễn hết rồi mới hủy
+                // Chạm Pot → Coins_Trail* stop ngay; qilin* loop=false tàn dần
                 this._beginParticleFadeOut(particle);
                 onDone();
             })
@@ -448,16 +752,34 @@ export class CarnivalTrailController extends Component {
             ps.rateOverDistance.mode = 0;
             ps.rateOverDistance.constant = 0;
         }
-        // Không stop()/clear() — Trail sẽ biến mất ngay nếu dừng simulate
         if (!ps.isPlaying) {
             ps.play();
         }
     }
 
+    /** stop()+clear — biến mất ngay (Coins_Trail* khi chạm Pot). */
+    private _stopParticleImmediate(ps: ParticleSystem): void {
+        ps.loop = false;
+        ps.stop();
+        ps.clear();
+    }
+
+    private _matchesParticlePrefix(nodeName: string, prefixes: string[]): boolean {
+        if (!prefixes?.length || !nodeName) return false;
+        return prefixes.some(p => !!p && nodeName.startsWith(p));
+    }
+
+    private _particleSystemOnNode(node: Node): ParticleSystem | null {
+        const ps = node.getComponent(ParticleSystem);
+        return ps?.isValid && ps.enabled ? ps : null;
+    }
+
     private _estimateParticleFadeDelay(root: Node): number {
         let maxLife = Math.max(0, this.particleFadeOutDuration);
-        for (const ps of root.getComponentsInChildren(ParticleSystem)) {
-            if (!ps.isValid) continue;
+        for (const child of root.children) {
+            const ps = this._particleSystemOnNode(child);
+            if (!ps) continue;
+            if (this._matchesParticlePrefix(child.name, this.particleHitStopPrefixes)) continue;
             const startLife = ps.startLifetime?.constant ?? 0;
             const trail = (ps as unknown as {
                 trailModule?: { enable?: boolean; lifeTime?: { constant?: number } };
@@ -471,8 +793,17 @@ export class CarnivalTrailController extends Component {
     private _beginParticleFadeOut(root: Node): void {
         if (!root?.isValid) return;
         root.active = true;
-        for (const ps of root.getComponentsInChildren(ParticleSystem)) {
-            if (!ps.isValid || !ps.enabled) continue;
+        for (const child of root.children) {
+            const ps = this._particleSystemOnNode(child);
+            if (!ps) continue;
+            if (this._matchesParticlePrefix(child.name, this.particleHitStopPrefixes)) {
+                this._stopParticleImmediate(ps);
+                continue;
+            }
+            if (this._matchesParticlePrefix(child.name, this.particleHitLoopOffPrefixes)) {
+                this._stopParticleEmission(ps);
+                continue;
+            }
             this._stopParticleEmission(ps);
         }
         const delay = this._estimateParticleFadeDelay(root);

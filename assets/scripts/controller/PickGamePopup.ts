@@ -39,8 +39,16 @@ import {
     loadSymbolPackAtlas,
     resolveSymbolPackAtlas,
 } from '../data/SymbolPackUtil';
+import { LanguageChange } from '../core/LanguageChange';
+import { RichTextShrink } from '../core/RichTextShrink';
 
 const { ccclass, property } = _decorator;
+
+/** Instruction1 RichText bounds — khớp UITransform 650×192 trong prefab. */
+const INSTRUCTION1_WIDTH = 650;
+const INSTRUCTION1_HEIGHT = 192;
+const INSTRUCTION1_MAX_FONT = 17;
+const INSTRUCTION1_MIN_FONT = 10;
 
 @ccclass('PickGamePopup')
 export class PickGamePopup extends Component {
@@ -182,6 +190,35 @@ export class PickGamePopup extends Component {
         bus.on(GameEvents.TOPUP_TRANSITION_DONE,   this._onTransitionDone,   this);
         this._initCoinFontDemo();
         this._initSymbolPackFrames();
+    }
+
+    start(): void {
+        this._setupInstructionShrink();
+    }
+
+    /** Gắn RichTextShrink cho Instruction1 — text + icon vừa khung mọi ngôn ngữ. */
+    private _setupInstructionShrink(): void {
+        const instruction = this._findInstruction1Node();
+        if (!instruction) return;
+
+        let shrink = instruction.getComponent(RichTextShrink);
+        if (!shrink) shrink = instruction.addComponent(RichTextShrink);
+
+        shrink.maxFontSize = INSTRUCTION1_MAX_FONT;
+        shrink.minFontSize = INSTRUCTION1_MIN_FONT;
+        shrink.containerWidth = INSTRUCTION1_WIDTH;
+        shrink.containerHeight = INSTRUCTION1_HEIGHT;
+        shrink.maxLines = 5;
+        shrink.allowWrap = true;
+
+        instruction.getComponent(LanguageChange)?.refreshText();
+    }
+
+    private _findInstruction1Node(): Node | null {
+        if (this.gameContentNode) {
+            return this.gameContentNode.getChildByName('Instruction1');
+        }
+        return this.node.getChildByName('GameContent')?.getChildByName('Instruction1') ?? null;
     }
 
     /** Load jp frames + coin back idle từ SymbolPack. */

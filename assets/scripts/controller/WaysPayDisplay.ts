@@ -143,11 +143,14 @@ export class WaysPayDisplay extends Component {
      */
     private _onShowAllWays(ways: WaysPayWin[], _duration?: number): void {
         if (!this._ready) {
-            Log.d(`[WinHL] WaysPay SHOW_ALL_WAYS skip — not ready`);
+            // Log.d(`[WinHL] WaysPay SHOW_ALL_WAYS skip — not ready`);
             return;
         }
         const cells = this._collectWayCells(ways);
-        Log.d(`[WinHL] WaysPay SHOW_ALL_WAYS ways=${ways?.length ?? 0} cells=${cells.size}`);
+        Log.e(
+            `[MULTI-LINE-WIN] WaysPayDisplay SHOW_ALL_WAYS ways=${ways?.length ?? 0} cells=${cells.size}` +
+            ` payouts=[${ways.map(w => `sym${w.symbolId}=${w.payout}(ways=${w.ways})`).join('|')}]`
+        );
         void this._applyCellsWhenSpinesReady(cells);
     }
 
@@ -156,33 +159,42 @@ export class WaysPayDisplay extends Component {
      */
     private _onCycleOneWay(way: WaysPayWin): void {
         if (!this._ready) {
-            Log.d(`[WinHL] WaysPay CYCLE_ONE_WAY skip — not ready`);
+            // Log.d(`[WinHL] WaysPay CYCLE_ONE_WAY skip — not ready`);
             return;
         }
         const cells = this._collectWayCells([way]);
-        Log.d(`[WinHL] WaysPay CYCLE_ONE_WAY sym=${way?.symbolId} cells=${cells.size} [${[...cells].join('|')}]`);
+        Log.e(
+            `[MULTI-LINE-WIN] WaysPayDisplay CYCLE_ONE_WAY sym=${way?.symbolId} payout=${way?.payout}` +
+            ` ways=${way?.ways} cells=${cells.size}`
+        );
         void this._applyCellsWhenSpinesReady(cells);
     }
 
     /** Real API line win: hiện union ô thắng của mọi MatchedLinePay. */
     private _onShowAllLines(lines: MatchedLinePay[], _duration?: number): void {
         if (!this._ready) {
-            Log.d(`[WinHL] WaysPay SHOW_ALL_LINES skip — not ready`);
+            // Log.d(`[WinHL] WaysPay SHOW_ALL_LINES skip — not ready`);
             return;
         }
         const cells = this._collectLineCells(lines);
-        Log.d(`[WinHL] WaysPay SHOW_ALL_LINES lines=${lines?.length ?? 0} cells=${cells.size}`);
+        Log.e(
+            `[MULTI-LINE-WIN] WaysPayDisplay SHOW_ALL_LINES lines=${lines?.length ?? 0} cells=${cells.size}` +
+            ` payouts=[${lines.map(l => `pl${l.payLineIndex}=${l.payout}`).join(',')}]`
+        );
         void this._applyCellsWhenSpinesReady(cells);
     }
 
     /** Cycle từng line (UI_UPDATE_WIN_LABEL): chỉ giữ ô của line hiện tại. */
     private _onCycleOneLine(linePay: MatchedLinePay): void {
         if (!this._ready || !linePay) {
-            Log.d(`[WinHL] WaysPay CYCLE_ONE_LINE skip — ready=${this._ready} line=${!!linePay}`);
+            // Log.d(`[WinHL] WaysPay CYCLE_ONE_LINE skip — ready=${this._ready} line=${!!linePay}`);
             return;
         }
         const cells = this._collectLineCells([linePay]);
-        Log.d(`[WinHL] WaysPay CYCLE_ONE_LINE pl=#${linePay.payLineIndex} cells=${cells.size} [${[...cells].join('|')}]`);
+        Log.e(
+            `[MULTI-LINE-WIN] WaysPayDisplay CYCLE_ONE_LINE pl=#${linePay.payLineIndex}` +
+            ` payout=${linePay.payout} cells=${cells.size}`
+        );
         void this._applyCellsWhenSpinesReady(cells);
     }
 
@@ -284,7 +296,7 @@ export class WaysPayDisplay extends Component {
 
     /** Reset khi spin mới bắt đầu / WIN_HIGHLIGHT_CLEAR */
     private _onSpinStart(): void {
-        Log.d(`[WinHL] WaysPay CLEAR overlays (spinStart/highlightClear)`);
+        // Log.d(`[WinHL] WaysPay CLEAR overlays (spinStart/highlightClear)`);
         this._invalidatePendingApply();
         this._returnAll();
         this._restoreVisibleSprites();

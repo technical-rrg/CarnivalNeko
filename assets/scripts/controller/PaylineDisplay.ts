@@ -123,7 +123,7 @@ export class PaylineDisplay extends Component {
             // Server trả chính xác: Item1=reelCol (0-2), Item2=row (0=top,1=mid,2=bot)
             const serverStr = serverIndices!.map(s => `col${s.Item1}:row${s.Item2}`).join(' | ');
             const displayStr = serverIndices!.map(s => `col${s.Item1}:row${this._toDisplayRow(s.Item2)}(node${this._toDisplayRow(s.Item2)+1})`).join(' | ');
-            console.log(`%c[PaylineDisplay] Line#${linePay.payLineIndex+1}(idx=${linePay.payLineIndex}) ${source}\n  server logical: ${serverStr}\n  → display node: ${displayStr}`, 'color:#0af;font-weight:bold');
+            // console.log(`%c[PaylineDisplay] Line#${linePay.payLineIndex+1}(idx=${linePay.payLineIndex}) ${source}\n  server logical: ${serverStr}\n  → display node: ${displayStr}`, 'color:#0af;font-weight:bold');
             for (const idx of serverIndices!) {
                 const reel = this.reels[idx.Item1];
                 if (!reel) continue;
@@ -136,7 +136,7 @@ export class PaylineDisplay extends Component {
             if (!paylineLogical) return;
             const logicalStr  = paylineLogical.map((r, c) => `col${c}:row${r}(${ROW_NAME[r]??r})`).join(' | ');
             const displayStr  = paylineLogical.map((r, c) => `col${c}:row${this._toDisplayRow(r)}(node${this._toDisplayRow(r)+1})`).join(' | ');
-            console.log(`%c[PaylineDisplay] Line#${linePay.payLineIndex+1}(idx=${linePay.payLineIndex}) ${source}\n  payline logical: ${logicalStr}\n  → display node:  ${displayStr}`, 'color:#fa0;font-weight:bold');
+            // console.log(`%c[PaylineDisplay] Line#${linePay.payLineIndex+1}(idx=${linePay.payLineIndex}) ${source}\n  payline logical: ${logicalStr}\n  → display node:  ${displayStr}`, 'color:#fa0;font-weight:bold');
             for (let col = 0; col < 3; col++) {
                 const reel = this.reels[col];
                 if (!reel) continue;

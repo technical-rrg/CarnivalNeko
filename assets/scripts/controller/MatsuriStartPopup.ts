@@ -1,5 +1,5 @@
 /**
- * MatsuriStartPopup — thông báo trước khi vào Matsuri / TopUp Hold&Spin.
+ * MatsuriStartPopup — thông báo trong Feature (sau khi vào overlay), trước khi seed / Cat.
  *
  * Prefab: assets/bundle/MatsuriStartPopup.prefab
  * Gán hết trong Editor:

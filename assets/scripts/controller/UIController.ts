@@ -537,7 +537,15 @@ export class UIController extends Component {
         // Log.e(`[SPIN-HANG][UI] UI_SPIN_BUTTON_STATE applied | enabled=${enabled} spinEnabled=${this._spinEnabled} uiSpinning=${this._isSpinning} freeSpin=${this._isFreeSpinMode} autoActive=${isAutoSpinActive} interactable=${this.spinButton?.interactable ?? false}`);
     }
 
-    private _onWinPresentStart(resp: { totalWin: number; featureMultiple?: number }): void {
+    private _onWinPresentStart(resp: { totalWin: number; featureMultiple?: number; matchedLinePays?: { payLineIndex: number; payout: number }[]; waysPayWins?: { payout: number; ways: number }[]; totalBet?: number }): void {
+        const lineCount = resp.matchedLinePays?.length ?? 0;
+        const wayCount = resp.waysPayWins?.length ?? 0;
+        const sumLine = (resp.matchedLinePays ?? []).reduce((s, l) => s + (l.payout ?? 0), 0);
+        Log.e(
+            `[MULTI-LINE-WIN] UI winLabel totalWin=${resp.totalWin} totalBet=${resp.totalBet ?? GameData.instance.totalBet}` +
+            ` lines=${lineCount} ways=${wayCount} sumLinePayout=${sumLine}` +
+            ` roundWinLabel=${resp.totalWin > 0 ? formatCurrencyFixed(resp.totalWin) : '(empty)'}`
+        );
         if (this._isFreeSpinMode) {
             // FreeSpin: lưu win của lượt này để hiển thị ở line 1
             this._currentRoundWin = resp.totalWin;

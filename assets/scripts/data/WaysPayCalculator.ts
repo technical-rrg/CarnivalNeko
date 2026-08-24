@@ -64,11 +64,54 @@ export class WaysPayCalculator {
         // ── Bước 2–5: Tính win cho từng target ────────────────────────────────
         const wins: WaysPayWin[] = [];
         for (const sym of targets) {
-            const win = this._calcSymbol(grid, sym, wildId, config.waysPayTable, totalBet, reelCount);
+            const win = this._calcSymbol(grid, sym, wildId, config.waysPayTable, totalBet, reelCount, true);
             if (win) wins.push(win);
         }
 
         return wins;
+    }
+
+    /**
+     * Tính 1 symbol từ grid, không bắt buộc paytable (dùng khi server đã trả line).
+     * `maxReels` cắt đúng số cột server trả (MatchedSymbolsCount / ReelCnt).
+     */
+    static calculateOne(
+        grid: number[][],
+        symbol: number,
+        totalBet: number,
+        isFreeSpin: boolean = false,
+        maxReels?: number,
+    ): WaysPayWin | null {
+        const reelCount = grid.length;
+        if (reelCount < 3) return null;
+        const wildId = isFreeSpin ? SymbolId.STICKY_YELLOW : SymbolId.WILD;
+        return this._calcSymbol(
+            grid, symbol, wildId, GameData.instance.config.waysPayTable,
+            totalBet, reelCount, false, maxReels,
+        );
+    }
+
+    /** Cắt win còn N reel đầu (trái → phải) — tránh highlight cột server không trả. */
+    static limitReelCount(win: WaysPayWin, reelCount: number): WaysPayWin {
+        if (!win || reelCount <= 0 || win.reelCount <= reelCount) return win;
+        const cells = (win.cells ?? []).filter(c => c.reel < reelCount);
+        const groups: Array<Array<{ reel: number; row: number }>> = [];
+        for (let r = 0; r < reelCount; r++) {
+            const group = cells.filter(c => c.reel === r);
+            if (group.length === 0) break;
+            groups.push(group);
+        }
+        if (groups.length < 3) return win;
+        const combinations = WaysPayCalculator._cartesian(groups);
+        let ways = 1;
+        for (const g of groups) ways *= g.length;
+        return {
+            ...win,
+            reelCount: groups.length,
+            ways,
+            cells: groups.flat(),
+            combinations,
+        };
     }
 
     /** Tính win cho 1 symbol cụ thể, trả null nếu < 3 cột hoặc multiplier = 0. */
@@ -79,6 +122,8 @@ export class WaysPayCalculator {
         paytable:  Record<number, [number, number, number]>,
         totalBet:  number,
         reelCount: number,
+        requirePaytable: boolean = true,
+        maxReels?: number,
     ): WaysPayWin | null {
 
         const reelHits: Array<{
@@ -87,7 +132,8 @@ export class WaysPayCalculator {
             hasWild:   boolean;
         }> = [];
 
-        for (let r = 0; r < reelCount; r++) {
+        const scanTo = (maxReels && maxReels > 0) ? Math.min(reelCount, maxReels) : reelCount;
+        for (let r = 0; r < scanTo; r++) {
             const col       = grid[r] ?? [];
             const positions: Array<{ reel: number; row: number }> = [];
             let   hasWild   = false;
@@ -113,8 +159,8 @@ export class WaysPayCalculator {
         const k = reelHits.length;
         if (k < 3) return null;
 
-        const mult = paytable[symbol]?.[k - 3];
-        if (!mult || mult <= 0) return null;
+        const mult = paytable[symbol]?.[k - 3] ?? 0;
+        if (requirePaytable && mult <= 0) return null;
 
         // Công thức: ways = product of count per reel
         let ways         = 1;

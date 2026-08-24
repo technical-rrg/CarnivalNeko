@@ -533,6 +533,7 @@ export class PotController extends Component {
         this._isTransitioning = true;
         this._transitionAwaitingEnd = true;
         this._currentLevel = stepLevel;
+        SoundManager.instance?.playPotLevelUpEffect(stepLevel);
 
         const finishStep = () => {
             if (!this._transitionAwaitingEnd) return;
@@ -612,7 +613,9 @@ export class PotController extends Component {
         const potSpine = this._getPotSpine();
         if (!potSpine) {
             this._currentLevel = newLevel;
-            if (levelChanged && newLevel > oldLevel) this._playPotLevelUpSound(newLevel);
+            if (levelChanged && newLevel > oldLevel) {
+                SoundManager.instance?.playPotLevelUpEffect(newLevel);
+            }
             Log.w('[PotController] no pot spine/skeletonData → skip transition, emit POT_TRANSITION_END');
             this._finishTransition(newLevel, false);
             return;
@@ -620,14 +623,15 @@ export class PotController extends Component {
 
         if (!potSpine.node?.active) {
             this._currentLevel = newLevel;
-            if (levelChanged && newLevel > oldLevel) this._playPotLevelUpSound(newLevel);
+            if (levelChanged && newLevel > oldLevel) {
+                SoundManager.instance?.playPotLevelUpEffect(newLevel);
+            }
             Log.d(`[PotController] potSpine inactive → skip transition, queued level=${newLevel}`);
             this._finishTransition(newLevel, false);
             return;
         }
 
         if (newLevel > oldLevel) {
-            this._playPotLevelUpSound(newLevel);
             // Spine chỉ có LV{n}_transition_LV{n+1} — queue từng bước nếu nhảy nhiều level
             for (let lv = oldLevel + 1; lv <= newLevel; lv++) {
                 this._pendingTransitionSteps.push(lv);
@@ -662,23 +666,6 @@ export class PotController extends Component {
             potSpine.setAnimation(0, animName, true);
         } catch (e) {
             Log.w(`[PotController] idle setAnimation failed "${animName}"`, e);
-        }
-    }
-
-    /** Play pot level-up sound effect synced with the transition animation */
-    private _playPotLevelUpSound(level: number): void {
-        const snd = SoundManager.instance;
-        if (!snd) return;
-        if (level === 1 || level === 2) {
-            snd.playSfxByName('sxPotEffectLvl2');
-        } else if (level === 3) {
-            snd.playSfxByName('sxPotEffectLvl3');
-        } else if (level === 4) {
-            snd.playSfxByName('sxPotEffectLvl4');
-        } else if (level === 5) {
-            snd.playSfxByName('sxPotEffectLvl5');
-        } else if (level >= 6) {
-            snd.playSfxByName('sxPotEffectLvl6');
         }
     }
 

@@ -149,6 +149,101 @@ function _fmt4(n: number): string {
     return Number.isFinite(n) ? n.toFixed(4) : '?';
 }
 
+function _psToClientSymbol(psId: number): number {
+    const dyn = GameData.instance.psToClientMap;
+    if (dyn && dyn[psId] !== undefined) return dyn[psId];
+    return PS_TO_CLIENT[psId] ?? -1;
+}
+
+/**
+ * Neo Ways client 1-1 với MatchedLinePays server:
+ *  - bỏ way thừa (client tính thêm symbol server không trả)
+ *  - synthesize way thiếu (paytable client miss / server có line)
+ *  - cắt số reel theo MatchedSymbolsCount
+ *  - ghi payout bằng số tiền API (Payout có thể là multiplier)
+ */
+function _reconcileWaysWithServerLines(
+    ways: WaysPayWin[],
+    lines: MatchedLinePay[],
+    grid: number[][],
+    totalBet: number,
+    totalWin: number,
+    isFreeSpin: boolean,
+): WaysPayWin[] {
+    // Không có line từ server → không highlight ways tự tính (tránh vẽ thắng ảo / prize lệch).
+    if (lines.length === 0) {
+        if (ways.length > 0 || totalWin > 0) {
+            Log.e(
+                `[MULTI-LINE-WIN] RECONCILE no server lines — drop client ways=${ways.length}` +
+                ` totalWin=${totalWin} (non-line win không highlight grid)`
+            );
+        }
+        return [];
+    }
+
+    const unit = _detectServerPayoutUnit(lines.map(l => l.payout), totalBet, totalWin);
+    for (const line of lines) {
+        line.payout = unit === 'mult' ? line.payout * totalBet : line.payout;
+    }
+
+    const unused = ways.slice();
+    const aligned: WaysPayWin[] = [];
+    const applied: string[] = [];
+    const dropped: string[] = [];
+
+    for (const line of lines) {
+        const psId = line.matchedSymbols?.[0];
+        const clientId = (psId != null) ? _psToClientSymbol(psId) : -1;
+        const reelCnt = line.matchedSymbolsCount ?? line.reelCnt ?? 0;
+
+        let idx = unused.findIndex(w =>
+            w.symbolId === clientId && (reelCnt <= 0 || w.reelCount === reelCnt));
+        if (idx < 0 && clientId >= 0) {
+            idx = unused.findIndex(w => w.symbolId === clientId);
+        }
+
+        let way: WaysPayWin | null = null;
+        let source = 'client';
+        if (idx >= 0) {
+            way = unused.splice(idx, 1)[0];
+            if (reelCnt > 0 && way.reelCount !== reelCnt) {
+                way = WaysPayCalculator.limitReelCount(way, reelCnt);
+                source = `client-trim→${way.reelCount}`;
+            }
+        } else if (clientId >= 0) {
+            way = WaysPayCalculator.calculateOne(grid, clientId, totalBet, isFreeSpin, reelCnt > 0 ? reelCnt : undefined);
+            source = way ? 'synth' : 'miss';
+        }
+
+        if (way) {
+            way.payout = line.payout;
+            aligned.push(way);
+            applied.push(
+                `ps${psId}→sym${way.symbolId} src=${source} reels=${way.reelCount}` +
+                ` ways=${way.ways} payout=${_fmt4(line.payout)}`
+            );
+        } else {
+            applied.push(`ps${psId} unmatched reelCnt=${reelCnt} payout=${_fmt4(line.payout)}`);
+        }
+    }
+
+    for (const extra of unused) {
+        dropped.push(`sym${extra.symbolId} reels=${extra.reelCount} ways=${extra.ways}`);
+    }
+
+    const sumWays = aligned.reduce((s, w) => s + (w.payout ?? 0), 0);
+    const sumLines = lines.reduce((s, l) => s + (l.payout ?? 0), 0);
+    const countOk = aligned.length === lines.length;
+    Log.e(
+        `[MULTI-LINE-WIN] RECONCILE serverLines=${lines.length} clientIn=${ways.length}` +
+        ` out=${aligned.length} count=${countOk ? 'OK' : 'MISMATCH'} unit=${unit}` +
+        ` totalWin=${totalWin} sumLines=${_fmt4(sumLines)} sumWays=${_fmt4(sumWays)}` +
+        ` | ${applied.join(' | ')}` +
+        (dropped.length > 0 ? ` | DROPPED extra ${dropped.join(' ')}` : '')
+    );
+    return aligned;
+}
+
 /** Log đầy đủ kết quả spin — tag [SPIN-RESULT] nằm trong Logger whitelist. */
 function logSpinResultSummary(opts: {
     source: 'server' | 'mock';
@@ -205,7 +300,7 @@ function logSpinResultSummary(opts: {
     });
 
     let msg =
-        `[SPIN-RESULT] ${source} | lineWin=${lineWin} totalWin=${totalWin} totalBet=${totalBet}` +
+        `[MULTI-LINE-WIN] SPIN-RESULT ${source} | lineCount=${lineWin} totalWin=${totalWin} totalBet=${totalBet}` +
         ` winMult=${_fmt4(winMult)} perLineMult=${_fmt4(perLineMult)} featureMult=${featMult}` +
         ` payoutUnit=${payoutUnit}`;
 
@@ -2188,9 +2283,17 @@ class RealNetworkAdapter implements INetworkAdapter {
                 && data.currentMode !== 'matsuri'
                 && (reelIdx === 1 || isFreeSpinTierReelIndex(reelIdx)));
         const grid = data.getBaseGrid(rands, isFreeSpin, reelIdx);
-        const waysPayWins = res.TotalWin > 0
+        const rawWays = res.TotalWin > 0
             ? WaysPayCalculator.calculate(grid, res.TotalBet as number, isFreeSpin)
             : [];
+        const waysPayWins = _reconcileWaysWithServerLines(
+            rawWays,
+            matchedLinePays,
+            grid,
+            res.TotalBet as number,
+            res.TotalWin as number,
+            isFreeSpin,
+        );
         const spinResp: SpinResponse = {
             rands,
             matchedLinePays,

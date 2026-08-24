@@ -2,7 +2,7 @@
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
-import { JackpotType, SpinResponse } from '../data/SlotTypes';
+import { JackpotType, SpinResponse, TrailColor } from '../data/SlotTypes';
 import { SpeedMode } from './AutoSpinManager';
 import { Log } from '../core/Logger';
 
@@ -55,6 +55,10 @@ const LAZY_AUDIO_PATHS: Record<string, string> = {
     sxPotEffectLvl4: 'sound/sx_pot_effect_lvl_4',
     sxPotEffectLvl5: 'sound/sx_pot_effect_lvl_5',
     sxPotEffectLvl6: 'sound/sx_pot_effect_lvl_6',
+    sxPotEffectLvl7: 'sound/sx_pot_effect_lvl_7',
+    sxPotEffectLvl8: 'sound/sx_pot_effect_lvl_8',
+    sxPotEffectLvl9: 'sound/sx_pot_effect_lvl_9',
+    sxPotEffectLvl10: 'sound/sx_pot_effect_lvl_10',
     sxPotTrailWhoosh: 'sound/sx_pot_trail_whoosh',
     sxPotHit: 'sound/sx_pot_hit',
     sxBonusSelectMini: 'sound/sx_bonus_select_mini',
@@ -82,6 +86,16 @@ const LAZY_AUDIO_PATHS: Record<string, string> = {
     sxGlobalWin: 'sound/sx_global_win',
     sxPickGame: 'sound/sx_pick_game',
     sxLuchHas: 'sound/sx_luch_has',
+    sxPotFinal: 'sound/sx_pot_final',
+    sxCatAppear: 'sound/sx_cat_appear',
+    sxYellowGreenAppear: 'sound/sx_yellow_green_appear',
+    sxYellowcoinHit: 'sound/sx_yellowcoin_hit',
+    sxSpinRemain: 'sound/sx_spin_remain',
+    sxCoinFly: 'sound/sx_coin_fly',
+    sxTrailLand: 'sound/sx_trail_land',
+    sxBlueHit: 'sound/sx_blue_hit',
+    sxGreenHit: 'sound/sx_green_hit',
+    sxRedHit: 'sound/sx_red_hit',
 };
 
 const SOUND_BUNDLE = 'MainBundle';
@@ -145,6 +159,10 @@ export class SoundManager extends Component {
     @property({ type: AudioClip }) sxPotEffectLvl4: AudioClip | null = null;
     @property({ type: AudioClip }) sxPotEffectLvl5: AudioClip | null = null;
     @property({ type: AudioClip }) sxPotEffectLvl6: AudioClip | null = null;
+    @property({ type: AudioClip }) sxPotEffectLvl7: AudioClip | null = null;
+    @property({ type: AudioClip }) sxPotEffectLvl8: AudioClip | null = null;
+    @property({ type: AudioClip }) sxPotEffectLvl9: AudioClip | null = null;
+    @property({ type: AudioClip }) sxPotEffectLvl10: AudioClip | null = null;
     @property({ type: AudioClip }) sxPotTrailWhoosh: AudioClip | null = null;
     @property({ type: AudioClip }) sxPotHit: AudioClip | null = null;
     @property({ type: AudioClip }) sxBonusSelectMini: AudioClip | null = null;
@@ -172,6 +190,16 @@ export class SoundManager extends Component {
     @property({ type: AudioClip }) sxGlobalWin: AudioClip | null = null;
     @property({ type: AudioClip }) sxPickGame: AudioClip | null = null;
     @property({ type: AudioClip }) sxLuchHas: AudioClip | null = null;
+    @property({ type: AudioClip }) sxPotFinal: AudioClip | null = null;
+    @property({ type: AudioClip }) sxCatAppear: AudioClip | null = null;
+    @property({ type: AudioClip }) sxYellowGreenAppear: AudioClip | null = null;
+    @property({ type: AudioClip }) sxYellowcoinHit: AudioClip | null = null;
+    @property({ type: AudioClip }) sxSpinRemain: AudioClip | null = null;
+    @property({ type: AudioClip }) sxCoinFly: AudioClip | null = null;
+    @property({ type: AudioClip }) sxTrailLand: AudioClip | null = null;
+    @property({ type: AudioClip }) sxBlueHit: AudioClip | null = null;
+    @property({ type: AudioClip }) sxGreenHit: AudioClip | null = null;
+    @property({ type: AudioClip }) sxRedHit: AudioClip | null = null;
 
     @property({ range: [0, 1, 0.05], slide: true })
     bgmVolume = 0.5;
@@ -282,11 +310,16 @@ export class SoundManager extends Component {
     }
 
     private _onCarnivalTrailOne(): void {
-        this.playPotTrailWhoosh();
+        // sx_trail_land / sx_coin_fly — CarnivalTrailController khi flip + bay
     }
 
-    private _onCarnivalTrailHit(): void {
-        this._playSfxProp('sxPotHit');
+    private _onCarnivalTrailHit(payload?: { color?: TrailColor }): void {
+        switch (payload?.color) {
+            case TrailColor.BLUE:  this._playSfxProp('sxBlueHit'); break;
+            case TrailColor.GREEN: this._playSfxProp('sxGreenHit'); break;
+            case TrailColor.RED:   this._playSfxProp('sxRedHit'); break;
+            default:               this._playSfxProp('sxPotHit'); break;
+        }
     }
 
     private _onBuyBonusRequest(): void {
@@ -347,6 +380,8 @@ export class SoundManager extends Component {
             'sxBonusStickyLand', 'sxBonusStickyLand2', 'sxBonusStickyLand3',
             'sxBonusStickyLand4', 'sxBonusStickyLand5', 'sxBonusStickyWin',
             'sxPotTrailWhoosh', 'sxPotHit', 'sxSelectAFeature', 'sxFeatureSelect',
+            'sxPotFinal', 'sxCatAppear', 'sxYellowGreenAppear', 'sxYellowcoinHit',
+            'sxSpinRemain', 'sxCoinFly', 'sxTrailLand', 'sxBlueHit', 'sxGreenHit', 'sxRedHit',
             'mxGrandJackpotWin', 'mxMajorJackpotWin', 'mxMinorJackpotWin', 'mxMiniJackpotWin',
         ];
         const rest = Object.keys(LAZY_AUDIO_PATHS).filter((k) => !priority.includes(k));
@@ -1168,6 +1203,13 @@ export class SoundManager extends Component {
 
     playPotTrailWhoosh(): void {
         this._playSfxProp('sxPotTrailWhoosh');
+    }
+
+    /** Pot Lv(N-1)→LvN — sx_pot_effect_lvl_N (N = 2..10). */
+    playPotLevelUpEffect(toLevel: number): void {
+        const lvl = Math.floor(toLevel);
+        if (lvl < 2 || lvl > 10) return;
+        this._playSfxProp(`sxPotEffectLvl${lvl}`);
     }
 
     playFeatureSelectMusic(): void {

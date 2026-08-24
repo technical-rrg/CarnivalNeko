@@ -643,6 +643,7 @@ export class StickyOverlayController extends Component {
     }
 
     private _playCollectFlyHitFxOnNode(fx: Node): void {
+        SoundManager.instance?.playSfxByName('sxYellowcoinHit');
         for (const ps of fx.getComponentsInChildren(ParticleSystem)) {
             ps.enabled = true;
             ps.stop();
@@ -1381,7 +1382,8 @@ export class StickyOverlayController extends Component {
 
     private _onMatsuriHudStart(): void {
         this._featureCollectTotal = 0;
-        this._inSeedThrowPhase = GameData.instance.stickyCells.size === 0;
+        // Chờ MatsuriStartPopup đóng → MATSURI_SEED_START mới bật Cat / ẩn Top
+        this._inSeedThrowPhase = false;
         this.applyOrientationLayout();
         this._scheduleOrientationApply();
         this._syncFeatureHud();
@@ -1471,6 +1473,7 @@ export class StickyOverlayController extends Component {
         );
 
         try {
+            SoundManager.instance?.playSfxByName('sxCatAppear');
             skel.setAnimation(0, SEED_CAT_SPINE_RISEUP, false);
             skel.setCompleteListener((entry) => {
                 if (gen !== this._seedCatSeqGen) return;
@@ -1629,6 +1632,9 @@ export class StickyOverlayController extends Component {
     private _setFeatureRemain(count: number): void {
         const n = Math.max(0, Math.min(MATSURI_SPIN_COUNT, Math.floor(Number(count) || 0)));
         const prev = this._lastFeatureRemain;
+        if (prev >= 0 && n !== prev) {
+            SoundManager.instance?.playSfxByName('sxSpinRemain');
+        }
         this._lastFeatureRemain = n;
         let fillAnimIndex = 0;
         for (let i = 0; i < this.spinRemainSlots.length; i++) {
@@ -1652,7 +1658,6 @@ export class StickyOverlayController extends Component {
         fill.setScale(0.15, 0.15, 1);
         const play = () => {
             if (!fill.isValid) return;
-            SoundManager.instance?.playSfxByName('sxPlus1Spin');
             tween(fill)
                 .to(0.18, { scale: new Vec3(1.28, 1.28, 1) }, { easing: 'backOut' })
                 .to(0.12, { scale: new Vec3(1, 1, 1) }, { easing: 'sineIn' })
@@ -1880,10 +1885,11 @@ export class StickyOverlayController extends Component {
                 Log.d(`[StickyOverlay] Matsuri resume — show ${GameData.instance.stickyCells.size} stickies`);
                 return;
             }
-            // Enter mới: grid trống — Start Gold chỉ hiện khi seed orb land
-            this._inSeedThrowPhase = true;
+            // Enter mới: grid trống — FramFront/Top hiện; Cat + seed chờ MatsuriStartPopup đóng
+            this._inSeedThrowPhase = false;
             this._hideAll();
-            Log.d('[StickyOverlay] Matsuri enter — blank overlay (chờ seed)');
+            this._syncFeatureHud();
+            Log.d('[StickyOverlay] Matsuri enter — blank overlay, Top HUD (chờ start popup)');
             return;
         }
         this._isEnteringTopUp = true;
@@ -2700,7 +2706,7 @@ export class StickyOverlayController extends Component {
         } else {
             op.opacity = 255;
         }
-        SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
+        SoundManager.instance?.playSfxByName('sxYellowGreenAppear');
         void this.playGoldCoinImpactAtSlot(slotNode);
     }
 
@@ -2904,7 +2910,7 @@ export class StickyOverlayController extends Component {
         const op = slotNode.getComponent(UIOpacity) ?? slotNode.addComponent(UIOpacity);
         Tween.stopAllByTarget(op);
         op.opacity = 255;
-        SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
+        SoundManager.instance?.playSfxByName('sxYellowGreenAppear');
         void this.playGreenCoinImpactAtSlot(slotNode);
     }
 
@@ -3279,7 +3285,7 @@ export class StickyOverlayController extends Component {
         Tween.stopAllByTarget(slotNode);
 
         if ((GameData.instance.currentMode === 'respin' || GameData.instance.currentMode === 'matsuri') && isGoldCoin) {
-            SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
+            SoundManager.instance?.playSfxByName('sxYellowGreenAppear');
         }
 
         if (isGoldCoin && fromHandoff) {

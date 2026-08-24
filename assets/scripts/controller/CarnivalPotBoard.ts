@@ -11,7 +11,7 @@
  *   CARNIVAL_TRAIL_START        → defer idle mới, chờ từng hit
  *   CARNIVAL_TRAIL_ONE_HIT      → nhún scale nhẹ (code) + hitFxTemplate tại pot + play bước LvN→LvN+1 nếu level tăng
  *   CARNIVAL_TRAIL_FLY_DONE     → flush các bước level-up còn lại
- *   CARNIVAL_POT_BURST          → LvFinal + burstFinalFxTemplate (delay cấu hình) → CARNIVAL_POT_BURST_DONE
+ *   CARNIVAL_POT_BURST          → nạp còn lại LvN→Lv10 (nếu chưa đầy) → LvFinal + burstFinalFx → BURST_DONE
  *   Feature end                 → idle Lv0 cho pot vừa nổ
  */
 
@@ -28,6 +28,7 @@ import {
     burstPotsForKind,
     resetBurstPotState,
 } from '../data/CarnivalFeatureResolve';
+import { SoundManager } from '../manager/SoundManager';
 import { Log } from '../core/Logger';
 
 const { ccclass, property } = _decorator;
@@ -54,22 +55,27 @@ function idleAnimName(level: number): string {
 
 /**
  * Tên transition đúng JSON (Lv0–5 có "to", Lv6–9 không có "to").
- * Chỉ hỗ trợ bước +1.
+ * Chỉ hỗ trợ bước +1. Lv9→10 có thêm alias tên anim legacy.
  */
-function levelUpAnimName(from: number): string | null {
+function levelUpAnimCandidates(from: number): string[] {
     switch (from) {
-        case 0: return 'Lv0toLv1';
-        case 1: return 'Lv1toLv2';
-        case 2: return 'Lv2toLv3';
-        case 3: return 'Lv3toLv4';
-        case 4: return 'Lv4toLv5';
-        case 5: return 'Lv5toLv6';
-        case 6: return 'Lv6Lv7';
-        case 7: return 'Lv7Lv8';
-        case 8: return 'Lv8Lv9';
-        case 9: return 'Lv9Lv10';
-        default: return null;
+        case 0: return ['Lv0toLv1'];
+        case 1: return ['Lv1toLv2'];
+        case 2: return ['Lv2toLv3'];
+        case 3: return ['Lv3toLv4'];
+        case 4: return ['Lv4toLv5'];
+        case 5: return ['Lv5toLv6'];
+        case 6: return ['Lv6Lv7'];
+        case 7: return ['Lv7Lv8'];
+        case 8: return ['Lv8Lv9'];
+        case 9: return ['Lv9Lv10', 'Lv9ToLv10', 'Lv9toLv10'];
+        default: return [];
     }
+}
+
+function levelUpAnimName(from: number): string | null {
+    const candidates = levelUpAnimCandidates(from);
+    return candidates.length > 0 ? candidates[0] : null;
 }
 
 @ccclass('CarnivalPotBoard')
@@ -101,6 +107,9 @@ export class CarnivalPotBoard extends Component {
 
     @property({ tooltip: 'Thời gian burst anim trước khi DONE nếu không có LvFinal (giây)' })
     burstDuration: number = 1.15;
+
+    @property({ tooltip: 'Tốc độ spine khi nạp nhanh LvN→Lv10 trước lúc nổ hũ (trigger feature, không phải trail từng hit). 1= bình thường.' })
+    preBurstFillTimeScale: number = 2.8;
 
     @property({ tooltip: 'Biên độ nhún lên khi trigger Matsuri (px)' })
     hopHeight: number = 56;
@@ -267,16 +276,26 @@ export class CarnivalPotBoard extends Component {
             this._applyLabelsOnly();
             return;
         }
-        if (this._trailsFlying || this._frozenBurstNodes.size > 0) {
+        const needsLevelUpAnim =
+            this._displayLevels.blue < this._targetLevels.blue
+            || this._displayLevels.red < this._targetLevels.red
+            || this._displayLevels.green < this._targetLevels.green;
+
+        if (this._trailsFlying || this._frozenBurstNodes.size > 0 || needsLevelUpAnim) {
             this._applyLabelsOnly();
+            if (needsLevelUpAnim && !this._trailsFlying && this._frozenBurstNodes.size === 0) {
+                this._flushPendingLevelUps();
+            }
             Log.d(
                 `[CarnivalPot] target B${this._targetLevels.blue} R${this._targetLevels.red} G${this._targetLevels.green}` +
                 ` display B${this._displayLevels.blue} R${this._displayLevels.red} G${this._displayLevels.green}` +
-                (this._frozenBurstNodes.size > 0 ? ' (hold LvFinal)' : ' (wait trail hit)'),
+                (this._frozenBurstNodes.size > 0 ? ' (hold LvFinal)' :
+                    needsLevelUpAnim ? ' (step-up pending)' :
+                    this._trailsFlying ? ' (wait trail hit)' : ''),
             );
             return;
         }
-        // Enter / resume / sync — nhảy thẳng idle đúng level API
+        // Enter / resume / reset — sync idle (không tăng level)
         this._displayLevels = { ...this._targetLevels };
         this._applyAll(false);
         Log.d(`[CarnivalPot] sync idle B${this._displayLevels.blue} R${this._displayLevels.red} G${this._displayLevels.green}`);
@@ -317,27 +336,124 @@ export class CarnivalPotBoard extends Component {
         this._targetLevels = this._clampLevels(GameData.instance.potLevels);
         this._applyLabelsOnly();
 
-        let playedFinal = false;
+        let asyncPotCount = 0;
         for (const node of pots) {
-            this._cancelAnim(node, true);
-            const spine = this._resolveSpine(node);
-            if (spine && this._hasSpineAnim(spine, BURST_ANIM)) {
-                playedFinal = true;
-                this._burstWaitCount++;
-                this._scheduleBurstFinalFx(node);
-                this._playOneShot(node, spine, BURST_ANIM, () => {
-                    this._onBurstAnimDone(node);
-                });
-            } else {
-                this._playTriggerHop(node);
-                this._frozenBurstNodes.add(node);
-            }
+            const color = this._colorForNode(node);
+            if (color === undefined) continue;
+            asyncPotCount++;
+            this._startPotBurstSequence(node, color);
         }
 
         this.unschedule(this._finishBurst);
-        if (!playedFinal) {
+        this._burstWaitCount = asyncPotCount;
+        if (asyncPotCount <= 0) {
             this.scheduleOnce(this._finishBurst, Math.max(0.6, this.burstDuration));
         }
+    }
+
+    /**
+     * Thắng trước khi hũ đầy: chạy chuỗi nạp còn lại (LvN→Lv10) rồi mới LvFinal.
+     */
+    private _startPotBurstSequence(node: Node, color: TrailColor): void {
+        const display = this._displayOf(color);
+
+        const runBurst = (spine: sp.Skeleton | null) => {
+            if (display < POT_MAX_LEVEL && spine) {
+                Log.d(
+                    `[CarnivalPot] pre-burst fill start ${TrailColor[color]} Lv${display}→Lv${POT_MAX_LEVEL}`,
+                );
+                this._playPreBurstFillChain(node, spine, color, display, () => {
+                    this._playPotBurstFinal(node, color);
+                });
+            } else {
+                this._playPotBurstFinal(node, color);
+            }
+        };
+
+        const spine = this._resolveSpine(node);
+        if (spine) {
+            runBurst(spine);
+            return;
+        }
+        void this._ensureSpineReady(node).then((loaded) => {
+            if (!node?.isValid || !this._bursting) return;
+            runBurst(loaded);
+        });
+    }
+
+    /** Nạp tuần tự từ fromLevel đến POT_MAX_LEVEL rồi gọi onComplete. */
+    private _playPreBurstFillChain(
+        node: Node,
+        spine: sp.Skeleton,
+        color: TrailColor,
+        fromLevel: number,
+        onComplete: () => void,
+    ): void {
+        if (fromLevel >= POT_MAX_LEVEL) {
+            onComplete();
+            return;
+        }
+
+        const animName = this._resolveLevelUpAnim(spine, fromLevel);
+        if (!animName) {
+            Log.w(`[CarnivalPot] pre-burst missing level-up from Lv${fromLevel} — jump`);
+            this._setDisplayForColor(color, fromLevel + 1);
+            this._applyDisplayLabels();
+            this._playPreBurstFillChain(node, spine, color, fromLevel + 1, onComplete);
+            return;
+        }
+
+        Log.d(
+            `[CarnivalPot] pre-burst fill ${TrailColor[color]} ${animName} (${fromLevel}→${fromLevel + 1})`,
+        );
+        this._playOneShot(node, spine, animName, () => {
+            this._setDisplayForColor(color, fromLevel + 1);
+            this._applyDisplayLabels();
+            this._playPreBurstFillChain(node, spine, color, fromLevel + 1, onComplete);
+        }, this.preBurstFillTimeScale, () => {
+            SoundManager.instance?.playPotLevelUpEffect(fromLevel + 1);
+        });
+    }
+
+    /** LvFinal (+ FX) hoặc hop fallback sau khi đã nạp đầy. */
+    private _playPotBurstFinal(node: Node, color: TrailColor): void {
+        this._cancelAnim(node, true);
+        const spine = this._resolveSpine(node);
+        this._setDisplayForColor(color, POT_MAX_LEVEL);
+        this._applyDisplayLabels();
+
+        if (spine && this._hasSpineAnim(spine, BURST_ANIM)) {
+            this._scheduleBurstFinalFx(node);
+            this._playOneShot(node, spine, BURST_ANIM, () => {
+                this._onBurstAnimDone(node);
+            }, 1, () => {
+                SoundManager.instance?.playSfxByName('sxPotFinal');
+            });
+            return;
+        }
+
+        this._playTriggerHop(node);
+        this._frozenBurstNodes.add(node);
+        this._onPotBurstSequenceDone();
+    }
+
+    private _onPotBurstSequenceDone(): void {
+        this._burstWaitCount = Math.max(0, this._burstWaitCount - 1);
+        if (this._burstWaitCount <= 0) this._finishBurst();
+    }
+
+    private _resolveLevelUpAnim(spine: sp.Skeleton, fromLevel: number): string | null {
+        for (const name of levelUpAnimCandidates(fromLevel)) {
+            if (this._hasSpineAnim(spine, name)) return name;
+        }
+        return null;
+    }
+
+    private _colorForNode(node: Node): TrailColor | undefined {
+        if (node === this.bluePot) return TrailColor.BLUE;
+        if (node === this.redPot) return TrailColor.RED;
+        if (node === this.greenPot) return TrailColor.GREEN;
+        return undefined;
     }
 
     private _onBurstAnimDone(node: Node): void {
@@ -345,8 +461,7 @@ export class CarnivalPotBoard extends Component {
         const spine = this._resolveSpine(node);
         if (spine) this._freezeAtLastFrame(spine);
         this._frozenBurstNodes.add(node);
-        this._burstWaitCount = Math.max(0, this._burstWaitCount - 1);
-        if (this._burstWaitCount <= 0) this._finishBurst();
+        this._onPotBurstSequenceDone();
     }
 
     /**
@@ -509,15 +624,25 @@ export class CarnivalPotBoard extends Component {
         if (display >= target) return;
 
         const spine = this._resolveSpine(node);
-        if (!spine) {
-            this._setDisplayForColor(color, target);
-            this._applyDisplayLabels();
+        if (spine) {
+            this._runStepUpOnce(color, node, spine);
             return;
         }
+        void this._ensureSpineReady(node).then((loaded) => {
+            if (!loaded || !node.isValid || this._bursting) return;
+            if (this._animBusy.has(node) || this._frozenBurstNodes.has(node)) return;
+            this._runStepUpOnce(color, node, loaded);
+        });
+    }
 
-        const animName = levelUpAnimName(display);
-        if (!animName || !this._hasSpineAnim(spine, animName)) {
-            Log.w(`[CarnivalPot] missing level-up "${animName}" — jump to Lv${display + 1}`);
+    private _runStepUpOnce(color: TrailColor, node: Node, spine: sp.Skeleton): void {
+        const display = this._displayOf(color);
+        const target = this._targetOf(color);
+        if (display >= target) return;
+
+        const animName = this._resolveLevelUpAnim(spine, display);
+        if (!animName) {
+            Log.w(`[CarnivalPot] missing level-up from Lv${display} — jump to Lv${display + 1}`);
             this._setDisplayForColor(color, display + 1);
             this._applyDisplayLabels();
             if (this._displayOf(color) < this._targetOf(color)) {
@@ -538,6 +663,8 @@ export class CarnivalPotBoard extends Component {
             } else {
                 this._playIdle(spine, this._displayOf(color));
             }
+        }, 1, () => {
+            SoundManager.instance?.playPotLevelUpEffect(display + 1);
         });
     }
 
@@ -575,7 +702,14 @@ export class CarnivalPotBoard extends Component {
         }
     }
 
-    private _playOneShot(node: Node, spine: sp.Skeleton, animName: string, onDone: () => void): void {
+    private _playOneShot(
+        node: Node,
+        spine: sp.Skeleton,
+        animName: string,
+        onDone: () => void,
+        timeScale = 1,
+        onAnimStarted?: () => void,
+    ): void {
         this._cancelIdleWobble(node, true);
         this._cancelAnim(node, false);
         this._lastIdleByNode.delete(spine.node);
@@ -590,9 +724,23 @@ export class CarnivalPotBoard extends Component {
                 this.unschedule(fb);
                 this._animFallback.delete(node);
             }
-            if (spine.isValid) spine.setCompleteListener(null);
+            if (spine.isValid) {
+                spine.setCompleteListener(null);
+                spine.timeScale = 1;
+            }
             onDone();
         };
+
+        if (!spine?.isValid || !spine.skeletonData) {
+            Log.w(`[CarnivalPot] _playOneShot skip — spine chưa có skeletonData (${animName})`);
+            finish();
+            return;
+        }
+        if (!this._hasSpineAnim(spine, animName)) {
+            Log.w(`[CarnivalPot] _playOneShot skip — thiếu anim "${animName}"`);
+            finish();
+            return;
+        }
 
         const fallback = () => {
             Log.w(`[CarnivalPot] complete fallback → ${animName}`);
@@ -601,15 +749,18 @@ export class CarnivalPotBoard extends Component {
         this._animFallback.set(node, fallback);
         this._animBusy.add(node);
 
+        const scale = Math.max(0.1, timeScale);
         const animDur = this._getSpineAnimDuration(spine, animName);
         spine.setCompleteListener((entry) => {
             if (entry?.animation?.name && entry.animation.name !== animName) return;
             finish();
         });
-        this.scheduleOnce(fallback, Math.max(2.0, animDur + 0.45));
-        spine.timeScale = 1;
+        this.scheduleOnce(fallback, Math.max(0.35, animDur / scale + 0.25));
+        spine.timeScale = scale;
         try {
+            spine.clearTracks();
             spine.setAnimation(0, animName, false);
+            onAnimStarted?.();
         } catch (e) {
             Log.w(`[CarnivalPot] setAnimation failed "${animName}"`, e);
             finish();
@@ -1045,24 +1196,48 @@ export class CarnivalPotBoard extends Component {
         return this._resolveSpine(node);
     }
 
+    private _spinePathForNode(node: Node): string | null {
+        if (node === this.bluePot) return POT_SPINE_PATH.blue;
+        if (node === this.redPot) return POT_SPINE_PATH.red;
+        if (node === this.greenPot) return POT_SPINE_PATH.green;
+        return null;
+    }
+
+    private async _ensureSpineReady(node: Node | null): Promise<sp.Skeleton | null> {
+        if (!node?.isValid) return null;
+        const ready = this._resolveSpine(node);
+        if (ready) return ready;
+        const path = this._spinePathForNode(node);
+        if (!path) return null;
+        await this._ensurePotSpine(node, path);
+        return this._resolveSpine(node);
+    }
+
     private _resolveSpine(node: Node): sp.Skeleton | null {
         const cached = this._spineByNode.get(node);
         if (cached?.isValid && cached.skeletonData) return cached;
         const spine = node.getComponent(sp.Skeleton) || node.getComponentInChildren(sp.Skeleton);
-        if (spine?.skeletonData) this._spineByNode.set(node, spine);
-        return spine ?? null;
+        if (!spine?.isValid || !spine.skeletonData) return null;
+        this._spineByNode.set(node, spine);
+        this._hideStaticSprite(node);
+        return spine;
     }
 
     private _hasSpineAnim(spine: sp.Skeleton, animName: string): boolean {
+        if (!spine?.skeletonData) return false;
         try {
             const find = (spine as any).findAnimation;
             if (typeof find === 'function') {
                 return !!find.call(spine, animName);
             }
+            const runtime = spine.skeletonData.getRuntimeData?.();
+            if (runtime?.findAnimation) {
+                return !!runtime.findAnimation(animName);
+            }
         } catch {
             /* ignore */
         }
-        return true;
+        return false;
     }
 
     private _getSpineAnimDuration(spine: sp.Skeleton, animName: string): number {

@@ -890,7 +890,12 @@ export class GameManager extends Component {
             blocked('GameManager is spinning');
             return;
         }
-        // Matsuri: chặn mọi spin cho tới khi seed sticky vàng hiện xong hết
+        // Matsuri: chặn spin khi đang chờ Start popup hoặc seed chưa xong
+        if (this._matsuriAwaitingStartPopup) {
+            blocked('waiting Matsuri start popup');
+            EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+            return;
+        }
         if (this._matsuriAwaitingSeed) {
             blocked('waiting Matsuri seed stickies');
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
@@ -1110,7 +1115,7 @@ export class GameManager extends Component {
     private _startCarnivalPotBurst(feature: CarnivalFeatureTrigger): void {
         this._pendingCarnivalAfterBurst = feature;
         this.unschedule(this._carnivalBurstFallback);
-        this.scheduleOnce(this._carnivalBurstFallback, 4.2);
+        this.scheduleOnce(this._carnivalBurstFallback, 28);
         // Burst: chỉ cache Prefab overlay (không instantiate) — instantiate sau khi popup scale-in xong
         this._prefetchOverlayPrefabOnly();
         this.unschedule(this._prefetchFeatureBackground);
@@ -1141,46 +1146,48 @@ export class GameManager extends Component {
             return;
         }
 
-        // Mighty/Mega/Super/Ultra/Supreme/Ultimate — Matsuri trước; Pick (nếu có) sau Claim
-        this._showMatsuriStartPopupThenEnter(f);
+        // Mighty/Mega/Super/Ultra/Supreme/Ultimate — vào Feature shell trước, popup trong Feature, seed sau đóng popup
+        void this._enterCarnivalMatsuriThenShowStartPopup(f);
     }
 
     /** Stash feature đang chờ Press to Start. */
     private _pendingMatsuriStartFeature: CarnivalFeatureTrigger | null = null;
+    /** Đang ở Feature shell — chờ MatsuriStartPopup đóng mới seed / hiện Cat. */
+    private _matsuriAwaitingStartPopup = false;
 
-    /**
-     * Hiện popup thông báo feature (Mega Feature Award / with 5xN Reel / PRESS TO START).
-     * Chỉ sau khi đóng mới _enterCarnivalMatsuri.
-     */
-    private _showMatsuriStartPopupThenEnter(feature: CarnivalFeatureTrigger): void {
+    /** Vào Feature (overlay + FramFront/Top), rồi mới hiện MatsuriStartPopup trên Feature. */
+    private async _enterCarnivalMatsuriThenShowStartPopup(feature: CarnivalFeatureTrigger): Promise<void> {
         this._pendingMatsuriStartFeature = feature;
-        this._gameState = GameState.IDLE;
+        this._matsuriAwaitingStartPopup = true;
+        await this._enterCarnivalMatsuri(feature, true);
+        this._showMatsuriStartPopup(feature);
+    }
+
+    /** Popup thông báo feature — hiện sau khi đã vào Feature shell. */
+    private _showMatsuriStartPopup(feature: CarnivalFeatureTrigger): void {
+        this._gameState = GameState.POPUP;
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
-        // Warm StickyOverlay / BG Feature sau slam-in (INTRO_DONE) — không chạy giữa animation
-        this.unschedule(this._prefetchFeatureBackground);
-        this.unschedule(this._warmFeatureAfterStartPopup);
-        Log.e(`[GameManager] MATSURI_START_POPUP → "${feature.featureName}" 5x${feature.matsuriRows}`);
+        Log.e(`[GameManager] MATSURI_START_POPUP (in feature) → "${feature.featureName}" 5x${feature.matsuriRows}`);
         EventBus.instance.emit(GameEvents.MATSURI_START_POPUP, feature);
-        // Failsafe nếu PopupLoader miss event
         this.unschedule(this._matsuriStartPopupFailsafe);
         this.scheduleOnce(this._matsuriStartPopupFailsafe, 31.0);
     }
 
     private _matsuriStartPopupFailsafe = (): void => {
         if (!this._pendingMatsuriStartFeature) return;
-        Log.w('[GameManager] Matsuri start popup failsafe — enter feature');
+        Log.w('[GameManager] Matsuri start popup failsafe — begin seed');
         this._onMatsuriStartPopupClosed(this._pendingMatsuriStartFeature);
     };
 
-    private _onMatsuriStartPopupClosed(feature?: CarnivalFeatureTrigger): void {
+    private _onMatsuriStartPopupClosed(_feature?: CarnivalFeatureTrigger): void {
         this.unschedule(this._matsuriStartPopupFailsafe);
-        const f = feature ?? this._pendingMatsuriStartFeature;
+        const f = _feature ?? this._pendingMatsuriStartFeature;
         this._pendingMatsuriStartFeature = null;
         if (!f) {
             Log.w('[GameManager] MATSURI_START_POPUP_CLOSED nhưng không có feature');
             return;
         }
-        void this._enterCarnivalMatsuri(f);
+        this._beginMatsuriSeed();
     }
 
     /** Pending Start Gold — hiện sau khi orb bay vào (không nằm sẵn trên grid). */
@@ -1205,7 +1212,7 @@ export class GameManager extends Component {
     }
 
     /** Vào Matsuri Hold&Spin — tái dùng StickyOverlay + TopUpManager (grid 5×N). */
-    private async _enterCarnivalMatsuri(feature: CarnivalFeatureTrigger): Promise<void> {
+    private async _enterCarnivalMatsuri(feature: CarnivalFeatureTrigger, deferSeed = false): Promise<void> {
         GameData.instance.pendingCarnivalMatsuri = null;
         const data = GameData.instance;
         const spin = data.lastSpinResponse;
@@ -1280,14 +1287,15 @@ export class GameManager extends Component {
         }
         data.featureBaseCredit = placed.reduce((s, c) => s + (c.credit ?? 0), 0);
         this._pendingMatsuriSeedCells = placed;
-        this._matsuriAwaitingSeed = true;
+        this._matsuriAwaitingSeed = false;
 
         Log.e(
             `[CarnivalMatsuri] ENTER "${feature.featureName}" grid=5x${rows} ` +
             `startCoins=${placed.length}/${feature.startCoins} base=${data.featureBaseCredit} ` +
             `remain=${data.respinRemaining} totalBet=${data.totalBet} ` +
             `credits=[${placed.map(c => `${c.reel}-${c.row}:${c.credit}`).join('|')}]` +
-            ` source=${USE_REAL_API && spin?.starterCoins?.length ? 'StarterCoins' : 'mock'}`,
+            ` source=${USE_REAL_API && spin?.starterCoins?.length ? 'StarterCoins' : 'mock'}` +
+            ` deferSeed=${deferSeed ? 1 : 0}`,
         );
         this._logMatsuriFeatureStart(placed);
 
@@ -1296,11 +1304,12 @@ export class GameManager extends Component {
 
         await this._ensureStickyOverlayLoaded();
         this._applyStickyOverlayRowCount(rows);
+        this._prefetchFeatureBackground();
 
         EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
         EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_START, feature);
         EventBus.instance.emit(GameEvents.CARNIVAL_MATSURI_STUB, feature); // alias listener cũ
-        // Grid trống lúc vào — coin xuất hiện khi orb land
+        // Grid trống lúc vào — coin xuất hiện khi orb land (sau MatsuriStartPopup đóng)
         EventBus.instance.emit(GameEvents.TOPUP_START, {
             spinsRemaining: data.respinRemaining,
             baseCredit: data.featureBaseCredit,
@@ -1316,9 +1325,21 @@ export class GameManager extends Component {
         });
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
 
-        EventBus.instance.emit(GameEvents.MATSURI_SEED_START, { cells: placed });
+        if (deferSeed) {
+            Log.e('[CarnivalMatsuri] feature shell ready — FramFront/Top visible, awaiting start popup');
+            return;
+        }
+        this._beginMatsuriSeed();
+    }
 
-        // Failsafe nếu thiếu MatsuriEffect / seed (đủ dài cho 10 orb + pop + highlight)
+    /** Sau MatsuriStartPopup đóng — bắt đầu seed orb + Cat. */
+    private _beginMatsuriSeed(): void {
+        this._matsuriAwaitingStartPopup = false;
+        this._matsuriAwaitingSeed = true;
+        const placed = this._pendingMatsuriSeedCells;
+        this._gameState = GameState.IDLE;
+        Log.e(`[CarnivalMatsuri] seed start — ${placed.length} cells`);
+        EventBus.instance.emit(GameEvents.MATSURI_SEED_START, { cells: placed });
         this.unschedule(this._matsuriSeedFailsafe);
         this.scheduleOnce(this._matsuriSeedFailsafe, 20.0);
     }
@@ -2659,16 +2680,23 @@ export class GameManager extends Component {
                         `[${cols[0][2]}-${cols[1][2]}-${cols[2][2]}]`;
                 };
 
+                // Log.e(
+                //     `[SPIN SERVER SNAPSHOT] mode=${modeName(resp.reelIndex)} ReelIndex=${resp.reelIndex ?? 'undefined'}` +
+                //     ` isFS=${isFS} purchaseActive=${data.isPurchaseReelActive}` +
+                //     ` rands=${JSON.stringify(resp.rands)} totalWin=${resp.totalWin} lines=${lines.length}\n` +
+                //     `  CLIENT Normal   ${fmtClientGrid(data.config.reelStrips, 'Reel')}\n` +
+                //     `  CLIENT FreeSpin ${fmtClientGrid(data.config.freeSpinReelStrips, 'FreeSpinReel')}\n` +
+                //     `  CLIENT Purchase ${fmtClientGrid(data.config.purchaseReelStrips, 'PurchaseReel')}\n` +
+                //     `  RAW    Normal   ${fmtRawGrid(data.rawPsStrips, 'Reel')}\n` +
+                //     `  RAW    FreeSpin ${fmtRawGrid(data.rawPsFreeSpinStrips, 'FreeSpinReel')}\n` +
+                //     `  RAW    Purchase ${fmtRawGrid(data.rawPsPurchaseReelStrips, 'PurchaseReel')}`
+                // );
+
+                const sumLinePayout = lines.reduce((s: number, l: any) => s + (l.payout ?? 0), 0);
                 Log.e(
-                    `[SPIN SERVER SNAPSHOT] mode=${modeName(resp.reelIndex)} ReelIndex=${resp.reelIndex ?? 'undefined'}` +
-                    ` isFS=${isFS} purchaseActive=${data.isPurchaseReelActive}` +
-                    ` rands=${JSON.stringify(resp.rands)} totalWin=${resp.totalWin} lines=${lines.length}\n` +
-                    `  CLIENT Normal   ${fmtClientGrid(data.config.reelStrips, 'Reel')}\n` +
-                    `  CLIENT FreeSpin ${fmtClientGrid(data.config.freeSpinReelStrips, 'FreeSpinReel')}\n` +
-                    `  CLIENT Purchase ${fmtClientGrid(data.config.purchaseReelStrips, 'PurchaseReel')}\n` +
-                    `  RAW    Normal   ${fmtRawGrid(data.rawPsStrips, 'Reel')}\n` +
-                    `  RAW    FreeSpin ${fmtRawGrid(data.rawPsFreeSpinStrips, 'FreeSpinReel')}\n` +
-                    `  RAW    Purchase ${fmtRawGrid(data.rawPsPurchaseReelStrips, 'PurchaseReel')}`
+                    `[MULTI-LINE-WIN] GameManager post-REELS_STOPPED totalWin=${resp.totalWin}` +
+                    ` totalBet=${resp.totalBet} lines=${lines.length} ways=${resp.waysPayWins?.length ?? 0}` +
+                    ` sumLinePayout=${sumLinePayout} linePayouts=[${lines.map((l: any) => `pl${l.payLineIndex}=${l.payout}`).join(',')}]`
                 );
 
                 // Chi tiết từng line thắng
@@ -3038,8 +3066,8 @@ export class GameManager extends Component {
         const pendingMatsuri = GameData.instance.pendingCarnivalMatsuri;
         if (pendingMatsuri && pendingMatsuri.matsuriRows > 0) {
             GameData.instance.pendingCarnivalMatsuri = null;
-            Log.e(`[DEBUG-PICK] _onPickGameClose → Matsuri start popup "${pendingMatsuri.featureName}"`);
-            this._showMatsuriStartPopupThenEnter(pendingMatsuri);
+            Log.e(`[DEBUG-PICK] _onPickGameClose → Matsuri feature shell + start popup "${pendingMatsuri.featureName}"`);
+            void this._enterCarnivalMatsuriThenShowStartPopup(pendingMatsuri);
             return;
         }
 
@@ -4319,9 +4347,8 @@ export class GameManager extends Component {
         void loader?.preloadPrefab();
     }
 
-    /** Sau popup scale-in — instantiate overlay + cache BG Feature. */
+    /** Sau popup scale-in — overlay đã load lúc vào Feature; chỉ warm cache BG nếu cần. */
     private _warmFeatureAfterStartPopup = (): void => {
-        void this._ensureStickyOverlayLoaded();
         this._prefetchFeatureBackground();
     };
 

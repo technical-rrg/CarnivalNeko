@@ -80,8 +80,8 @@ export const GameEvents = {
     /** Burst anim xong — GameManager tiếp tục Jackpot / Matsuri. Payload: CarnivalFeatureTrigger */
     CARNIVAL_POT_BURST_DONE: 'carnival:pot:burst:done',
     /**
-     * Popup thông báo trước khi vào Matsuri Hold&Spin.
-     * Payload: CarnivalFeatureTrigger — chờ MATSURI_START_POPUP_CLOSED rồi mới enter.
+     * Popup thông báo Matsuri — hiện sau khi đã vào Feature shell (overlay + FramFront/Top).
+     * Payload: CarnivalFeatureTrigger — chờ MATSURI_START_POPUP_CLOSED rồi mới MATSURI_SEED_START.
      */
     MATSURI_START_POPUP: 'matsuri:start:popup',
     /**

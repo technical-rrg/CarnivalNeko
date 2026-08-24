@@ -63,6 +63,7 @@ export const Log = {
 
 // Tag mới PHẢI thêm vào đây — Log.d/w/e bị nuốt nếu không whitelist.
 Log.setWhitelist([
-    'pickgame',  // [PickGame] pick cell, result PS ID, 3 ID trúng, server JackpotName
-    'jackpot',   // [Jackpot] claim / trigger sau pick game
+    'pickgame',       // [PickGame] pick cell, result PS ID, 3 ID trúng, server JackpotName
+    'jackpot',        // [Jackpot] claim / trigger sau pick game
+    'multi-line-win', // [MULTI-LINE-WIN] debug per-line animation + payout summation
 ]);

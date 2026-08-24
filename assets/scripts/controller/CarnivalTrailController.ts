@@ -37,6 +37,7 @@ import { ReelController } from './ReelController';
 import { SymbolView } from './SymbolView';
 import { Log } from '../core/Logger';
 import { AutoSpinManager, SpeedMode } from '../manager/AutoSpinManager';
+import { SoundManager } from '../manager/SoundManager';
 import {
     CarnivalTrailHit,
     TrailColor,
@@ -407,6 +408,7 @@ export class CarnivalTrailController extends Component {
             view.setSymbol(coloredId);
             this._resetSpriteColor(view);
         }
+        SoundManager.instance?.playSfxByName('sxTrailLand');
         startFly();
     }
 
@@ -454,6 +456,7 @@ export class CarnivalTrailController extends Component {
         skel.setCompleteListener(null);
         let duration = 0.67;
         try {
+            SoundManager.instance?.playSfxByName('sxTrailLand');
             const entry = skel.setAnimation(0, animName, false);
             duration = entry?.animation?.duration ?? duration;
             Log.e(`[CarnivalTrail] PLAY flip ${TrailColor[color]} anim="${animName}" dur=${duration.toFixed(2)} x${timeScale}`);
@@ -713,6 +716,7 @@ export class CarnivalTrailController extends Component {
         );
 
         // Play ngay tại Symbol + 1 frame sau (processor sẵn) — seed trail trước khi bay
+        SoundManager.instance?.playSfxByName('sxCoinFly');
         this._playParticleSystems(particle);
         this.scheduleOnce(() => {
             if (particle.isValid) this._playParticleSystems(particle);

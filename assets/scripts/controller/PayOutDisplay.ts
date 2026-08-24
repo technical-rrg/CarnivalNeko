@@ -148,6 +148,9 @@ export class PayOutDisplay extends Component {
     /** Cycling từng line một → set mỗi effect active/inactive trong cùng 1 pass.
      *  Không gọi _hideAllEffects() trước để tránh blank frame giữa "show all" → "cycling". */
     private _onLineHighlight(linePay: MatchedLinePay): void {
+        Log.e(
+            `[MULTI-LINE-WIN] PayOutDisplay CYCLE_ONE pl=#${linePay.payLineIndex} payout=${linePay.payout}`
+        );
         const target = this._getEffectNodeForLine(linePay);
         this.tripleSevenEffectNode  && (this.tripleSevenEffectNode.active  = target === this.tripleSevenEffectNode);
         this.doubleSevenEffectNode  && (this.doubleSevenEffectNode.active  = target === this.doubleSevenEffectNode);
@@ -161,6 +164,11 @@ export class PayOutDisplay extends Component {
 
     /** Hiện tất cả winning lines cùng lúc → bật tất cả effect tương ứng */
     private _onShowAllLines(lines: MatchedLinePay[]): void {
+        const sumPayout = lines.reduce((s, l) => s + (l.payout ?? 0), 0);
+        Log.e(
+            `[MULTI-LINE-WIN] PayOutDisplay SHOW_ALL lines=${lines.length}` +
+            ` sumLinePayout=${sumPayout} payouts=[${lines.map(l => `pl${l.payLineIndex}=${l.payout}`).join(',')}]`
+        );
         this._hideAllEffects();
         for (const line of lines) {
             const effectNode = this._getEffectNodeForLine(line);
@@ -252,11 +260,11 @@ export class PayOutDisplay extends Component {
         const payline = data.config.paylines[linePay.payLineIndex];
         const ROW = ['top', 'mid', 'bot'];
         const pattern = payline ? `[${payline.map(r => ROW[r] ?? r).join('-')}]` : '?';
-        Log.e(
-            `[PAYOUT] Line#${linePay.payLineIndex + 1}(idx=${linePay.payLineIndex}) pattern=${pattern}` +
-            ` matchedSymbols=${JSON.stringify(raw)} containsWild=${linePay.containsWild}` +
-            ` → "${winType}" payout=${linePay.payout} effectNode=${effectNode ? 'SET' : 'null'}`
-        );
+        // Log.e(
+        //     `[PAYOUT] Line#${linePay.payLineIndex + 1}(idx=${linePay.payLineIndex}) pattern=${pattern}` +
+        //     ` matchedSymbols=${JSON.stringify(raw)} containsWild=${linePay.containsWild}` +
+        //     ` → "${winType}" payout=${linePay.payout} effectNode=${effectNode ? 'SET' : 'null'}`
+        // );
 
         return effectNode;
     }

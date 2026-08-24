@@ -67,7 +67,7 @@ export class WinAmountCenterEffect extends Component {
     // ── LIFECYCLE ──────────────────────────────────────────────────────────────
 
     onLoad(): void {
-        Log.d(`[WinAmountCenterEffect] onLoad — effectNode=${!!this.effectNode}, amountLabel(SpriteNumber)=${!!this.amountLabel}`);
+        // Log.d(`[WinAmountCenterEffect] onLoad — effectNode=${!!this.effectNode}, amountLabel(SpriteNumber)=${!!this.amountLabel}`);
         EventBus.instance.on(GameEvents.WIN_SHOW_ALL_WAYS,  this._onShowAllWays,     this);
         // Real API dùng MatchedLinePays (không có waysPayWins) → WIN_SHOW_ALL_LINES
         EventBus.instance.on(GameEvents.WIN_SHOW_ALL_LINES,  this._onShowAllLines,    this);
@@ -99,9 +99,9 @@ export class WinAmountCenterEffect extends Component {
      * WIN_* event nào fire) — tránh race condition khi dùng WIN_PRESENT_START.
      */
     private _onShowAllWays(ways: WaysPayWin[], _duration: number): void {
-        Log.d(`[WinAmountCenterEffect] _onShowAllWays fired — _shownThisSpin=${this._shownThisSpin}, waysLen=${ways?.length ?? 0}`);
+        // Log.d(`[WinAmountCenterEffect] _onShowAllWays fired — _shownThisSpin=${this._shownThisSpin}, waysLen=${ways?.length ?? 0}`);
         if (!ways || ways.length === 0) return;
-        this._tryShowWinAmount();
+        this._tryShowWinAmount('WAYS', ways.length);
     }
 
     /**
@@ -109,24 +109,31 @@ export class WinAmountCenterEffect extends Component {
      * Logic giống _onShowAllWays, dùng chung _tryShowWinAmount().
      */
     private _onShowAllLines(lines: MatchedLinePay[], _duration: number): void {
-        Log.d(`[WinAmountCenterEffect] _onShowAllLines fired — _shownThisSpin=${this._shownThisSpin}, linesLen=${lines?.length ?? 0}`);
+        // Log.d(`[WinAmountCenterEffect] _onShowAllLines fired — _shownThisSpin=${this._shownThisSpin}, linesLen=${lines?.length ?? 0}`);
         if (!lines || lines.length === 0) return;
-        this._tryShowWinAmount();
+        this._tryShowWinAmount('LINES', lines.length);
     }
 
-    private _tryShowWinAmount(): void {
+    private _tryShowWinAmount(source: 'WAYS' | 'LINES', winCount: number): void {
         if (this._shownThisSpin) {
-            Log.d(`[WinAmountCenterEffect] SKIP — already shown this spin`);
+            Log.e(`[MULTI-LINE-WIN] WinAmountCenter SKIP — already shown this spin source=${source} count=${winCount}`);
             return;
         }
         if (!this.effectNode || !this.amountLabel) {
-            Log.d(`[WinAmountCenterEffect] SKIP — effectNode=${!!this.effectNode}, amountLabel=${!!this.amountLabel}`);
+            Log.e(`[MULTI-LINE-WIN] WinAmountCenter SKIP — missing nodes source=${source}`);
             return;
         }
 
         const resp = GameData.instance.lastSpinResponse;
         const totalWin = resp?.totalWin ?? 0;
-        Log.d(`[WinAmountCenterEffect] totalWin=${totalWin}`);
+        const sumLinePayout = (resp?.matchedLinePays ?? []).reduce((s, l) => s + (l.payout ?? 0), 0);
+        const sumWayPayout = (resp?.waysPayWins ?? []).reduce((s, w) => s + (w.payout ?? 0), 0);
+        Log.e(
+            `[MULTI-LINE-WIN] WinAmountCenter SHOW source=${source} winCount=${winCount}` +
+            ` displayAmount=${totalWin} totalBet=${resp?.totalBet ?? 0}` +
+            ` sumLinePayout=${sumLinePayout} sumWayPayout=${sumWayPayout}` +
+            ` lines=${resp?.matchedLinePays?.length ?? 0} ways=${resp?.waysPayWins?.length ?? 0}`
+        );
         if (totalWin <= 0) return;
 
         this._shownThisSpin = true;

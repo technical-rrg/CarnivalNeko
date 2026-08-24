@@ -48,11 +48,11 @@ import { RichTextShrink } from '../core/RichTextShrink';
 
 const { ccclass, property } = _decorator;
 
-/** Instruction1 RichText bounds — khớp UITransform 650×192 trong prefab. */
+/** Instruction1 RichText bounds — khớp UITransform 650×220 trong prefab. Font khóa 22. */
 const INSTRUCTION1_WIDTH = 650;
-const INSTRUCTION1_HEIGHT = 192;
-const INSTRUCTION1_MAX_FONT = 17;
-const INSTRUCTION1_MIN_FONT = 10;
+const INSTRUCTION1_HEIGHT = 220;
+const INSTRUCTION1_MAX_FONT = 24;
+const INSTRUCTION1_MIN_FONT = 24;
 
 @ccclass('PickGamePopup')
 export class PickGamePopup extends Component {
@@ -205,7 +205,7 @@ export class PickGamePopup extends Component {
         shrink.minFontSize = INSTRUCTION1_MIN_FONT;
         shrink.containerWidth = INSTRUCTION1_WIDTH;
         shrink.containerHeight = INSTRUCTION1_HEIGHT;
-        shrink.maxLines = 5;
+        shrink.maxLines = 0;
         shrink.allowWrap = true;
 
         instruction.getComponent(LanguageChange)?.refreshText();

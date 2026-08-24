@@ -163,7 +163,7 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 1920,
+      "width": 1919.9999999999998,
       "height": 1080
     },
     "_anchorPoint": {
@@ -1402,8 +1402,8 @@
     },
     "_alignFlags": 45,
     "_target": null,
-    "_left": 70,
-    "_right": 70,
+    "_left": 69.99999999999989,
+    "_right": 69.99999999999989,
     "_top": -325.6840000000003,
     "_bottom": -524.3160000000003,
     "_horizontalCenter": 0,
@@ -2828,7 +2828,7 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 100,
+      "width": 99.99999999999977,
       "height": 100
     },
     "_anchorPoint": {
@@ -2898,7 +2898,7 @@
       "__uuid__": "d9e5ea83-35ee-4323-87b5-db5d1eef0f5e@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
-    "carouselInterval": 1,
+    "carouselInterval": 2,
     "slideDuration": 0.35,
     "carouselDelay": 0,
     "continueArea": {
@@ -2989,7 +2989,6 @@
       "__id__": 0
     },
     "fileId": "efN8Taq11Gj4qJmWjev9GF",
-    "instance": null,
-    "targetOverrides": null
+    "instance": null
   }
 ]

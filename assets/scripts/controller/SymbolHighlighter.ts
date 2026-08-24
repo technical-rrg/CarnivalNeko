@@ -296,7 +296,7 @@ export class SymbolHighlighter extends Component {
         if (!USE_SPINE_HIGHLIGHT) return;
         const ids = Object.keys(DEFAULT_SPINE_DATA_PATHS).map(Number);
         void this._ensureSpinePrefabs(ids).then(() => {
-            Log.d(`[SymbolHighlighter] Symbol win-spine warmup done (${ids.length} ids)`);
+            // Log.d(`[SymbolHighlighter] Symbol win-spine warmup done (${ids.length} ids)`);
         });
     }
 
@@ -319,9 +319,9 @@ export class SymbolHighlighter extends Component {
     /** Cycling từng line một → chỉ highlight cells của line đó */
     private _onLineHighlight(linePay: MatchedLinePay): void {
         const cells = this._getWinningCells(linePay);
-        Log.d(
-            `[WinHL] HL CYCLE_ONE_LINE pl=#${linePay?.payLineIndex} ` +
-            `cells=[${cells.map(c => `c${c.col}r${c.row}`).join(',')}]`
+        Log.e(
+            `[MULTI-LINE-WIN] HL CYCLE_ONE_LINE pl=#${linePay?.payLineIndex} payout=${linePay?.payout}` +
+            ` cells=[${cells.map(c => `c${c.col}r${c.row}`).join(',')}]`
         );
         // Force-clean toàn bộ spine/bounce cũ trước khi activate line mới —
         // tránh highlight line trước còn sót (orphan clone trên PaylineManager).
@@ -400,9 +400,11 @@ export class SymbolHighlighter extends Component {
 
     private _onShowAllLines(lines: MatchedLinePay[], duration?: number): void {
         const loopSpine = (lines?.length ?? 0) === 1;
-        Log.d(
-            `[WinHL] HL SHOW_ALL_LINES | lines=${lines?.length ?? 0} duration=${duration ?? 'default'} ` +
-            `loopSpine=${loopSpine}`
+        const sumLinePayout = (lines ?? []).reduce((s, l) => s + (l.payout ?? 0), 0);
+        Log.e(
+            `[MULTI-LINE-WIN] HL SHOW_ALL_LINES lines=${lines?.length ?? 0} loopSpine=${loopSpine}` +
+            ` sumLinePayout=${sumLinePayout} duration=${duration ?? 'default'}` +
+            ` payouts=[${(lines ?? []).map(l => `pl${l.payLineIndex}=${l.payout}`).join(',')}]`
         );
         this._currentLineWinCount = lines?.length ?? 0;
         // ── DEBUG: log toàn bộ kết quả spin ──────────────────────────────────────
@@ -478,9 +480,10 @@ export class SymbolHighlighter extends Component {
         const comboCount = ways.reduce((n, w) => n + (w.combinations?.length || (w.cells?.length ? 1 : 0)), 0);
         // Nếu chỉ có 1 way win duy nhất → loop spine animation thay vì play once
         const loopSpine = ways.length === 1;
-        Log.d(
-            `[WinHL] HL SHOW_ALL_WAYS | ways=${ways?.length ?? 0} combos=${comboCount} ` +
-            `cells=${allCells.length} wildWays=${wildWays} loopSpine=${loopSpine} duration=${duration ?? 'default'}`
+        Log.e(
+            `[MULTI-LINE-WIN] HL SHOW_ALL_WAYS ways=${ways?.length ?? 0} combos=${comboCount}` +
+            ` cells=${allCells.length} loopSpine=${loopSpine} duration=${duration ?? 'default'}` +
+            ` wayPayouts=[${ways.map(w => `sym${w.symbolId}=${w.payout}(ways=${w.ways})`).join('|')}]`
         );
 
         // Clear highlight cũ trước show-all — tránh sót bounce/spine từ cycle trước.
@@ -514,8 +517,9 @@ export class SymbolHighlighter extends Component {
         }
         // Wild / loop không tự complete — emit ngay. Còn lại chờ setCompleteListener / bounce complete.
         const nonWildActive = this._activeSpines.filter(e => e.symId !== SymbolId.WILD);
-        Log.d(
-            `[WinHL] HL showAll spawn done | active=${this._activeSpines.length} nonWild=${nonWildActive.length} loop=${loopSpine}`
+        Log.e(
+            `[MULTI-LINE-WIN] HL showAll spawn done active=${this._activeSpines.length}` +
+            ` nonWild=${nonWildActive.length} loop=${loopSpine} → emitAnimDone=${loopSpine || nonWildActive.length === 0}`
         );
         if (loopSpine || nonWildActive.length === 0) {
             EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_ANIM_DONE);
@@ -531,9 +535,9 @@ export class SymbolHighlighter extends Component {
     private _onCycleOneWay(way: WaysPayWin): void {
         // grid row ngược với visual row: displayRow = 2 - gridRow
         const cells: CellPos[] = way.cells.map(({ reel, row }) => ({ col: reel, row: 2 - row }));
-        Log.d(
-            `[WinHL] HL CYCLE_ONE_WAY sym=${way?.symbolId} ` +
-            `cells=[${cells.map(c => `c${c.col}r${c.row}`).join(',')}] activeSpines=${this._activeSpines.length}`
+        Log.e(
+            `[MULTI-LINE-WIN] HL CYCLE_ONE_WAY sym=${way?.symbolId} payout=${way?.payout} ways=${way?.ways}` +
+            ` cells=[${cells.map(c => `c${c.col}r${c.row}`).join(',')}]`
         );
 
         // Cycle từng way: chỉ play match SFX khi không popup / chưa vào Feature.
@@ -800,7 +804,7 @@ export class SymbolHighlighter extends Component {
                 }
                 this._spinePrefabCache.set(symId, data);
                 this._spinePrefabMissing.delete(symId);
-                Log.d(`[SymbolHighlighter] Lazy-loaded win spine: ${path}`);
+                // Log.d(`[SymbolHighlighter] Lazy-loaded win spine: ${path}`);
                 resolve(data);
             });
         });
@@ -1693,7 +1697,7 @@ export class SymbolHighlighter extends Component {
 
     /** Tắt hẳn highlight trước khi vào feature / red bounce / credit fly. */
     private _onWinHighlightClear(): void {
-        Log.d(`[WinHL] HL CLEAR runtime (WIN_HIGHLIGHT_CLEAR)`);
+        // Log.d(`[WinHL] HL CLEAR runtime (WIN_HIGHLIGHT_CLEAR)`);
         this._clearAllWinHighlightRuntime();
     }
 

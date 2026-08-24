@@ -1,0 +1,397 @@
+
+Anim-Transition_P.png
+size: 1901, 1955
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Images/Bg_Maingame_P
+  rotate: false
+  xy: 1, 994
+  size: 540, 960
+  orig: 540, 960
+  offset: 0, 0
+  index: -1
+Images/Catintro/Catintro_00000
+  rotate: true
+  xy: 401, 223
+  size: 317, 373
+  orig: 720, 720
+  offset: 198, 94
+  index: -1
+Images/Catintro/Catintro_00004
+  rotate: true
+  xy: 1525, 54
+  size: 343, 375
+  orig: 720, 720
+  offset: 173, 92
+  index: -1
+Images/Catintro/Catintro_00006
+  rotate: false
+  xy: 776, 221
+  size: 360, 377
+  orig: 720, 720
+  offset: 157, 91
+  index: -1
+Images/Catintro/Catintro_00016
+  rotate: true
+  xy: 1138, 64
+  size: 338, 385
+  orig: 720, 720
+  offset: 180, 88
+  index: -1
+Images/Catintro/Catintro_00020
+  rotate: false
+  xy: 1138, 404
+  size: 385, 393
+  orig: 720, 720
+  offset: 139, 86
+  index: -1
+Images/Catintro/Catintro_00022
+  rotate: false
+  xy: 1525, 399
+  size: 353, 396
+  orig: 720, 720
+  offset: 175, 86
+  index: -1
+Images/Catintro/Catintro_00032
+  rotate: false
+  xy: 1545, 797
+  size: 330, 403
+  orig: 720, 720
+  offset: 203, 83
+  index: -1
+Images/Catintro/Catintro_00060
+  rotate: false
+  xy: 1, 447
+  size: 398, 545
+  orig: 720, 720
+  offset: 173, 175
+  index: -1
+Images/Catintro/Catintro_00062
+  rotate: false
+  xy: 543, 1044
+  size: 420, 410
+  orig: 720, 720
+  offset: 154, 310
+  index: -1
+Images/Catintro/Catintro_00063
+  rotate: true
+  xy: 1, 20
+  size: 425, 390
+  orig: 720, 720
+  offset: 153, 330
+  index: -1
+Images/Catintro/Catintro_00064
+  rotate: false
+  xy: 989, 1569
+  size: 428, 385
+  orig: 720, 720
+  offset: 152, 335
+  index: -1
+Images/Catintro/Catintro_00066
+  rotate: false
+  xy: 1419, 1572
+  size: 431, 382
+  orig: 720, 720
+  offset: 153, 338
+  index: -1
+Images/Catintro/Catintro_00068
+  rotate: false
+  xy: 543, 1456
+  size: 444, 498
+  orig: 720, 720
+  offset: 147, 198
+  index: -1
+Images/Catintro/Catintro_00071
+  rotate: false
+  xy: 1138, 799
+  size: 405, 401
+  orig: 720, 720
+  offset: 169, 75
+  index: -1
+Images/Catintro/Catintro_00075
+  rotate: true
+  xy: 989, 1221
+  size: 346, 431
+  orig: 720, 720
+  offset: 196, 76
+  index: -1
+Images/Catintro/Catintro_00077
+  rotate: false
+  xy: 401, 542
+  size: 363, 450
+  orig: 720, 720
+  offset: 183, 77
+  index: -1
+Images/Catintro/Catintro_00079
+  rotate: false
+  xy: 766, 600
+  size: 370, 442
+  orig: 720, 720
+  offset: 179, 76
+  index: -1
+Images/Catintro/Catintro_00081
+  rotate: true
+  xy: 1422, 1202
+  size: 368, 437
+  orig: 720, 720
+  offset: 182, 76
+  index: -1
+Images/Catintro/Catintro_00083
+  rotate: true
+  xy: 1422, 1202
+  size: 368, 437
+  orig: 720, 720
+  offset: 182, 76
+  index: -1
+Images/Catintro/Catintro_00085
+  rotate: true
+  xy: 1422, 1202
+  size: 368, 437
+  orig: 720, 720
+  offset: 182, 76
+  index: -1
+Images/Catintro/Catintro_00087
+  rotate: true
+  xy: 1422, 1202
+  size: 368, 437
+  orig: 720, 720
+  offset: 182, 76
+  index: -1
+Images/Catintro/Catintro_00089
+  rotate: true
+  xy: 1422, 1202
+  size: 368, 437
+  orig: 720, 720
+  offset: 182, 76
+  index: -1
+Images/Catintro/Catintro_00091
+  rotate: true
+  xy: 1422, 1202
+  size: 368, 437
+  orig: 720, 720
+  offset: 182, 76
+  index: -1
+Images/Shadow
+  rotate: false
+  xy: 393, 1
+  size: 220, 220
+  orig: 256, 256
+  offset: 18, 17
+  index: -1
+SP_1
+  rotate: false
+  xy: 543, 1021
+  size: 15, 21
+  orig: 15, 21
+  offset: 0, 0
+  index: -1
+SP_2
+  rotate: false
+  xy: 1852, 1938
+  size: 16, 16
+  orig: 16, 17
+  offset: 0, 1
+  index: -1
+SP_3
+  rotate: false
+  xy: 1, 4
+  size: 18, 14
+  orig: 18, 14
+  offset: 0, 0
+  index: -1
+SP_4
+  rotate: false
+  xy: 615, 203
+  size: 12, 18
+  orig: 12, 18
+  offset: 0, 0
+  index: -1
+lightPoint_0
+  rotate: false
+  xy: 965, 1433
+  size: 22, 21
+  orig: 22, 21
+  offset: 0, 0
+  index: -1
+
+Anim-Transition_P_2.png
+size: 1978, 1730
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Images/Catintro/Catintro_00002
+  rotate: true
+  xy: 1536, 1407
+  size: 322, 373
+  orig: 720, 720
+  offset: 193, 93
+  index: -1
+Images/Catintro/Catintro_00008
+  rotate: true
+  xy: 1, 65
+  size: 357, 376
+  orig: 720, 720
+  offset: 160, 91
+  index: -1
+Images/Catintro/Catintro_00010
+  rotate: true
+  xy: 1598, 743
+  size: 334, 379
+  orig: 720, 720
+  offset: 183, 90
+  index: -1
+Images/Catintro/Catintro_00012
+  rotate: true
+  xy: 409, 1410
+  size: 319, 382
+  orig: 720, 720
+  offset: 199, 89
+  index: -1
+Images/Catintro/Catintro_00014
+  rotate: true
+  xy: 793, 1409
+  size: 320, 384
+  orig: 720, 720
+  offset: 198, 88
+  index: -1
+Images/Catintro/Catintro_00018
+  rotate: true
+  xy: 765, 37
+  size: 368, 389
+  orig: 720, 720
+  offset: 151, 87
+  index: -1
+Images/Catintro/Catintro_00024
+  rotate: true
+  xy: 1440, 1079
+  size: 326, 399
+  orig: 720, 720
+  offset: 202, 82
+  index: -1
+Images/Catintro/Catintro_00026
+  rotate: true
+  xy: 1, 758
+  size: 326, 398
+  orig: 720, 720
+  offset: 202, 81
+  index: -1
+Images/Catintro/Catintro_00028
+  rotate: true
+  xy: 797, 751
+  size: 329, 396
+  orig: 720, 720
+  offset: 201, 84
+  index: -1
+Images/Catintro/Catintro_00030
+  rotate: true
+  xy: 387, 422
+  size: 331, 400
+  orig: 720, 720
+  offset: 202, 84
+  index: -1
+Images/Catintro/Catintro_00034
+  rotate: true
+  xy: 1195, 748
+  size: 329, 401
+  orig: 720, 720
+  offset: 203, 83
+  index: -1
+Images/Catintro/Catintro_00036
+  rotate: true
+  xy: 401, 755
+  size: 326, 394
+  orig: 720, 720
+  offset: 203, 82
+  index: -1
+Images/Catintro/Catintro_00038
+  rotate: true
+  xy: 1, 1412
+  size: 317, 406
+  orig: 720, 720
+  offset: 209, 68
+  index: -1
+Images/Catintro/Catintro_00040
+  rotate: true
+  xy: 1179, 1408
+  size: 321, 355
+  orig: 720, 720
+  offset: 207, 57
+  index: -1
+Images/Catintro/Catintro_00042
+  rotate: true
+  xy: 1, 1088
+  size: 322, 356
+  orig: 720, 720
+  offset: 206, 56
+  index: -1
+Images/Catintro/Catintro_00044
+  rotate: true
+  xy: 359, 1086
+  size: 322, 356
+  orig: 720, 720
+  offset: 206, 54
+  index: -1
+Images/Catintro/Catintro_00046
+  rotate: true
+  xy: 717, 1083
+  size: 324, 356
+  orig: 720, 720
+  offset: 205, 54
+  index: -1
+Images/Catintro/Catintro_00048
+  rotate: true
+  xy: 1075, 1082
+  size: 324, 363
+  orig: 720, 720
+  offset: 205, 57
+  index: -1
+Images/Catintro/Catintro_00050
+  rotate: true
+  xy: 1, 424
+  size: 332, 384
+  orig: 720, 720
+  offset: 197, 54
+  index: -1
+Images/Catintro/Catintro_00052
+  rotate: true
+  xy: 1555, 389
+  size: 352, 420
+  orig: 720, 720
+  offset: 180, 54
+  index: -1
+Images/Catintro/Catintro_00054
+  rotate: true
+  xy: 379, 56
+  size: 364, 384
+  orig: 720, 720
+  offset: 178, 53
+  index: -1
+Images/Catintro/Catintro_00056
+  rotate: false
+  xy: 1185, 393
+  size: 368, 353
+  orig: 720, 720
+  offset: 176, 53
+  index: -1
+Images/Catintro/Catintro_00058
+  rotate: true
+  xy: 789, 407
+  size: 342, 394
+  orig: 720, 720
+  offset: 191, 66
+  index: -1
+Images/Catintro/Catintro_00072
+  rotate: true
+  xy: 1548, 1
+  size: 386, 389
+  orig: 720, 720
+  offset: 182, 76
+  index: -1
+Images/Catintro/Catintro_00073
+  rotate: true
+  xy: 1156, 22
+  size: 369, 390
+  orig: 720, 720
+  offset: 189, 77
+  index: -1

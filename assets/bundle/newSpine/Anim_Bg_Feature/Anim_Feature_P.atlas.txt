@@ -1,0 +1,34 @@
+
+Anim_Feature_P.png
+size: 1922, 1341
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Layer 0
+  rotate: true
+  xy: 1, 260
+  size: 1080, 1920
+  orig: 1080, 1920
+  offset: 0, 0
+  index: -1
+Layer 1
+  rotate: false
+  xy: 347, 6
+  size: 69, 252
+  orig: 1080, 1920
+  offset: 32, 1269
+  index: -1
+Layer 2
+  rotate: false
+  xy: 277, 4
+  size: 68, 254
+  orig: 1080, 1920
+  offset: 982, 1268
+  index: -1
+Light
+  rotate: true
+  xy: 1, 1
+  size: 257, 274
+  orig: 1080, 1920
+  offset: 171, 1216
+  index: -1

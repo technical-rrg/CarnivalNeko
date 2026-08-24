@@ -1,0 +1,34 @@
+
+Anim_Bg_Jackpot_P.png
+size: 1922, 1317
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Layer 0
+  rotate: true
+  xy: 1, 236
+  size: 1080, 1920
+  orig: 1080, 1920
+  offset: 0, 0
+  index: -1
+Layer 1
+  rotate: false
+  xy: 277, 2
+  size: 72, 232
+  orig: 1080, 1920
+  offset: 67, 1125
+  index: -1
+Layer 2
+  rotate: false
+  xy: 351, 2
+  size: 71, 232
+  orig: 1080, 1920
+  offset: 932, 1127
+  index: -1
+Light
+  rotate: true
+  xy: 1, 1
+  size: 233, 274
+  orig: 1080, 1920
+  offset: 0, 1085
+  index: -1

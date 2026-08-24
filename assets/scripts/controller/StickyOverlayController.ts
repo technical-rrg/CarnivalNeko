@@ -222,22 +222,58 @@ export class StickyOverlayController extends Component {
     goldCoinSpineTemplate: Node | null = null;
 
     @property({
-        group: { name: 'Gold Coin Spine Scale', id: 'gcss' },
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
         tooltip: 'Scale Spine trên grid 5×3 (đồng to hơn). 1 = giữ scale template.',
     })
     goldCoinSpineScale5x3: number = 1;
 
     @property({
-        group: { name: 'Gold Coin Spine Scale', id: 'gcss' },
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
+        tooltip: 'Local pos X Spine đồng vàng trên grid 5×3.',
+    })
+    goldCoinSpineOffsetX5x3: number = 0;
+
+    @property({
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
+        tooltip: 'Local pos Y Spine đồng vàng trên grid 5×3.',
+    })
+    goldCoinSpineOffsetY5x3: number = 0;
+
+    @property({
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
         tooltip: 'Scale Spine trên grid 5×4.',
     })
     goldCoinSpineScale5x4: number = 1;
 
     @property({
-        group: { name: 'Gold Coin Spine Scale', id: 'gcss' },
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
+        tooltip: 'Local pos X Spine đồng vàng trên grid 5×4.',
+    })
+    goldCoinSpineOffsetX5x4: number = 0;
+
+    @property({
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
+        tooltip: 'Local pos Y Spine đồng vàng trên grid 5×4.',
+    })
+    goldCoinSpineOffsetY5x4: number = 0;
+
+    @property({
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
         tooltip: 'Scale Spine trên grid 5×5.',
     })
     goldCoinSpineScale5x5: number = 1;
+
+    @property({
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
+        tooltip: 'Local pos X Spine đồng vàng trên grid 5×5.',
+    })
+    goldCoinSpineOffsetX5x5: number = 0;
+
+    @property({
+        group: { name: 'Gold Coin Spine FX', id: 'gcss' },
+        tooltip: 'Local pos Y Spine đồng vàng trên grid 5×5.',
+    })
+    goldCoinSpineOffsetY5x5: number = 0;
 
     @property({
         type: Node,
@@ -251,31 +287,67 @@ export class StickyOverlayController extends Component {
     greenCoinSpineTemplate: Node | null = null;
 
     @property({
-        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
         tooltip: 'Scale Spine đồng xanh trên grid 5×3.',
     })
     greenCoinSpineScale5x3: number = 1;
 
     @property({
-        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
+        tooltip: 'Local pos X Spine đồng xanh trên grid 5×3.',
+    })
+    greenCoinSpineOffsetX5x3: number = 0;
+
+    @property({
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
+        tooltip: 'Local pos Y Spine đồng xanh trên grid 5×3.',
+    })
+    greenCoinSpineOffsetY5x3: number = 0;
+
+    @property({
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
         tooltip: 'Scale Spine đồng xanh trên grid 5×4.',
     })
     greenCoinSpineScale5x4: number = 1;
 
     @property({
-        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
+        tooltip: 'Local pos X Spine đồng xanh trên grid 5×4.',
+    })
+    greenCoinSpineOffsetX5x4: number = 0;
+
+    @property({
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
+        tooltip: 'Local pos Y Spine đồng xanh trên grid 5×4.',
+    })
+    greenCoinSpineOffsetY5x4: number = 0;
+
+    @property({
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
         tooltip: 'Scale Spine đồng xanh trên grid 5×5.',
     })
     greenCoinSpineScale5x5: number = 1;
 
     @property({
-        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
+        tooltip: 'Local pos X Spine đồng xanh trên grid 5×5.',
+    })
+    greenCoinSpineOffsetX5x5: number = 0;
+
+    @property({
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
+        tooltip: 'Local pos Y Spine đồng xanh trên grid 5×5.',
+    })
+    greenCoinSpineOffsetY5x5: number = 0;
+
+    @property({
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
         tooltip: 'Hiện CreditLabel sớm hơn bao nhiêu giây trước khi Transition_GoldCoin kết thúc (Normal speed).',
     })
     greenFlipCreditRevealLead: number = 0.28;
 
     @property({
-        group: { name: 'Green Coin Spine Scale', id: 'gcss2' },
+        group: { name: 'Green Coin Spine FX', id: 'gcss2' },
         tooltip: 'Sau khi Credit hiện, bao lâu thì cắt Transition_GoldCoin và chuyển sang Gold (giây, Normal).',
     })
     greenFlipFxCutAfterCredit: number = 0.2;
@@ -772,11 +844,49 @@ export class StickyOverlayController extends Component {
 
     /** Đích bay collect — SpriteNumber tổng tiền (Inspector). */
     getCollectTargetNode(): Node | null {
+        this._ensureCollectTotalSpriteNumber();
         return this.collectTotalSpriteNumber?.node ?? null;
     }
 
     getCollectTotalSpriteNumber(): SpriteNumber | null {
+        this._ensureCollectTotalSpriteNumber();
         return this.collectTotalSpriteNumber;
+    }
+
+    /**
+     * Lazy-load Prefab: collectTotalSpriteNumber thường null trong .prefab
+     * (chỉ có TargetOverride khi nhúng Base) — tự tìm AmountDisplay dưới Top.
+     */
+    private _ensureCollectTotalSpriteNumber(): void {
+        if (this.collectTotalSpriteNumber?.isValid) return;
+        const sn = this._findCollectTotalSpriteNumber();
+        if (sn) {
+            this.collectTotalSpriteNumber = sn;
+            Log.d(`[StickyOverlay] auto-wired collectTotalSpriteNumber → ${sn.node.name}`);
+        }
+    }
+
+    private _findCollectTotalSpriteNumber(): SpriteNumber | null {
+        const top = this._findFeatureTop();
+        if (top?.isValid) {
+            const amount = top.getChildByName('AmountDisplay');
+            if (amount?.isValid) {
+                const sn = amount.getComponent(SpriteNumber)
+                    ?? amount.getComponentInChildren(SpriteNumber);
+                if (sn) return sn;
+            }
+        }
+        for (const path of [
+            'FramFront/Top/AmountDisplay',
+            'FrameFront/Top/AmountDisplay',
+            'Top/AmountDisplay',
+        ]) {
+            const node = this.node.getChildByPath(path);
+            if (!node?.isValid) continue;
+            const sn = node.getComponent(SpriteNumber) ?? node.getComponentInChildren(SpriteNumber);
+            if (sn) return sn;
+        }
+        return null;
     }
 
     /** Số đang hiện trên HUD collect (client). */
@@ -1556,9 +1666,10 @@ export class StickyOverlayController extends Component {
         const next = Math.max(0, value);
         if (!force && next < this._featureCollectTotal) return;
         this._featureCollectTotal = next;
+        this._ensureCollectTotalSpriteNumber();
         const sn = this.collectTotalSpriteNumber;
         if (!sn?.node?.isValid) {
-            Log.w('[StickyOverlay] collectTotalSpriteNumber chưa gán — kéo SpriteNumber vào Inspector');
+            Log.w('[StickyOverlay] collectTotalSpriteNumber chưa gán — kéo SpriteNumber Top/AmountDisplay vào Inspector');
             return;
         }
         sn.node.active = true;
@@ -1582,6 +1693,7 @@ export class StickyOverlayController extends Component {
         this._refreshGrandJackpotNote();
         this._hideAll();
         this._wireFeatureHud();
+        this._ensureCollectTotalSpriteNumber();
         if (this.goldCoinSpineTemplate?.isValid) {
             this.goldCoinSpineTemplate.active = false;
         }
@@ -2609,16 +2721,35 @@ export class StickyOverlayController extends Component {
         }
     }
 
-    /** Scale Spine lấy từ Inspector theo grid 5×3 / 5×4 / 5×5. */
-    private _fitGoldSpineToCoin(fx: Node, _slotNode: Node): void {
+    /** Scale + local pos Spine lấy từ Inspector theo grid 5×3 / 5×4 / 5×5. */
+    private _goldCoinSpineLayout(): { scale: number; offsetX: number; offsetY: number } {
         const r = this._rowCount;
-        const s = r >= 5
-            ? this.goldCoinSpineScale5x5
-            : r === 4
-                ? this.goldCoinSpineScale5x4
-                : this.goldCoinSpineScale5x3;
-        const fit = Math.max(0.01, s);
+        if (r >= 5) {
+            return {
+                scale: this.goldCoinSpineScale5x5,
+                offsetX: this.goldCoinSpineOffsetX5x5,
+                offsetY: this.goldCoinSpineOffsetY5x5,
+            };
+        }
+        if (r === 4) {
+            return {
+                scale: this.goldCoinSpineScale5x4,
+                offsetX: this.goldCoinSpineOffsetX5x4,
+                offsetY: this.goldCoinSpineOffsetY5x4,
+            };
+        }
+        return {
+            scale: this.goldCoinSpineScale5x3,
+            offsetX: this.goldCoinSpineOffsetX5x3,
+            offsetY: this.goldCoinSpineOffsetY5x3,
+        };
+    }
+
+    private _fitGoldSpineToCoin(fx: Node, _slotNode: Node): void {
+        const { scale, offsetX, offsetY } = this._goldCoinSpineLayout();
+        const fit = Math.max(0.01, scale);
         fx.setScale(fit, fit, 1);
+        fx.setPosition(offsetX, offsetY, 0);
     }
 
     /** CreditLabel luôn vẽ trên Spine (sibling sau cùng của coin slot). */
@@ -2940,15 +3071,34 @@ export class StickyOverlayController extends Component {
         }
     }
 
-    private _fitGreenSpineToCoin(fx: Node, _slotNode: Node): void {
+    private _greenCoinSpineLayout(): { scale: number; offsetX: number; offsetY: number } {
         const r = this._rowCount;
-        const s = r >= 5
-            ? this.greenCoinSpineScale5x5
-            : r === 4
-                ? this.greenCoinSpineScale5x4
-                : this.greenCoinSpineScale5x3;
-        const fit = Math.max(0.01, s);
+        if (r >= 5) {
+            return {
+                scale: this.greenCoinSpineScale5x5,
+                offsetX: this.greenCoinSpineOffsetX5x5,
+                offsetY: this.greenCoinSpineOffsetY5x5,
+            };
+        }
+        if (r === 4) {
+            return {
+                scale: this.greenCoinSpineScale5x4,
+                offsetX: this.greenCoinSpineOffsetX5x4,
+                offsetY: this.greenCoinSpineOffsetY5x4,
+            };
+        }
+        return {
+            scale: this.greenCoinSpineScale5x3,
+            offsetX: this.greenCoinSpineOffsetX5x3,
+            offsetY: this.greenCoinSpineOffsetY5x3,
+        };
+    }
+
+    private _fitGreenSpineToCoin(fx: Node, _slotNode: Node): void {
+        const { scale, offsetX, offsetY } = this._greenCoinSpineLayout();
+        const fit = Math.max(0.01, scale);
         fx.setScale(fit, fit, 1);
+        fx.setPosition(offsetX, offsetY, 0);
     }
 
     private _playGreenCoinSpineFxOnce(slotNode: Node, animName: string): Promise<void> {

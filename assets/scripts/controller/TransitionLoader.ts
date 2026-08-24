@@ -91,6 +91,13 @@ export class TransitionLoader extends Component {
         return this._loading;
     }
 
+    /** Bật instance trước khi play — cần khi node mới instantiate inactive (onLoad chưa chạy). */
+    activateForPlay(): void {
+        if (this._instance?.isValid) {
+            this._instance.active = true;
+        }
+    }
+
     /**
      * Đưa Transition lên trên Guide shell — play ngay khi vào GameView, không bị Overlay đen Guide che.
      */
@@ -105,8 +112,10 @@ export class TransitionLoader extends Component {
         if (instance.parent !== parent) {
             instance.setParent(parent, true);
         }
+        // Luôn trên cùng — kể cả GuideView còn trong hierarchy (inactive)
         instance.setSiblingIndex(parent.children.length - 1);
-        Log.d('[TransitionLoader] bringAboveShell — Transition on top');
+        instance.active = true;
+        Log.d('[TransitionLoader] bringAboveShell — Transition on top + active');
     }
 
     /**
@@ -190,9 +199,9 @@ export class TransitionLoader extends Component {
                 this._instance = instance;
                 this._controller = ctrl;
                 this._wireTarget();
-                instance.active = true;
+                instance.active = false;
 
-                Log.d('[TransitionLoader] instantiated Transition (above GameRoot)');
+                Log.d('[TransitionLoader] instantiated Transition (above GameRoot, hidden until play)');
                 resolve(ctrl);
             };
 
@@ -233,6 +242,7 @@ export class TransitionLoader extends Component {
         } else {
             Log.w('[TransitionLoader] Không tìm thấy Pot/Animation target trong GameRoot');
         }
+        ctrl.setGameRootRef(root);
     }
 
     /**

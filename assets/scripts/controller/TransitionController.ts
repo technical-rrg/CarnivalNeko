@@ -1,21 +1,15 @@
 /**
- * TransitionController - Hiệu ứng transition giữa các màn hình.
+ * TransitionController - Hiệu ứng transition giữa Guide và GameView.
  *
- * Setup trong Editor:
- *   1. Tạo Node "TransitionOverlay" (overlay toàn màn hình, ban đầu inactive).
- *   2. Gắn component này vào node đó.
- *   3. overlayNode: Node nền tối (kéo Background/Overlay vào) — có UIOpacity để fade.
- *   4. Đặt node này trên cùng hierarchy (order cao nhất).
- *   5. iconNode: Spine với animation Idle_LV6 và LV6_transition_LV0.
- *   6. effectNode: Particle active khi bắt đầu (Idle_LV6).
- *   7. effectNode2: Particle active khi icon bay tới đích.
+ * Flow Guide (mặc định — useSimpleSpineTransition):
+ *   Guide fade đen → Transition fade in → gán spine + play "1"
+ *   → GameView sẵn bên dưới → fade spine color.a 255→0 → TRANSITION_DONE
  *
- * Flow:
- *   GUIDE_COMPLETE → icon bay tới Pot → effect → overlay fade out → ẩn hẳn
- *   → mới handoff chest sang Pot.potSpine → TRANSITION_DONE
+ * Flow legacy (useSimpleSpineTransition = false):
+ *   icon bay tới Pot → handoff chest → TRANSITION_DONE
  */
 
-import { _decorator, Component, UIOpacity, tween, Tween, Node, Vec3, ParticleSystem, easing, sp, screen } from 'cc';
+import { _decorator, Component, UIOpacity, tween, Tween, Node, Vec3, ParticleSystem, easing, sp, screen, assetManager, view } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { GameData } from '../data/GameData';
@@ -26,6 +20,8 @@ import { PotController } from './PotController';
 import { OrientationLayout } from './OrientationLayout';
 
 const { ccclass, property } = _decorator;
+
+const MAIN_BUNDLE = 'MainBundle';
 
 @ccclass('TransitionController')
 export class TransitionController extends Component {
@@ -76,7 +72,7 @@ export class TransitionController extends Component {
     holdDuration: number = 1.0;
 
     @property({ tooltip: 'Thời gian overlay fade out trước khi ẩn (giây)' })
-    fadeOutDuration: number = 0.35;
+    fadeOutDuration: number = 0.9;
 
     @property({ type: Node, tooltip: 'Flash node (Sprite) — fade alpha khi ẩn, không tắt ngay' })
     flashNode: Node | null = null;
@@ -84,9 +80,49 @@ export class TransitionController extends Component {
     @property({ tooltip: 'Thời gian flash fade out (giây)' })
     flashFadeOutDuration: number = 0.3;
 
+    @property({
+        tooltip: 'Guide intro: fade + spine Anim (Transition_L). false = chest bay vào Pot (legacy).',
+    })
+    useSimpleSpineTransition: boolean = true;
+
+    @property({
+        type: Node,
+        tooltip: 'Node Anim (Spine Transition_L). Để trống = dùng iconNode hoặc child "Anim".',
+    })
+    animNode: Node | null = null;
+
+    @property({ tooltip: 'Fallback tên clip khi lấy duration (prefab tự play defaultAnimation).' })
+    spineAnimName: string = '1';
+
+    @property({ type: sp.Skeleton, tooltip: 'Spine màn NGANG (Anim_L / Transition_L). Lazy-load nếu chưa gán data.' })
+    spineLandscape: sp.Skeleton | null = null;
+
+    @property({ type: sp.Skeleton, tooltip: 'Spine màn DỌC (Anim_P / Transition_P). Lazy-load nếu chưa gán data.' })
+    spinePortrait: sp.Skeleton | null = null;
+
+    @property({ tooltip: 'Path SkeletonData landscape trong MainBundle (không extension).' })
+    skeletonPathLandscape: string = 'newSpine/Transition_L/Anim-Transition_L';
+
+    @property({ tooltip: 'Path SkeletonData portrait trong MainBundle (không extension).' })
+    skeletonPathPortrait: string = 'newSpine/Transition_P/Anim-Transition_P';
+
     private _isPlaying: boolean = false;
     private _finishCb: (() => void) | null = null;
     private _pendingPot: PotController | null = null;
+    private _guideCompleteCb: (() => void) | null = null;
+    private _simpleSpineDoneCb: (() => void) | null = null;
+    /** true khi clip spine guide đang chạy — xoay màn lúc này bỏ qua, không swap spine. */
+    private _simpleSpinePlaying: boolean = false;
+    private _activeSimpleIsLandscape: boolean | null = null;
+    private _simpleSpinePlayGen: number = 0;
+    /** Tween target cho fade spine alpha (không dùng UIOpacity). */
+    private _spineFade = { a: 255 };
+    /** GameRoot — set opacity 255 khi Transition che kín, trước spine alpha fade. */
+    private _gameRootRef: Node | null = null;
+    private _skelDataLandscape: sp.SkeletonData | null = null;
+    private _skelDataPortrait: sp.SkeletonData | null = null;
+    private _loadingLandscape: Promise<sp.SkeletonData | null> | null = null;
+    private _loadingPortrait: Promise<sp.SkeletonData | null> | null = null;
 
     /** true từ lúc bắt đầu dip/fly đến khi hạ cánh */
     private _flyActive: boolean = false;
@@ -102,7 +138,11 @@ export class TransitionController extends Component {
     // ─── LIFECYCLE ───
 
     onLoad(): void {
-        this.node.active = false; // ẩn cho đến khi event trigger
+        // Không set active=false ở đây — lần đầu bật node (triggerGuideTransition) sẽ chạy onLoad
+        // và nếu tắt lại thì Transition không hiện. TransitionLoader giữ inactive sau instantiate.
+        this._autoBindSimpleSpines();
+        this._holdSimpleSpinesUntilPlay();
+        void this._ensureSimpleSkeletonData(this._isLandscape());
         EventBus.instance.on(GameEvents.GUIDE_COMPLETE, this._onGuideComplete, this);
         screen.on('window-resize', this._onScreenChange, this);
         screen.on('orientation-change', this._onScreenChange, this);
@@ -118,12 +158,20 @@ export class TransitionController extends Component {
     }
 
     /**
-     * Xoay màn lúc Pot đang bay:
-     * 1) Force OrientationLayout trên Pot/target ngay
-     * 2) Retarget frame 0 + lần nữa sau 50ms (Widget/Responsive kịp settle)
+     * Xoay màn:
+     * - Simple spine: bỏ qua nếu anim đang chạy; trước khi play thì startSpine tự chọn đúng orientation.
+     * - Legacy chest fly: retarget Pot như cũ.
      */
     private _onScreenChange(): void {
         if (!this._isPlaying) return;
+
+        if (this.useSimpleSpineTransition) {
+            if (this._simpleSpinePlaying) {
+                Log.d('[TransitionController] orientation ignored — simple spine anim playing');
+            }
+            return;
+        }
+
         this._forceTargetLayoutNow();
         this.unschedule(this._retargetFlyAfterLayout);
         this.unschedule(this._retargetFlyAfterLayoutLate);
@@ -183,6 +231,23 @@ export class TransitionController extends Component {
         // Zoom / hold: _startChestFlyPath sẽ _computeFlyTarget lại khi bắt đầu bay
     };
 
+    /** Gọi từ TransitionLoader sau wire Pot. */
+    setGameRootRef(node: Node | null): void {
+        this._gameRootRef = node;
+    }
+
+    /** GameRoot opacity 255 — phải gọi TRƯỚC khi spine alpha fade để GameView lộ dần bên dưới. */
+    private _showGameRootUnderTransition(): void {
+        const root = this._gameRootRef;
+        if (root?.isValid) {
+            let op = root.getComponent(UIOpacity);
+            if (!op) op = root.addComponent(UIOpacity);
+            Tween.stopAllByTarget(op);
+            op.opacity = 255;
+        }
+        EventBus.instance.emit(GameEvents.GAME_VIEW_READY_UNDER_TRANSITION);
+    }
+
     // ─── TRANSITION EFFECT ───
 
     private _onGuideComplete(): void {
@@ -191,18 +256,364 @@ export class TransitionController extends Component {
         this._startGuideTransition();
     }
 
-    /** Gọi từ TransitionLoader / GameEntryController khi load muộn hoặc sau reveal guide-first. */
-    triggerGuideTransition(): void {
+    triggerGuideTransition(onComplete?: () => void): void {
+        this._guideCompleteCb = onComplete ?? null;
         this._startGuideTransition();
     }
 
     private _startGuideTransition(): void {
         if (this._isPlaying) return;
         this._isPlaying = true;
+        this._autoBindSimpleSpines();
+        this._holdSimpleSpinesUntilPlay();
         this.node.active = true;
+
+        if (this.useSimpleSpineTransition) {
+            this._holdSimpleSpinesUntilPlay();
+            this._playSimpleSpineTransition();
+            return;
+        }
+
         this._resetOverlayOpacity(255);
         SoundManager.instance?.playNormalIntro();
         this.playIconFlyAnimation();
+    }
+
+    // ─── SIMPLE SPINE (Guide → GameView) ───────────────────────────────────
+
+    private _isLandscape(): boolean {
+        const ds = view.getDesignResolutionSize();
+        if (ds.width > 0 && ds.height > 0) return ds.width > ds.height;
+        const ws = screen.windowSize;
+        return ws.width > ws.height;
+    }
+
+    private _autoBindSimpleSpines(): void {
+        if (!this.spineLandscape?.isValid) {
+            const node = this.node.getChildByName('Anim_L')
+                ?? this.node.getChildByName('Anim')
+                ?? this._resolveAnimNode();
+            this.spineLandscape = node?.getComponent(sp.Skeleton)
+                ?? node?.getComponentInChildren(sp.Skeleton)
+                ?? null;
+        }
+        if (!this.spinePortrait?.isValid) {
+            const node = this.node.getChildByName('Anim_P')
+                ?? this.node.getChildByName('Anim');
+            this.spinePortrait = node?.getComponent(sp.Skeleton)
+                ?? node?.getComponentInChildren(sp.Skeleton)
+                ?? null;
+        }
+        if (this.spineLandscape?.isValid && !this.spinePortrait?.isValid) {
+            this.spinePortrait = this.spineLandscape;
+        }
+    }
+
+    private _resolveAnimNode(): Node | null {
+        if (this.animNode?.isValid) return this.animNode;
+        if (this.iconNode?.isValid) return this.iconNode;
+        return this.node.getChildByName('Anim');
+    }
+
+    private _skeletonPathFor(isLandscape: boolean): string {
+        const raw = isLandscape ? this.skeletonPathLandscape : this.skeletonPathPortrait;
+        return (raw || '').trim();
+    }
+
+    private _hideInactiveSimpleSpine(active: sp.Skeleton | null, inactive: sp.Skeleton | null): void {
+        const shared = !!active && active === inactive;
+        if (inactive?.isValid && !shared) {
+            this._suppressSkeletonAutoPlay(inactive);
+            inactive.node.active = false;
+        }
+    }
+
+    /** Tắt spine + xóa track/defaultAnimation — tránh prefab Transition_L auto-play khi bật Transition. */
+    private _suppressSkeletonAutoPlay(skel: sp.Skeleton): void {
+        skel.setCompleteListener(null);
+        skel.clearTracks();
+        try {
+            (skel as unknown as { defaultAnimation?: string }).defaultAnimation = '';
+        } catch {
+            /* ignore */
+        }
+    }
+
+    private _holdSimpleSpinesUntilPlay(): void {
+        this._autoBindSimpleSpines();
+        const seen = new Set<sp.Skeleton>();
+        for (const skel of [this.spineLandscape, this.spinePortrait]) {
+            if (!skel?.isValid || seen.has(skel)) continue;
+            seen.add(skel);
+            this._suppressSkeletonAutoPlay(skel);
+            skel.node.active = false;
+        }
+    }
+
+    private _ensureSimpleSkeletonData(isLandscape: boolean): Promise<sp.SkeletonData | null> {
+        const cached = isLandscape ? this._skelDataLandscape : this._skelDataPortrait;
+        if (cached) return Promise.resolve(cached);
+
+        const inflight = isLandscape ? this._loadingLandscape : this._loadingPortrait;
+        if (inflight) return inflight;
+
+        const path = this._skeletonPathFor(isLandscape);
+        if (!path) return Promise.resolve(null);
+
+        const bundle = assetManager.getBundle(MAIN_BUNDLE);
+        if (!bundle) {
+            Log.w(`[TransitionController] Bundle '${MAIN_BUNDLE}' missing — cannot load ${path}`);
+            return Promise.resolve(null);
+        }
+
+        const promise = new Promise<sp.SkeletonData | null>((resolve) => {
+            bundle.load(path, sp.SkeletonData, (err, data) => {
+                if (isLandscape) this._loadingLandscape = null;
+                else this._loadingPortrait = null;
+
+                if (err || !data) {
+                    Log.w(`[TransitionController] SkeletonData load failed: ${path}`, err);
+                    resolve(null);
+                    return;
+                }
+                if (isLandscape) this._skelDataLandscape = data;
+                else this._skelDataPortrait = data;
+                resolve(data);
+            });
+        });
+
+        if (isLandscape) this._loadingLandscape = promise;
+        else this._loadingPortrait = promise;
+        return promise;
+    }
+
+    /** Chọn + gán SkeletonData đúng ngang/dọc, rồi play clip "1" một lần. */
+    private async _prepareActiveSimpleSpine(): Promise<sp.Skeleton | null> {
+        this._autoBindSimpleSpines();
+        const isLandscape = this._isLandscape();
+        let active = isLandscape ? this.spineLandscape : this.spinePortrait;
+        let inactive = isLandscape ? this.spinePortrait : this.spineLandscape;
+        if (!active?.isValid) {
+            active = this.spineLandscape ?? this.spinePortrait;
+            inactive = active === this.spineLandscape ? this.spinePortrait : this.spineLandscape;
+        }
+
+        if (!active?.isValid) {
+            Log.w('[TransitionController] simple spine — thiếu Skeleton component');
+            return null;
+        }
+
+        this._hideInactiveSimpleSpine(active, inactive);
+        active.node.active = false;
+        this._suppressSkeletonAutoPlay(active);
+
+        let data = await this._ensureSimpleSkeletonData(isLandscape);
+        if (!data && !isLandscape) {
+            Log.w('[TransitionController] portrait spine missing — fallback landscape');
+            data = await this._ensureSimpleSkeletonData(true);
+        }
+        if (!data && isLandscape && active.skeletonData) {
+            data = active.skeletonData;
+        }
+
+        if (data && active.skeletonData !== data) {
+            active.skeletonData = data;
+        }
+
+        active.node.active = true;
+        this._activeSimpleIsLandscape = isLandscape;
+
+        if (data) {
+            this._startSimpleSpineClipOnce(active);
+        }
+
+        return active;
+    }
+
+    /**
+     * Runtime gán SkeletonData không tự play defaultAnimation (đặc biệt portrait lazy-load).
+     * Gọi đúng một lần ngay sau khi data sẵn sàng trên skeleton active.
+     */
+    private _startSimpleSpineClipOnce(skel: sp.Skeleton): string {
+        const clip = (this.spineAnimName || '1').trim() || '1';
+        skel.clearTracks();
+        skel.setAnimation(0, clip, false);
+        return clip;
+    }
+
+    /** Clip đang chạy hoặc spineAnimName — dùng cho duration fallback. */
+    private _getPlayingAnimName(skel: sp.Skeleton): string {
+        try {
+            const track = skel.getCurrent(0);
+            const name = track?.animation?.name;
+            if (name) return name;
+        } catch {
+            /* spine chưa init */
+        }
+        try {
+            const def = (skel as unknown as { defaultAnimation?: string }).defaultAnimation;
+            if (def) return def;
+        } catch {
+            /* ignore */
+        }
+        const preferred = (this.spineAnimName || '1').trim();
+        try {
+            const find = (skel as unknown as { findAnimation?: (n: string) => unknown }).findAnimation;
+            if (typeof find === 'function' && find.call(skel, preferred)) return preferred;
+        } catch {
+            /* spine chưa init */
+        }
+        return preferred;
+    }
+
+    private _getSpineDuration(skel: sp.Skeleton, animName: string): number {
+        try {
+            const find = (skel as unknown as { findAnimation?: (n: string) => { duration?: number } }).findAnimation;
+            if (typeof find === 'function') {
+                const anim = find.call(skel, animName);
+                if (typeof anim?.duration === 'number' && anim.duration > 0) return anim.duration;
+            }
+        } catch {
+            /* ignore */
+        }
+        return 2.7;
+    }
+
+    private _ensureRootOpacity(): UIOpacity | null {
+        if (this.uiOpacity?.isValid) return this.uiOpacity;
+        let op = this.node.getComponent(UIOpacity);
+        if (!op) op = this.node.addComponent(UIOpacity);
+        this.uiOpacity = op;
+        return op;
+    }
+
+    /** Fade in Transition → gán spine + play "1" → fade out spine alpha 255→0. */
+    private _playSimpleSpineTransition(): void {
+        this._cleanupRunningTweens();
+        this._simpleSpinePlaying = false;
+        this._activeSimpleIsLandscape = null;
+        this._holdSimpleSpinesUntilPlay();
+        SoundManager.instance?.playNormalIntro();
+
+        if (this.effectNode?.isValid) this.effectNode.active = false;
+        if (this.effectNode2?.isValid) this.effectNode2.active = false;
+        if (this.flashNode?.isValid) this.flashNode.active = false;
+
+        this._resetOverlayOpacity(255);
+        const rootOp = this._ensureRootOpacity();
+        if (rootOp) {
+            tween(rootOp).stop();
+            rootOp.opacity = 0;
+        }
+
+        const startSpine = () => {
+            this._showGameRootUnderTransition();
+            void this._playSimpleSpineAnim();
+        };
+
+        const fadeIn = Math.max(0, this.fadeInDuration);
+        if (rootOp && fadeIn > 0) {
+            tween(rootOp)
+                .to(fadeIn, { opacity: 255 }, { easing: easing.sineOut })
+                .call(startSpine)
+                .start();
+        } else {
+            if (rootOp) rootOp.opacity = 255;
+            startSpine();
+        }
+
+        Log.d('[TransitionController] simple spine transition — fade in → Anim');
+    }
+
+    private async _playSimpleSpineAnim(): Promise<void> {
+        const playGen = ++this._simpleSpinePlayGen;
+        const skel = await this._prepareActiveSimpleSpine();
+        if (playGen !== this._simpleSpinePlayGen || !this._isPlaying || !this.isValid) return;
+
+        if (!skel?.isValid) {
+            Log.w('[TransitionController] simple spine — không có Skeleton hợp lệ');
+            this._fadeOutSimpleTransition();
+            return;
+        }
+
+        this._simpleSpinePlaying = true;
+        const clip = this._getPlayingAnimName(skel) || (this.spineAnimName || '1').trim() || '1';
+
+        const onSpineDone = () => {
+            if (playGen !== this._simpleSpinePlayGen) return;
+            this._simpleSpinePlaying = false;
+            skel.setCompleteListener(null);
+            this.unschedule(this._simpleSpineDoneCb!);
+            this._simpleSpineDoneCb = null;
+            this._fadeOutSimpleTransition();
+        };
+
+        skel.setCompleteListener(() => {
+            if (playGen !== this._simpleSpinePlayGen) return;
+            onSpineDone();
+        });
+
+        this.unschedule(this._simpleSpineDoneCb);
+        this._simpleSpineDoneCb = onSpineDone;
+        const dur = this._getSpineDuration(skel, clip);
+        this.scheduleOnce(this._simpleSpineDoneCb, dur + 0.15);
+
+        Log.d(
+            `[TransitionController] simple spine play clip="${clip}" ` +
+            `${this._activeSimpleIsLandscape ? 'LANDSCAPE' : 'PORTRAIT'}`,
+        );
+    }
+
+    /** Spine color.a 255→0 — GameView lộ dần bên dưới (Spine không ăn UIOpacity). */
+    private _fadeOutSimpleTransition(): void {
+        const duration = Math.max(0.05, this.fadeOutDuration);
+
+        this._showGameRootUnderTransition();
+
+        const finish = () => {
+            this._setSimpleSpineAlpha(0);
+            this._simpleSpinePlaying = false;
+            this._activeSimpleIsLandscape = null;
+            this._simpleSpinePlayGen++;
+            this.node.active = false;
+            this._isPlaying = false;
+            EventBus.instance.emit(GameEvents.TRANSITION_DONE);
+            Log.d('[TransitionController] simple spine done → TRANSITION_DONE');
+
+            const cb = this._guideCompleteCb;
+            this._guideCompleteCb = null;
+            cb?.();
+        };
+
+        Tween.stopAllByTarget(this._spineFade);
+        this._spineFade.a = 255;
+        this._setSimpleSpineAlpha(255);
+        tween(this._spineFade)
+            .to(duration, { a: 0 }, {
+                easing: easing.sineInOut,
+                onUpdate: () => this._setSimpleSpineAlpha(this._spineFade.a),
+            })
+            .call(finish)
+            .start();
+
+        Log.d(`[TransitionController] fade out spine alpha 255→0 (${duration}s)`);
+    }
+
+    private _setSimpleSpineAlpha(a: number): void {
+        const alpha = Math.max(0, Math.min(255, Math.round(a)));
+        const seen = new Set<sp.Skeleton>();
+        const apply = (skel: sp.Skeleton | null) => {
+            if (!skel?.isValid || seen.has(skel)) return;
+            seen.add(skel);
+            const c = skel.color.clone();
+            c.a = alpha;
+            skel.color = c;
+        };
+        apply(this.spineLandscape);
+        apply(this.spinePortrait);
+        const anim = this._resolveAnimNode();
+        apply(anim?.getComponent(sp.Skeleton) ?? anim?.getComponentInChildren(sp.Skeleton) ?? null);
+        apply(this.iconNode?.getComponent(sp.Skeleton) ?? null);
     }
 
     /**
@@ -518,6 +929,13 @@ export class TransitionController extends Component {
             this.unschedule(this._finishCb);
             this._finishCb = null;
         }
+        if (this._simpleSpineDoneCb) {
+            this.unschedule(this._simpleSpineDoneCb);
+            this._simpleSpineDoneCb = null;
+        }
+        this._simpleSpinePlaying = false;
+        this._simpleSpinePlayGen++;
+        Tween.stopAllByTarget(this._spineFade);
         this.unschedule(this._retargetFlyAfterLayout);
         this.unschedule(this._retargetFlyAfterLayoutLate);
         this._flyActive = false;
@@ -532,6 +950,8 @@ export class TransitionController extends Component {
             ? this.overlayNode.getComponent(UIOpacity)
             : (this.uiOpacity?.isValid ? this.uiOpacity : null);
         if (overlayOp) tween(overlayOp).stop();
+        const rootOp = this.uiOpacity?.isValid ? this.uiOpacity : this.node.getComponent(UIOpacity);
+        if (rootOp) tween(rootOp).stop();
         const flashOp = this.flashNode?.isValid ? this.flashNode.getComponent(UIOpacity) : null;
         if (flashOp) tween(flashOp).stop();
         for (const fx of [this.effectNode, this.effectNode2]) {

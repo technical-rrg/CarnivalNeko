@@ -245,6 +245,8 @@ export class StickyOverlayLoader extends Component {
         }
         matsuri.bindStickyOverlay(this._overlay);
         matsuri.topUpAbsorbEffect = absorb;
+        // Đảm bảo MatsuriEffect thấy collect target ngay sau lazy-load overlay.
+        this._overlay?.getCollectTargetNode();
     }
 
     private _hideIfNotInFeature(): void {

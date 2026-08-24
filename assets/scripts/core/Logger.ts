@@ -63,5 +63,6 @@ export const Log = {
 
 // Tag mới PHẢI thêm vào đây — Log.d/w/e bị nuốt nếu không whitelist.
 Log.setWhitelist([
-    'winhl',  // [WinHL] show-all vs cycle từng line khi win multiple
+    'pickgame',  // [PickGame] pick cell, result PS ID, 3 ID trúng, server JackpotName
+    'jackpot',   // [Jackpot] claim / trigger sau pick game
 ]);

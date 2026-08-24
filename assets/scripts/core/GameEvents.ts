@@ -237,6 +237,8 @@ export const GameEvents = {
     GUIDE_COMPLETE: 'intro:guide:complete',
     /** Kích hoạt hiệu ứng tiến vào Pot (팟 진입 연출) */
     GAME_ENTRY_EFFECT: 'game:entry:effect',
+    /** GameRoot opacity=255 dưới Transition (sau fade-in Transition, trước spine fade alpha). */
+    GAME_VIEW_READY_UNDER_TRANSITION: 'game:view:ready:under:transition',
 
     // ─── SERVER API ───
     /** Login bắt đầu */

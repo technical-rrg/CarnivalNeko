@@ -429,6 +429,8 @@ export class SlotMachineController extends Component {
     private _hintBounceCb: (() => void) | null = null;
     private _reelFrameCatSpines: sp.Skeleton[] = [];
     private _catWinPlaying = false;
+    /** Chỉ xử lý REELS_STOPPED 1 lần/spin — recover/watchdog có thể emit lại sau show-all. */
+    private _catReelsStoppedHandled = false;
     /** Reels đang quay — mèo luôn Idle_01, không chuyển Idle_02. */
     private _catSpinning = false;
     private _catCurrentAnim: string | null = null;
@@ -490,6 +492,7 @@ export class SlotMachineController extends Component {
 
         screen.on('window-resize', this._applyReelFrameCatsVisibility, this);
         screen.on('orientation-change', this._applyReelFrameCatsVisibility, this);
+        this._setEntryPotNodesActive(true);
         this._applyReelFrameCatsVisibility();
     }
 
@@ -521,8 +524,9 @@ export class SlotMachineController extends Component {
         // Gọi trực tiếp _onEnterSuccess() — real data đã có trong GameData nếu ENTER_SUCCESS đã fire.
         // Lần áp dứt khoát được đảm bảo bởi applyInitialSymbols() gọi từ _onLoadingComplete().
         this._onEnterSuccess();
-        this.scheduleOnce(this._applyReelFrameCatsVisibility, 0);
         this._initReelFrameCats();
+        this._setEntryPotNodesActive(true);
+        this.scheduleOnce(this._applyReelFrameCatsVisibility, 0);
     }
 
     /**
@@ -643,6 +647,27 @@ export class SlotMachineController extends Component {
         screen.off('window-resize', this._applyReelFrameCatsVisibility, this);
         screen.off('orientation-change', this._applyReelFrameCatsVisibility, this);
         EventBus.instance.offTarget(this);
+    }
+
+    private _setReelFrameCatsActive(active: boolean): void {
+        const frame = this.node.getChildByName('ReelFrameImg');
+        if (!frame?.isValid) return;
+        for (const child of frame.children) {
+            if (child.name === 'Cat' || child.name === 'Cat-001') {
+                child.active = active;
+            }
+        }
+    }
+
+    private _setEntryPotNodesActive(active: boolean): void {
+        const potRoot = this.node.getChildByName('Pot');
+        if (potRoot?.isValid) potRoot.active = active;
+        for (const name of ['PotBlue', 'PotRed', 'PotGreen']) {
+            const n = this.node.getChildByName(name)
+                ?? potRoot?.getChildByName(name)
+                ?? null;
+            if (n?.isValid) n.active = active;
+        }
     }
 
     /** ReelFrameImg: 2 con mèo chỉ hiện ở màn ngang. */
@@ -767,6 +792,11 @@ export class SlotMachineController extends Component {
     /** Reels dừng: coi như Idle_01 mới bắt đầu → reset countdown 30s. */
     private _onReelsStoppedForCats(): void {
         if (this._isTopUp || GameData.instance.currentMode === 'matsuri') return;
+        // tryRecoverReelsStopped / watchdog có thể emit REELS_STOPPED lại sau WIN_SHOW_ALL_*.
+        // GameManager bỏ qua bản trùng nhưng handler mèo vẫn chạy → cắt Win_lv1/Win_Lv2 show-all.
+        if (this._catReelsStoppedHandled) return;
+        this._catReelsStoppedHandled = true;
+
         this._catSpinning = false;
         this._catWinPlaying = false;
         if (this._reelFrameCatSpines.length === 0) return;
@@ -1322,6 +1352,7 @@ export class SlotMachineController extends Component {
     // ─── PHASE 1: BẮT ĐẦU QUAY (ngay khi nhấn Spin, trước khi chờ server) ───
 
     private _onReelsStartSpin(): void {
+        this._catReelsStoppedHandled = false;
         this._pauseCatIdleForSpin();
         // Hủy callback one-shot đang chờ — không restart Idle_01 nếu đã Idle_01 (tránh giật).
         this._catAnimGen++;

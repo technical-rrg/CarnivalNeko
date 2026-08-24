@@ -1,0 +1,34 @@
+
+Anim_Bg_Feature_L.png
+size: 1922, 1341
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+Layer 0
+  rotate: false
+  xy: 1, 260
+  size: 1920, 1080
+  orig: 1920, 1080
+  offset: 0, 0
+  index: -1
+Layer 1
+  rotate: true
+  xy: 277, 143
+  size: 115, 314
+  orig: 1920, 1080
+  offset: 185, 694
+  index: -1
+Layer 2 copy
+  rotate: true
+  xy: 277, 35
+  size: 106, 285
+  orig: 1920, 1080
+  offset: 1623, 694
+  index: -1
+Light
+  rotate: true
+  xy: 1, 1
+  size: 257, 274
+  orig: 1920, 1080
+  offset: 114, 734
+  index: -1

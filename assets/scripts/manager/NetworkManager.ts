@@ -71,6 +71,7 @@ import { WaysPayCalculator } from '../data/WaysPayCalculator';
 import { GameData } from '../data/GameData';
 import {
     clientPickToPs,
+    clientSymToJackpotType,
     psPickToClient,
     resolvePickState,
     JP_TYPE_TO_TIER_NAME,
@@ -682,12 +683,27 @@ class MockNetworkAdapter implements INetworkAdapter {
             ? (JP_TYPE_TO_TIER_NAME[resolved.paidTier] ?? '')
             : '';
 
-        Log.e(
-            `[MockPick] pick=${pickIndex} result=${pickResults} upgrade=${resolved.upgradeCount}`
-            + ` armed=${resolved.upgradeArmed} jackpot=${resolved.isJackpot}`
-            + ` name=${jackpotName || 'n/a'} paid=${JackpotType[resolved.paidTier]}`
-            + ` x2=${resolved.doubleGrand} win=${winCash}`,
+        Log.d(
+            `[PickGame] PICK cell=${pickIndex} resultPsId=${pickResults}`
+            + ` serverJackpot=${jackpotName || 'none'}`,
         );
+        if (resolved.isJackpot) {
+            const matchedCells: number[] = [];
+            const matchedPsIds: number[] = [];
+            for (const idx of revealed) {
+                if (clientSymToJackpotType(pickState.grid[idx]) !== resolved.matchedTier) continue;
+                matchedCells.push(idx);
+                matchedPsIds.push(clientPickToPs(pickState.grid[idx]));
+                if (matchedPsIds.length >= 3) break;
+            }
+            Log.d(
+                `[PickGame] WIN matchedPsIds=[${matchedPsIds.join(',')}]`
+                + ` cells=[${matchedCells.join(',')}]`
+                + ` serverJackpot=${jackpotName}`
+                + ` paidTier=${JackpotType[resolved.paidTier]}`
+                + ` pickWin=${winCash}`,
+            );
+        }
 
         return {
             PickGame: pickGameIds,
@@ -1224,7 +1240,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         const data = GameData.instance;
         const session = data.serverSession!;
         const requestData = { PickIndex: pickIndex, SlotId: ServerConfig.SLOT_ID };
-        Log.e(`[Pick] SEND PickIndex=${pickIndex} seq=${data.currentSeq}`);
+        Log.d(`[PickGame] SEND cell=${pickIndex}`);
         const encrypted = this._encryptAES256(JSON.stringify(requestData), session.aky);
         const packet = this._buildPacket(
             ServerConfig.API.PICK,
@@ -1241,7 +1257,6 @@ class RealNetworkAdapter implements INetworkAdapter {
         this._checkResponseCode(responsePacket);
         const decrypted = this._decryptAES256(responsePacket[8], session.aky);
         const outer: any = JSON.parse(decrypted);
-        Log.e(`[Pick] FULL OUTER RESPONSE: ${JSON.stringify(outer)}`);
         // Server can return either {RemainCash, Res: GFPickResponse}
         // or {RemainCash, Res: {GFPickResponse}} depending on backend version.
         const res = outer.Res ?? outer;
@@ -1262,10 +1277,24 @@ class RealNetworkAdapter implements INetworkAdapter {
             IsUpgradeComplete: pickRes.IsUpgradeComplete ?? pickRes.isUpgradeComplete,
             DoubleGrand: pickRes.DoubleGrand ?? pickRes.doubleGrand,
         };
-        Log.e(
-            `[Pick] ACK PickResults=${raw.PickResults ?? 'n/a'} PickStage=${raw.PickStage ?? '?'}` +
-            ` JackpotName=${raw.JackpotName ?? 'n/a'} NextStage=${raw.NextStage} PickWin=${raw.PickWin ?? 0}`,
+        const pickGameRaw = Array.isArray(raw.PickGame) ? raw.PickGame : [];
+        const revealedRaw = pickGameRaw
+            .map((id, i) => ({ i, id }))
+            .filter(x => x.id != null && Number(x.id) !== -1)
+            .map(x => `${x.i}=${x.id}`)
+            .join(',') || 'none';
+        const cellFromGrid = pickGameRaw[pickIndex];
+        const pickResultsType = raw.PickResults == null ? 'null' : typeof raw.PickResults;
+        Log.d(
+            `[PickGame] ACK RAW cell=${pickIndex}`
+            + ` PickResults=${JSON.stringify(raw.PickResults)} (${pickResultsType})`
+            + ` PickGame[cell]=${cellFromGrid ?? 'n/a'}`
+            + ` JackpotName=${JSON.stringify(raw.JackpotName ?? '')}`
+            + ` PickWin=${raw.PickWin ?? 0} NextStage=${raw.NextStage}`
+            + ` PickStage=${raw.PickStage ?? '?'}`,
         );
+        Log.d(`[PickGame] ACK RAW PickGame[15]=${JSON.stringify(pickGameRaw)}`);
+        Log.d(`[PickGame] ACK RAW revealed=${revealedRaw}`);
         ResponseLogger.log('Pick', raw);
         return raw;
     }
@@ -1326,14 +1355,12 @@ class RealNetworkAdapter implements INetworkAdapter {
             claimResponse.PickGame ?? claimResponse.pickGame ?? claimResponse.PickGameState,
         );
 
-        Log.e(
-            `[Claim] parsed balance=${cash}` +
-            ` TotalWin=${claimTotalWin ?? 'n/a'} FeatureSpinTotalWin=${claimFeatureSpinTotal ?? 'n/a'}` +
-            ` WinCash=${topLevelWinCash ?? 'n/a'} → popup=${winCash ?? 'n/a'}` +
-            ` FeatureName=${featureName ?? 'n/a'} JackpotName=${jackpotName ?? 'n/a'}` +
-            ` NextStage=${nextStage} WinGrade=${claimWinGrade ?? 'n/a'}` +
-            ` PickGame=${pickGame ? `grid=${pickGame.grid.length}` : 'n/a'}`,
-        );
+        if (jackpotName) {
+            Log.d(
+                `[Jackpot] CLAIM serverJackpot=${jackpotName}`
+                + ` winCash=${winCash ?? 'n/a'} nextStage=${nextStage}`,
+            );
+        }
         return {
             balance: cash,
             winCash,

@@ -41,6 +41,7 @@ import { GRID_MINI_COIN_SIZE } from './TopUpReelController';
 import { SymbolView } from './SymbolView';
 import { SoundManager } from '../manager/SoundManager';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
+import { Log } from '../core/Logger';
 
 const { ccclass, property } = _decorator;
 
@@ -572,10 +573,15 @@ export class MatsuriEffect extends Component {
         );
 
         if (cells.length === 0) {
+            Log.w('[MatsuriEffect] collect skip — không có Gold credit > 0 để hút');
             EventBus.instance.emit(GameEvents.MATSURI_COLLECT_DONE);
             return;
         }
         if (!this.collectTargetNode?.isValid) {
+            Log.e(
+                `[MatsuriEffect] collectTargetNode null — bỏ qua bay clone (${cells.length} Gold).` +
+                ' Kiểm tra StickyOverlay Top/AmountDisplay (SpriteNumber tổng tiền).',
+            );
             for (const c of cells) {
                 EventBus.instance.emit(GameEvents.MATSURI_COLLECT_CREDIT, { credit: c.credit ?? 0 });
             }

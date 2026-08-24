@@ -145,6 +145,15 @@ export class GuideShellLoader {
         });
     }
 
+    /** Ẩn shell ngay khi Transition cover — sharedNode phải đã reparent trước đó. */
+    static hideForTransition(): void {
+        const node = GuideShellLoader.instance;
+        if (!node?.isValid) return;
+        const gc = node.getComponent(GuideController);
+        node.active = false;
+        Log.d(`[GuideShellLoader] hideForTransition (gc=${!!gc})`);
+    }
+
     /** Tắt + destroy shell (sau khi reparent sharedNode nếu cần). */
     static dismiss(): void {
         const node = GuideShellLoader._instance;

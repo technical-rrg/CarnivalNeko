@@ -27,8 +27,8 @@
  */
 
 import {
-    _decorator, Component, Node, Vec3, tween,
-    Color, Sprite, instantiate, ParticleSystem, UIOpacity, UITransform, Camera,
+    _decorator, Component, Node, Vec3, tween, Tween, NodePool,
+    Color, Sprite, SpriteFrame, instantiate, ParticleSystem, UIOpacity, UITransform, Camera,
     sp, assetManager,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
@@ -42,8 +42,11 @@ import {
     TrailColor,
     SymbolId,
     trailColorToSymbolId,
+    CLIENT_TO_PS,
 } from '../data/SlotTypes';
+import { getSymbolPackFrame, resolveSymbolPackAtlas } from '../data/SymbolPackUtil';
 import { CarnivalPotBoard } from './CarnivalPotBoard';
+import { CoinClusterView } from './CoinClusterView';
 
 const { ccclass, property } = _decorator;
 
@@ -188,14 +191,44 @@ export class CarnivalTrailController extends Component {
     })
     particleHitLoopOffPrefixes: string[] = ['qilin'];
 
+    @property({
+        tooltip: 'Ẩn Coins_Trail* particle — thay bằng chùm sprite xoay (CoinCluster).',
+    })
+    useCoinClusterInsteadOfParticles = true;
+
+    @property({ tooltip: 'Số đồng xu trong chùm bay' })
+    coinClusterCount = 5;
+
+    @property({ tooltip: 'Bán kính random quanh tâm chùm (local px)' })
+    coinClusterSpread = 36;
+
+    @property({ tooltip: 'Scale mỗi đồng xu trong chùm' })
+    coinClusterCoinScale = 0.52;
+
+    @property({ tooltip: 'Tốc độ xoay trục Y tối thiểu (deg/giây)' })
+    coinClusterRotateSpeedMin = 200;
+
+    @property({ tooltip: 'Tốc độ xoay trục Y tối đa (deg/giây)' })
+    coinClusterRotateSpeedMax = 480;
+
+    @property({ tooltip: 'Pool Fx_Coin_Trail — tái sử dụng thay instantiate/destroy mỗi trail' })
+    flyFxPoolEnabled = true;
+
+    @property({ tooltip: 'Số instance Fx_Coin_Trail giữ trong pool tối đa' })
+    flyFxMaxPoolSize = 10;
+
     private _pending: CarnivalTrailHit[] = [];
     private _flyingCount = 0;
     private _started = false;
     private _flipGen = 0;
     private _activeParticles: Node[] = [];
+    private _coinClusterByFx = new Map<Node, Node>();
     private _activeFlips: Node[] = [];
     private _flipData = new Map<TrailColor, sp.SkeletonData>();
     private _flipLoad: Map<TrailColor, Promise<sp.SkeletonData | null>> = new Map();
+    private _flyFxPool: NodePool | null = null;
+    /** rateOverTime/Distance gốc từ template — restore sau fade/pool. */
+    private _particleEmitDefaults = new Map<string, { rateTime: number; rateDist: number }>();
 
     onLoad(): void {
         const bus = EventBus.instance;
@@ -212,6 +245,8 @@ export class CarnivalTrailController extends Component {
         if (this.particleTemplate?.isValid) {
             this.particleTemplate.active = false;
         }
+        this._cacheParticleEmitDefaults();
+        this._initFlyFxPool();
         this._syncParticle3DCamera();
         Log.e(
             `[CarnivalTrail] ready | reels=${this.reels?.length ?? 0}` +
@@ -225,6 +260,7 @@ export class CarnivalTrailController extends Component {
         EventBus.instance.offTarget(this);
         this._clearParticles();
         this._clearFlips();
+        this._clearFlyFxPool();
     }
 
     lateUpdate(): void {
@@ -663,6 +699,11 @@ export class CarnivalTrailController extends Component {
         particle.setPosition(start);
         particle.setScale(this.flyScale, this.flyScale, 1);
 
+        if (this.useCoinClusterInsteadOfParticles) {
+            this._hideCoinsTrailParticles(particle);
+            this._setupCoinCluster(particle, hit.color);
+        }
+
         Log.e(
             `[CarnivalTrail] FLY? ${TrailColor[hit.color]} ` +
             `from(${start.x.toFixed(0)},${start.y.toFixed(0)}) ` +
@@ -678,6 +719,7 @@ export class CarnivalTrailController extends Component {
         }, 0);
 
         const flyProxy = { t: 0 };
+        (particle as unknown as { _trailFlyProxy?: { t: number } })._trailFlyProxy = flyProxy;
         const pos = new Vec3();
         const totalDur = this._flyDuration();
         const launchDelay = this._getLaunchDelay(totalDur);
@@ -757,6 +799,31 @@ export class CarnivalTrailController extends Component {
         }
     }
 
+    private _cacheParticleEmitDefaults(): void {
+        this._particleEmitDefaults.clear();
+        if (!this.particleTemplate?.isValid) return;
+        for (const ps of this.particleTemplate.getComponentsInChildren(ParticleSystem)) {
+            if (!ps?.isValid) continue;
+            this._particleEmitDefaults.set(ps.node.name, {
+                rateTime: ps.rateOverTime?.constant ?? 0,
+                rateDist: ps.rateOverDistance?.constant ?? 0,
+            });
+        }
+    }
+
+    private _restoreParticleEmission(ps: ParticleSystem): void {
+        const defaults = this._particleEmitDefaults.get(ps.node.name);
+        if (!defaults) return;
+        if (ps.rateOverTime) {
+            ps.rateOverTime.mode = 0;
+            ps.rateOverTime.constant = defaults.rateTime;
+        }
+        if (ps.rateOverDistance) {
+            ps.rateOverDistance.mode = 0;
+            ps.rateOverDistance.constant = defaults.rateDist;
+        }
+    }
+
     /** stop()+clear — biến mất ngay (Coins_Trail* khi chạm Pot). */
     private _stopParticleImmediate(ps: ParticleSystem): void {
         ps.loop = false;
@@ -792,6 +859,7 @@ export class CarnivalTrailController extends Component {
 
     private _beginParticleFadeOut(root: Node): void {
         if (!root?.isValid) return;
+        this._destroyCoinCluster(root);
         root.active = true;
         for (const child of root.children) {
             const ps = this._particleSystemOnNode(child);
@@ -815,7 +883,146 @@ export class CarnivalTrailController extends Component {
     private _destroyParticle(root: Node): void {
         const idx = this._activeParticles.indexOf(root);
         if (idx >= 0) this._activeParticles.splice(idx, 1);
-        if (root?.isValid) root.destroy();
+        this._recycleFlyFx(root);
+    }
+
+    private _initFlyFxPool(): void {
+        if (!this.flyFxPoolEnabled || !this.particleTemplate?.isValid) {
+            this._flyFxPool = null;
+            return;
+        }
+        this._clearFlyFxPool();
+        for (const ps of this.particleTemplate.getComponentsInChildren(ParticleSystem)) {
+            if ('playOnAwake' in ps) {
+                (ps as unknown as { playOnAwake: boolean }).playOnAwake = false;
+            }
+        }
+        const pool = new NodePool();
+        const seed = instantiate(this.particleTemplate);
+        seed.active = false;
+        pool.put(seed);
+        this._flyFxPool = pool;
+    }
+
+    private _clearFlyFxPool(): void {
+        if (!this._flyFxPool) return;
+        while (this._flyFxPool.size() > 0) {
+            const n = this._flyFxPool.get();
+            if (n?.isValid) n.destroy();
+        }
+        this._flyFxPool.clear();
+        this._flyFxPool = null;
+    }
+
+    private _recycleFlyFx(fx: Node): void {
+        if (!fx?.isValid) return;
+        this._resetFlyFx(fx);
+        if (!this.flyFxPoolEnabled || !this._flyFxPool) {
+            fx.destroy();
+            return;
+        }
+        if (this._flyFxPool.size() >= Math.max(1, this.flyFxMaxPoolSize)) {
+            fx.destroy();
+            return;
+        }
+        this._flyFxPool.put(fx);
+    }
+
+    /** Reset state trước khi trả Fx_Coin_Trail về pool. */
+    private _resetFlyFx(fx: Node): void {
+        this._destroyCoinCluster(fx);
+        const flyProxy = (fx as unknown as { _trailFlyProxy?: { t: number } })._trailFlyProxy;
+        if (flyProxy) Tween.stopAllByTarget(flyProxy);
+        delete (fx as unknown as { _trailFlyProxy?: { t: number } })._trailFlyProxy;
+        Tween.stopAllByTarget(fx);
+
+        fx.removeFromParent();
+        fx.active = false;
+        fx.setPosition(0, 0, 0);
+        fx.setScale(1, 1, 1);
+        fx.setRotationFromEuler(0, 0, 0);
+
+        for (const child of fx.children) {
+            if (this._matchesParticlePrefix(child.name, this.particleHitStopPrefixes)) {
+                child.active = true;
+            }
+        }
+        for (const ps of fx.getComponentsInChildren(ParticleSystem)) {
+            this._restoreParticleEmission(ps);
+            ps.loop = false;
+            ps.stop();
+            const maybeClear = (ps as unknown as { clear?: () => void }).clear;
+            if (maybeClear) maybeClear.call(ps);
+        }
+        const op = fx.getComponent(UIOpacity) ?? fx.getComponentInChildren(UIOpacity);
+        if (op) op.opacity = 255;
+    }
+
+    /** Ẩn Coins_Trail* — giữ qilin và các particle khác. */
+    private _hideCoinsTrailParticles(root: Node): void {
+        for (const child of root.children) {
+            if (!this._matchesParticlePrefix(child.name, this.particleHitStopPrefixes)) continue;
+            child.active = false;
+            const ps = this._particleSystemOnNode(child);
+            if (ps) this._stopParticleImmediate(ps);
+        }
+    }
+
+    private _resolveTrailFrame(color: TrailColor): SpriteFrame | null {
+        const symbolId = trailColorToSymbolId(color);
+        for (const reel of this.reels) {
+            if (!reel?.symbolNodes) continue;
+            for (const node of reel.symbolNodes) {
+                const view = node?.getComponent(SymbolView);
+                const frame = view?.symbolFrames?.[symbolId];
+                if (frame?.isValid) return frame;
+            }
+        }
+        const atlas = resolveSymbolPackAtlas(null);
+        if (!atlas) return null;
+        const psId = CLIENT_TO_PS[symbolId];
+        return psId !== undefined ? getSymbolPackFrame(atlas, psId) : null;
+    }
+
+    /** Chùm sprite từ node CoinCluster trong Fx_Coin_Trail prefab. */
+    private _setupCoinCluster(fxRoot: Node, color: TrailColor): void {
+        const frame = this._resolveTrailFrame(color);
+        if (!frame) {
+            Log.w(`[CarnivalTrail] CoinCluster: missing frame ${TrailColor[color]}`);
+            return;
+        }
+
+        const cluster = fxRoot.getChildByName('CoinCluster');
+        if (!cluster?.isValid) {
+            Log.w('[CarnivalTrail] CoinCluster node missing in Fx_Coin_Trail prefab');
+            return;
+        }
+
+        let view = cluster.getComponent(CoinClusterView);
+        if (!view) view = cluster.addComponent(CoinClusterView);
+
+        view.coinSpread = this.coinClusterSpread;
+        view.coinScale = this.coinClusterCoinScale;
+        view.rotateSpeedMin = this.coinClusterRotateSpeedMin;
+        view.rotateSpeedMax = this.coinClusterRotateSpeedMax;
+        view.setup(frame, {
+            spread: this.coinClusterSpread,
+            coinScale: this.coinClusterCoinScale,
+            rotateSpeedMin: this.coinClusterRotateSpeedMin,
+            rotateSpeedMax: this.coinClusterRotateSpeedMax,
+            randomizeLayout: true,
+            maxCount: Math.max(1, Math.round(this.coinClusterCount)),
+        });
+
+        this._coinClusterByFx.set(fxRoot, cluster);
+    }
+
+    private _destroyCoinCluster(fxRoot: Node): void {
+        const cluster = this._coinClusterByFx.get(fxRoot);
+        this._coinClusterByFx.delete(fxRoot);
+        if (!cluster?.isValid) return;
+        cluster.getComponent(CoinClusterView)?.stop();
+        cluster.active = false;
     }
 
     /**
@@ -921,12 +1128,15 @@ export class CarnivalTrailController extends Component {
             Log.e('[CarnivalTrail] particleTemplate NULL — kéo child template vào slot');
             return null;
         }
-        const clone = instantiate(this.particleTemplate);
+        const fromPool = !!(this.flyFxPoolEnabled && this._flyFxPool && this._flyFxPool.size() > 0);
+        const clone = fromPool ? this._flyFxPool!.get()! : instantiate(this.particleTemplate);
         clone.name = `CarnivalTrailFly_${Date.now() % 100000}`;
         clone.active = false;
-        for (const ps of clone.getComponentsInChildren(ParticleSystem)) {
-            if ('playOnAwake' in ps) {
-                (ps as unknown as { playOnAwake: boolean }).playOnAwake = false;
+        if (!fromPool) {
+            for (const ps of clone.getComponentsInChildren(ParticleSystem)) {
+                if ('playOnAwake' in ps) {
+                    (ps as unknown as { playOnAwake: boolean }).playOnAwake = false;
+                }
             }
         }
         return clone;
@@ -940,21 +1150,27 @@ export class CarnivalTrailController extends Component {
         for (const ps of systems) {
             if (!ps.isValid || !ps.enabled) continue;
             try {
+                this._restoreParticleEmission(ps);
                 ps.loop = true;
                 if ('prewarm' in ps) {
                     (ps as unknown as { prewarm: boolean }).prewarm = false;
                 }
+                if ('_prewarm' in ps) {
+                    (ps as unknown as { _prewarm: boolean })._prewarm = false;
+                }
+                const nodeName = ps.node.name;
+                const isQilin = this._matchesParticlePrefix(nodeName, this.particleHitLoopOffPrefixes);
                 const trail = (ps as unknown as {
                     trailModule?: { enable?: boolean; _enable?: boolean };
                 }).trailModule;
                 const hasTrail = !!(trail?.enable ?? trail?._enable);
-                // Trail: không stop+clear — dễ làm ribbon nhảy lệch khỏi Symbol
-                if (hasTrail) {
-                    if (!ps.isPlaying) ps.play();
-                } else {
+                // qilin*: luôn stop+clear+play — trailModule thường tắt; tránh state cũ từ pool.
+                if (isQilin || !hasTrail) {
                     ps.stop();
                     const maybeClear = (ps as unknown as { clear?: () => void }).clear;
                     if (maybeClear) maybeClear.call(ps);
+                    ps.play();
+                } else if (!ps.isPlaying) {
                     ps.play();
                 }
             } catch (err) {
@@ -965,8 +1181,9 @@ export class CarnivalTrailController extends Component {
 
     private _clearParticles(): void {
         for (const p of this._activeParticles) {
-            if (p?.isValid) p.destroy();
+            if (p?.isValid) this._recycleFlyFx(p);
         }
         this._activeParticles.length = 0;
+        this._coinClusterByFx.clear();
     }
 }

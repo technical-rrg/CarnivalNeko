@@ -76,10 +76,10 @@ export const MOCK_PICK_GAME_MODE: MockPickGameMode = 'upgrade_to_major';
 export const MOCK_CARNIVAL_FEATURE_EVERY_N_SPINS: number = 2;
 
 /**
- * ★ Tạm: Guide xong → vào thẳng game, bỏ TransitionController (chest fly).
- * false = giữ intro Transition cũ (icon bay vào Pot).
+ * Guide Continue → bỏ qua TransitionController (vào thẳng GameView).
+ * false = fade Guide → Transition (spine Anim) → fade ra GameView.
  */
-export const SKIP_GUIDE_TRANSITION: boolean = true;
+export const SKIP_GUIDE_TRANSITION: boolean = false;
 
 // ═══════════════════════════════════════════════════════════
 //  Server endpoints

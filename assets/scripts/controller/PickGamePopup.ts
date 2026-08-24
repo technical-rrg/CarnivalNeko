@@ -302,10 +302,7 @@ export class PickGamePopup extends Component {
             // Thắng khi PickWin>0 / JackpotName / NextStage=PICK_END(102).
             const won = pickWinAmt > 0 || paidTier !== JackpotType.NONE || isPickEnd;
 
-            Log.d(`[PickGamePopup] PICK #${index} Result=${resp.PickResults ?? '?'} Stage=${resp.PickStage ?? '?'}`
-                + ` Name=${resp.JackpotName ?? 'n/a'} PickWin=${pickWinAmt}`
-                + ` NextStage=${resp.NextStage} won=${won}`);
-
+            const pickResultPs = Number(resp.PickResults);
             if (this._pickState && Array.isArray(resp.PickGame)) {
                 // -1 = chưa chọn; số dương = PS ID đã lộ
                 for (let i = 0; i < resp.PickGame.length; i++) {
@@ -316,7 +313,6 @@ export class PickGamePopup extends Component {
             }
 
             // PickResults = symbol ô vừa pick (Table 23)
-            const pickResultPs = Number(resp.PickResults);
             if (Number.isFinite(pickResultPs) && pickResultPs > 0 && this._pickState) {
                 this._pickState.grid[index] = psPickToClient(pickResultPs);
             }
@@ -370,8 +366,21 @@ export class PickGamePopup extends Component {
                         this._pickState.wonTier = JackpotType[this._wonTier] as any;
                         this._pickState.doubleGrand = this._doubleGrand;
                     }
-                    Log.d(`[PickGamePopup] JACKPOT paid=${JackpotType[this._wonTier]}`
-                        + ` win=${pickWinAmt} name=${resp.JackpotName ?? 'n/a'}`);
+                    const matchedCells = this._collectMatchedIndices(this._wonTier).slice(0, 3);
+                    const rawGrid: any[] = Array.isArray(resp.PickGame) ? resp.PickGame : [];
+                    const matchedRaw = matchedCells.map(idx => rawGrid[idx] ?? 'n/a');
+                    const matchedMapped = matchedCells.map(
+                        idx => clientSymToPickPsId(this._pickState!.grid[idx]),
+                    );
+                    Log.d(
+                        `[PickGame] WIN cells=[${matchedCells.join(',')}]`
+                        + ` rawPickGameIds=[${matchedRaw.join(',')}]`
+                        + ` mappedPsIds=[${matchedMapped.join(',')}]`
+                        + ` PickResults=${JSON.stringify(resp.PickResults)}`
+                        + ` JackpotName=${JSON.stringify(resp.JackpotName ?? '')}`
+                        + ` paidTier=${JackpotType[this._wonTier]}`
+                        + ` pickWin=${pickWinAmt}`,
+                    );
                     EventBus.instance.emit(GameEvents.PICK_GAME_MATCH_FOUND, this._wonTier);
                     this._setButtonsInteractable(false);
                     this._playWinAnimation(this._wonTier, () => {
@@ -920,7 +929,7 @@ export class PickGamePopup extends Component {
 
     private _emitJackpot = (): void => {
         const { amount, source } = this._resolveJackpotAmount();
-        Log.d(`[PickGamePopup] EMIT JACKPOT_TRIGGER tier=${JackpotType[this._wonTier]} amount=${amount} src=${source} x2=${this._doubleGrand}`);
+        Log.d(`[Jackpot] TRIGGER tier=${JackpotType[this._wonTier]} amount=${amount} src=${source} x2=${this._doubleGrand}`);
         GameData.instance.pickGameWinAmount = amount;
         EventBus.instance.emit(GameEvents.JACKPOT_TRIGGER, this._wonTier, amount);
     };

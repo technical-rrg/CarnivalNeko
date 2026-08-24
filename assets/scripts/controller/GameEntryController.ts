@@ -80,6 +80,7 @@ export class GameEntryController extends Component {
         EventBus.instance.on(GameEvents.LOADING_BAR_100,  this._onBarReached100,  this);
         EventBus.instance.on(GameEvents.GUIDE_CONTINUE,  this._onGuideContinue,  this);
         EventBus.instance.on(GameEvents.GUIDE_COMPLETE,  this._onGuideComplete,  this);
+        EventBus.instance.on(GameEvents.GAME_VIEW_READY_UNDER_TRANSITION, this._onGameViewReadyUnderTransition, this);
     }
 
     onDestroy(): void {
@@ -204,7 +205,6 @@ export class GameEntryController extends Component {
         this._loadingHandled = true;
         GameData.instance.isGuideCompleted = true;
         GameData.instance.isGuideShowing = false;
-
         if (this.gameGuide) this.gameGuide.active = false;
 
         if (sharedFromShell?.isValid) {
@@ -212,12 +212,17 @@ export class GameEntryController extends Component {
         }
         this._reparentSharedNode();
 
-        // ★ Dưới màn đen: warm GameRoot + BG — chưa FadeIn
+        // ★ Dưới màn đen: warm GameRoot + BG — giữ opacity=0 đến khi Transition fade out
         Log.d('[GameEntryController] enterFromExternalGuide — prep under black (no FadeIn yet)');
         await this.prepareGameRootBackground();
-        this._showGameRoot();
+        this._showGameRoot(false, false);
 
-        // ★ Tạm bỏ Transition: Guide xong → reveal game ngay
+        // Warm path: GameManager.start đã chạy lúc Guide — bù GAME_READY (không qua GUIDE_COMPLETE).
+        if (this._gameRootWarmed) {
+            EventBus.instance.emit(GameEvents.GAME_READY);
+        }
+
+        // Bỏ Transition: Guide xong → reveal game ngay
         if (SKIP_GUIDE_TRANSITION) {
             const loader = this._transitionLoader;
             if (loader) {
@@ -226,6 +231,7 @@ export class GameEntryController extends Component {
                 EventBus.instance.emit(GameEvents.TRANSITION_DONE);
             }
             EventBus.instance.emit(GameEvents.GAME_ENTRY_EFFECT);
+            this._setGameRootOpacity(255);
             await onReadyToReveal?.();
             Log.d('[GameEntryController] enterFromExternalGuide → SKIP_GUIDE_TRANSITION (straight to game)');
             return;
@@ -235,22 +241,26 @@ export class GameEntryController extends Component {
         const transitionCtrl = loader ? await loader.ensureLoaded() : null;
         if (!transitionCtrl) {
             Log.w('[GameEntryController] enterFromExternalGuide — Transition missing');
-        }
-
-        // ★ Transition ngay lập tức trên cùng — không chờ FadeIn Guide (tránh GameView trống 1 nhịp)
-        if (transitionCtrl && loader) {
-            loader.bringAboveShell();
-            transitionCtrl.triggerGuideTransition();
             EventBus.instance.emit(GameEvents.GAME_ENTRY_EFFECT);
-            // Transition overlay đang cover — dismiss Guide ngay, không FadeIn chậm lộ GameView trống
-            GuideShellLoader.dismiss();
-            Log.d('[GameEntryController] enterFromExternalGuide → Transition NOW (Guide dismissed)');
+            this._setGameRootOpacity(255);
+            await onReadyToReveal?.();
             return;
         }
 
+        loader!.bringAboveShell();
+        loader!.activateForPlay();
+        // GuideView đè Transition nếu còn active / holdBlackOnTop — ẩn shell trước khi play
+        GuideShellLoader.hideForTransition();
+        loader!.bringAboveShell();
+
         EventBus.instance.emit(GameEvents.GAME_ENTRY_EFFECT);
-        await onReadyToReveal?.();
-        Log.d('[GameEntryController] enterFromExternalGuide → FadeIn fallback (no Transition)');
+
+        // Transition fade in xong → GameRoot opacity 255 dưới Transition → spine alpha fade lộ dần
+        transitionCtrl.triggerGuideTransition(() => {
+            GuideShellLoader.dismiss();
+            void onReadyToReveal?.();
+        });
+        Log.d('[GameEntryController] enterFromExternalGuide → simple Transition (Guide→Anim→Game)');
     }
 
     /**
@@ -390,8 +400,9 @@ export class GameEntryController extends Component {
         this._gameRootWarmed = true;
         this.gameRoot.active = true;
 
-        // Đợi 1 frame — ReelController.onLoad phải chạy xong trước applyInitialSymbols
-        this.scheduleOnce(() => this._applySymbolsSafe(), 0);
+        this.scheduleOnce(() => {
+            this._applySymbolsSafe();
+        }, 0);
     }
 
     /** Gọi GameManager.ensureBackgroundReady sau warm — gán BG trong lúc xem Guide. */
@@ -524,6 +535,12 @@ export class GameEntryController extends Component {
         if (!opacity) opacity = this.gameRoot.addComponent(UIOpacity);
         opacity.opacity = value;
     }
+
+    /** GameRoot opacity 255 — gọi khi Transition đã che kín (sẵn sàng lộ khi spine alpha fade). */
+    private _onGameViewReadyUnderTransition = (): void => {
+        this._setGameRootOpacity(255);
+        Log.d('[GameEntryController] GameRoot opacity=255 under Transition');
+    };
 
     private _applySymbolsSafe(): void {
         if (!this.gameRoot?.isValid || !this.gameRoot.active) return;

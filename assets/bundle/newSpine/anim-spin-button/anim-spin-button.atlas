@@ -1,19 +1,19 @@
 
 anim-spin-button.png
-size: 276, 165
+size: 277, 166
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 Ellipse 1
   rotate: false
   xy: 113, 2
-  size: 161, 161
+  size: 162, 162
   orig: 162, 162
-  offset: 1, 0
+  offset: 0, 0
   index: -1
 c0415a1586ea73f479b9bd837dfd8cff
   rotate: false
-  xy: 2, 54
+  xy: 2, 55
   size: 109, 109
   orig: 109, 109
   offset: 0, 0

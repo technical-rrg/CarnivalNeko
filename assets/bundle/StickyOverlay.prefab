@@ -32857,14 +32857,26 @@
       "__id__": 1638
     },
     "goldCoinSpineScale5x3": 1.4,
-    "goldCoinSpineScale5x4": 1,
-    "goldCoinSpineScale5x5": 1,
+    "goldCoinSpineOffsetX5x3": -0.524,
+    "goldCoinSpineOffsetY5x3": 0.524,
+    "goldCoinSpineScale5x4": 0.98,
+    "goldCoinSpineOffsetX5x4": -0.524,
+    "goldCoinSpineOffsetY5x4": 0.524,
+    "goldCoinSpineScale5x5": 0.98,
+    "goldCoinSpineOffsetX5x5": -0.524,
+    "goldCoinSpineOffsetY5x5": 0.524,
     "greenCoinSpineTemplate": {
       "__id__": 1644
     },
-    "greenCoinSpineScale5x3": 1.42,
-    "greenCoinSpineScale5x4": 1,
-    "greenCoinSpineScale5x5": 1,
+    "greenCoinSpineScale5x3": 1.4,
+    "greenCoinSpineOffsetX5x3": -0.524,
+    "greenCoinSpineOffsetY5x3": 0.524,
+    "greenCoinSpineScale5x4": 0.98,
+    "greenCoinSpineOffsetX5x4": -0.524,
+    "greenCoinSpineOffsetY5x4": 0.524,
+    "greenCoinSpineScale5x5": 0.98,
+    "greenCoinSpineOffsetX5x5": -0.524,
+    "greenCoinSpineOffsetY5x5": 0.524,
     "greenFlipCreditRevealLead": 0.3,
     "greenFlipFxCutAfterCredit": 0.1,
     "seedCatSpineTimeScale": 2,
@@ -33036,9 +33048,7 @@
   },
   {
     "__type__": "cc.TargetOverrideInfo",
-    "source": {
-      "__id__": 1682
-    },
+    "source": null,
     "sourceInfo": null,
     "propertyPath": [
       "collectTotalSpriteNumber"

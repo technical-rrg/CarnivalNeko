@@ -3,16 +3,16 @@
  * Component gắn vào root node, quản lý SlotStageType.
  */
 
-import { _decorator, Component, Node, Sprite, SpriteFrame, screen, Color, game, ParticleSystem, assetManager } from 'cc';
+import { _decorator, Component, Node, SpriteFrame, screen, game, ParticleSystem } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import {
-    crossfadeSpriteFrame,
     fadeInNode,
     fadeOutNode,
     setNodeOpacity,
     DEFAULT_UI_FADE_DURATION,
 } from '../core/OpacityFadeUtil';
+import { GameBackgroundPresenter } from '../core/GameBackgroundPresenter';
 import { GameData } from '../data/GameData';
 import { SlotStageType, SpinResponse, ClaimResult, MatchedLinePay, JackpotType, SymbolId, GameState, FeatureItem, PickGameState, StickyCell, TopupReelSlot, TopupReelType, CarnivalTrailHit, CarnivalFeatureTrigger, CarnivalFeatureKind } from '../data/SlotTypes';
 import {
@@ -54,23 +54,6 @@ import {
 import { buildCarnivalFeatureFromSpin, burstPotsForKind } from '../data/CarnivalFeatureResolve';
 
 const { ccclass, property } = _decorator;
-
-const BG_BUNDLE = 'MainBundle';
-/** [0]=portrait, [1]=landscape — paths inside MainBundle (SpriteFrame sub-asset). */
-type BackgroundMode = 'normal' | 'feature' | 'pickgame';
-
-const NORMAL_BG_PATHS = [
-    'newTextures/mainUI/Bg-normal-portrait/spriteFrame',
-    'newTextures/mainUI/Bg-normal-landscape/spriteFrame',
-] as const;
-const FEATURE_BG_PATHS = [
-    'newTextures/mainUI/Bg-feature-portrait/spriteFrame',
-    'newTextures/mainUI/Bg-feature-landscape/spriteFrame',
-] as const;
-const PICKGAME_BG_PATHS = [
-    'newTextures/mainUI/Bg-pickgame-portrait/spriteFrame',
-    'newTextures/mainUI/Bg-pickgame-landscape/spriteFrame',
-] as const;
 
 const truncateMoney3 = (value: number): number => {
     const clean = Math.round(value * 1e9) / 1e9;
@@ -124,7 +107,7 @@ export class GameManager extends Component {
     @property({ tooltip: 'Delay (giây) giữa khi reel 3 long-spin dừng và lúc 3 symbol jackpot cùng play animation (LONG_SPIN_JACKPOT_REVEAL)' })
     jackpotRevealDelay: number = 0.6;
 
-    @property({ type: Node, tooltip: 'Background node để thay đổi sprite theo orientation' })
+    @property({ type: Node, tooltip: 'Background node (JPG Normal). Feature/Pick dùng Spine sibling tạo runtime.' })
     backgroundNode: Node | null = null;
 
     @property({
@@ -135,10 +118,10 @@ export class GameManager extends Component {
     @property({ type: SpriteFrame, tooltip: 'Background sprites NORMAL — [0]=portrait, [1]=landscape' })
     backgroundSprites: SpriteFrame[] = [];
 
-    @property({ type: SpriteFrame, tooltip: 'Background sprites FEATURE — [0]=portrait, [1]=landscape' })
+    @property({ type: SpriteFrame, tooltip: 'Legacy — Feature/Pick đã chuyển sang Spine, không load JPG này.' })
     featureBackgroundSprites: SpriteFrame[] = [];
 
-    @property({ type: SpriteFrame, tooltip: 'Background sprites PICK GAME — [0]=portrait, [1]=landscape' })
+    @property({ type: SpriteFrame, tooltip: 'Legacy — Feature/Pick đã chuyển sang Spine, không load JPG này.' })
     pickGameBackgroundSprites: SpriteFrame[] = [];
 
     @property({ type: Node, tooltip: 'PayOut Display - hiển thị khi Normal Spin' })
@@ -171,8 +154,7 @@ export class GameManager extends Component {
     @property({ type: ParticleSystem, tooltip: 'Particle system - RateOverTime điều chỉnh theo orientation' })
     particleSystem: ParticleSystem | null = null;
 
-    /** Lazy BG load promises keyed by bundle path */
-    private _bgLoadPromises: Map<string, Promise<SpriteFrame | null>> = new Map();
+    private _bgPresenter: GameBackgroundPresenter | null = null;
 
     private _currentStage: SlotStageType = SlotStageType.SPIN;
     /** State machine — kiểm soát luồng xử lý và block input */
@@ -280,10 +262,6 @@ export class GameManager extends Component {
     private _isPickGameActive: boolean = false;
     /** Chờ TransitionPopup SHOW rồi mới đổi background Pick Game (dưới overlay) */
     private _pickGameBgPending: boolean = false;
-    /** Twin node cho crossfade background (tạo runtime). */
-    private _bgFadeTwin: Node | null = null;
-    /** SpriteFrame đang hiển thị trên backgroundNode — tránh crossfade trùng. */
-    private _currentBgFrame: SpriteFrame | null = null;
     /** TopUp: UI đã prepare dưới TransitionPopup; gameplay (SPIN) chờ DONE */
     private _topUpUiPrepared: boolean = false;
     private _topUpStartGameplayPending: boolean = false;
@@ -320,11 +298,17 @@ export class GameManager extends Component {
         // Cocos tự động pause khi visibilitychange → hidden; ta resume lại ngay.
     
 
-        // 🎯 Lắng nghe screen resize/orientation để cập nhật background sprite
+        // 🎯 Lắng nghe screen resize/orientation để cập nhật background (JPG / Spine)
         screen.on('window-resize', this._updateBackgroundSprite, this);
         screen.on('orientation-change', this._updateBackgroundSprite, this);
         screen.on('window-resize', this._updateParticleRateOverTime, this);
         screen.on('orientation-change', this._updateParticleRateOverTime, this);
+        this._bgPresenter = new GameBackgroundPresenter(
+            this.backgroundNode,
+            this.backgroundSprites,
+            () => this.uiFadeDuration,
+            this,
+        );
         // Không gán BG lúc onLoad — prefetch khi GuideView hiện (GameRoot warm)
         this._clearBackgroundSprite();
         this._updateParticleRateOverTime();
@@ -363,6 +347,8 @@ export class GameManager extends Component {
         screen.off('orientation-change', this._updateBackgroundSprite, this);
         screen.off('window-resize', this._updateParticleRateOverTime, this);
         screen.off('orientation-change', this._updateParticleRateOverTime, this);
+        this._bgPresenter?.dispose();
+        this._bgPresenter = null;
     }
 
     // ─── SERVER LOGIN + ENTER FLOW ───
@@ -627,6 +613,8 @@ export class GameManager extends Component {
     // ─── GUIDE COMPLETE → KHỚI ĐỘNG GAME ───
 
     private _onGuideComplete(): void {
+        // Guide-first shell: LoadingController → enterFromExternalGuide (không duplicate fade pot/UI).
+        if (GameData.instance.guideFirstBoot) return;
         if (this._guideCompleteHandled) return;
         this._guideCompleteHandled = true;
         // ★ #5: Load BG sau khi Guide xong — không tranh I/O với guide slides
@@ -4337,24 +4325,14 @@ export class GameManager extends Component {
         this._prefetchFeatureBackground();
     };
 
-    /** Cache BG Feature (cả 2 orientation) — không gán lên backgroundNode. */
+    /** Cache Spine BG Feature (cả 2 orientation) — không gán lên node. */
     private _prefetchFeatureBackground = (): void => {
-        const size = screen.windowSize;
-        const isPortrait = size.height > size.width;
-        const primary = isPortrait ? 0 : 1;
-        const secondary = isPortrait ? 1 : 0;
-        void this._loadBackgroundSprite(FEATURE_BG_PATHS[primary], 'feature', primary);
-        void this._loadBackgroundSprite(FEATURE_BG_PATHS[secondary], 'feature', secondary);
+        this._bgPresenter?.prefetch('feature');
     };
 
-    /** Cache BG Pick Game (cả 2 orientation) — không gán lên backgroundNode. */
+    /** Cache Spine BG Pick Game (cả 2 orientation) — không gán lên node. */
     private _prefetchPickGameBackground = (): void => {
-        const size = screen.windowSize;
-        const isPortrait = size.height > size.width;
-        const primary = isPortrait ? 0 : 1;
-        const secondary = isPortrait ? 1 : 0;
-        void this._loadBackgroundSprite(PICKGAME_BG_PATHS[primary], 'pickgame', primary);
-        void this._loadBackgroundSprite(PICKGAME_BG_PATHS[secondary], 'pickgame', secondary);
+        this._bgPresenter?.prefetch('pickgame');
     };
 
     /** Prefab StickyOverlay 5×5 — bật đúng số hàng (3|4|5). */
@@ -5429,52 +5407,18 @@ export class GameManager extends Component {
     }
 
     /**
-     * Cập nhật background sprite theo orientation + game mode (Normal / Feature / Pick Game).
-     * Chỉ load đúng 1 ảnh mỗi lần — portrait HOẶC landscape, theo mode hiện tại.
-     * prefetchBackground() gọi khi GuideView hiện (GameRoot warm, opacity=0).
+     * Cập nhật background theo orientation + game mode.
+     * Normal = JPG; Feature / Pick = Spine (L/P). Mọi chuyển đều fade.
      */
     private _updateBackgroundSprite(): void {
         if (!this._bgLoadAllowed) return;
-        if (!this.backgroundNode) return;
-
-        const mode = this._resolveBackgroundMode();
-        const size = screen.windowSize;
-        const isPortrait = size.height > size.width;
-        const idx = isPortrait ? 0 : 1;
-        const paths = this._backgroundPathsForMode(mode);
-        const arr = this._backgroundCacheForMode(mode);
-
-        const cached = arr[idx] ?? null;
-        if (cached) {
-            this._applyBackgroundSprite(cached);
-            return;
-        }
-
-        void this._loadBackgroundSprite(paths[idx], mode, idx).then((sf) => {
-            this._applyBackgroundSprite(sf);
-        });
+        this._bgPresenter?.update(this._resolveBackgroundMode());
     }
 
-    private _resolveBackgroundMode(): BackgroundMode {
+    private _resolveBackgroundMode(): 'normal' | 'feature' | 'pickgame' {
         if (this._isPickGameActive) return 'pickgame';
         if (this._isFreeSpin() || this._isTopUp() || this._isMatsuri()) return 'feature';
         return 'normal';
-    }
-
-    private _backgroundPathsForMode(mode: BackgroundMode): readonly string[] {
-        switch (mode) {
-            case 'pickgame': return PICKGAME_BG_PATHS;
-            case 'feature': return FEATURE_BG_PATHS;
-            default: return NORMAL_BG_PATHS;
-        }
-    }
-
-    private _backgroundCacheForMode(mode: BackgroundMode): SpriteFrame[] {
-        switch (mode) {
-            case 'pickgame': return this.pickGameBackgroundSprites;
-            case 'feature': return this.featureBackgroundSprites;
-            default: return this.backgroundSprites;
-        }
     }
 
     /** ★ Prefetch BG khi GuideView hiện (GameRoot warm) — gán sprite trước khi user Continue. */
@@ -5483,118 +5427,36 @@ export class GameManager extends Component {
     }
 
     /**
-     * Load + gán BG orientation hiện tại (và prefetch chiều còn lại).
+     * Load + gán BG Normal orientation hiện tại (và prefetch chiều còn lại).
      * Await trước khi lộ GameRoot (skipIntro / Guide → game) để tránh màn trống.
-     * Resolve chỉ khi spriteFrame đã gán lên backgroundNode (hoặc fail).
      */
     async ensureBackgroundReady(): Promise<SpriteFrame | null> {
         this._bgLoadAllowed = true;
-        if (!this.backgroundNode?.isValid) return null;
-
-        const size = screen.windowSize;
-        const isPortrait = size.height > size.width;
-        const primaryIdx = isPortrait ? 0 : 1;
-        const secondaryIdx = isPortrait ? 1 : 0;
-
-        // Prefetch chiều kia nền — không block
-        void this._loadBackgroundSprite(NORMAL_BG_PATHS[secondaryIdx], 'normal', secondaryIdx);
-
-        const sf = await this._loadBackgroundSprite(NORMAL_BG_PATHS[primaryIdx], 'normal', primaryIdx);
-        this._applyBackgroundSprite(sf);
-        return sf;
+        if (!this._bgPresenter) {
+            this._bgPresenter = new GameBackgroundPresenter(
+                this.backgroundNode,
+                this.backgroundSprites,
+                () => this.uiFadeDuration,
+                this,
+            );
+        }
+        return this._bgPresenter.ensureNormalReady();
     }
 
-    /** true khi backgroundNode đã có spriteFrame (đã gán, không còn null). */
+    /** true khi JPG Normal đã gán hoặc Spine Feature/Pick đang hiện. */
     isBackgroundAssigned(): boolean {
-        if (!this.backgroundNode?.isValid) return false;
-        const sprite = this.backgroundNode.getComponent(Sprite);
-        return !!sprite?.spriteFrame;
+        return this._bgPresenter?.isAssigned() ?? false;
     }
 
     /** Mở khóa lazy-load BG (gọi sau Guide / khi vào game). */
     private _allowBackgroundLoad(): void {
-        if (this._bgLoadAllowed) {
-            this._updateBackgroundSprite();
-            return;
-        }
         this._bgLoadAllowed = true;
         this._updateBackgroundSprite();
     }
 
-    /** Xóa spriteFrame serialize cứng — tránh boot load landscape 3.3MB trước khi lazy-load */
+    /** Xóa spriteFrame serialize cứng — tránh boot load landscape JPG trước khi lazy-load */
     private _clearBackgroundSprite(): void {
-        if (!this.backgroundNode) return;
-        const spriteComponent = this.backgroundNode.getComponent(Sprite);
-        if (spriteComponent) spriteComponent.spriteFrame = null;
-        this._currentBgFrame = null;
-        if (this._bgFadeTwin?.isValid) {
-            setNodeOpacity(this._bgFadeTwin, 0);
-            this._bgFadeTwin.active = false;
-        }
-    }
-
-    /**
-     * Gán / crossfade background.
-     * Hình cũ mờ dần + hình mới hiện dần (không cắt cứng 1 frame).
-     */
-    private _applyBackgroundSprite(sf: SpriteFrame | null): void {
-        if (!sf || !this.backgroundNode?.isValid) return;
-        if (this._currentBgFrame === sf) {
-            setNodeOpacity(this.backgroundNode, 255);
-            return;
-        }
-        const hadPrevious = !!this._currentBgFrame
-            || !!this.backgroundNode.getComponent(Sprite)?.spriteFrame;
-        this._currentBgFrame = sf;
-
-        if (!hadPrevious) {
-            const spriteComponent = this.backgroundNode.getComponent(Sprite);
-            if (spriteComponent) spriteComponent.spriteFrame = sf;
-            setNodeOpacity(this.backgroundNode, 255);
-            return;
-        }
-
-        this._bgFadeTwin = crossfadeSpriteFrame(
-            this.backgroundNode,
-            this._bgFadeTwin,
-            sf,
-            this.uiFadeDuration,
-        );
-    }
-
-    private _loadBackgroundSprite(
-        path: string,
-        mode: BackgroundMode,
-        idx: number,
-    ): Promise<SpriteFrame | null> {
-        const arr = this._backgroundCacheForMode(mode);
-        const cached = arr[idx] ?? null;
-        if (cached) return Promise.resolve(cached);
-
-        const existing = this._bgLoadPromises.get(path);
-        if (existing) return existing;
-
-        const promise = new Promise<SpriteFrame | null>((resolve) => {
-            const bundle = assetManager.getBundle(BG_BUNDLE);
-            if (!bundle) {
-                Log.w(`[GameManager] Bundle '${BG_BUNDLE}' missing — cannot load BG ${path}`);
-                resolve(null);
-                return;
-            }
-            bundle.load(path, SpriteFrame, (err, sf) => {
-                this._bgLoadPromises.delete(path);
-                if (err || !sf) {
-                    Log.w(`[GameManager] BG load failed: ${path}`, err);
-                    resolve(null);
-                    return;
-                }
-                while (arr.length <= idx) arr.push(null as any);
-                arr[idx] = sf;
-                resolve(sf);
-            });
-        });
-        this._bgLoadPromises.set(path, promise);
-        return promise;
+        this._bgPresenter?.clear();
     }
 
     /** Điều chỉnh ParticleSystem RateOverTime theo screen orientation */
@@ -5623,8 +5485,11 @@ export class GameManager extends Component {
 
         const setVisible = (node: Node | null, visible: boolean) => {
             if (!node?.isValid) return;
-            if (visible) fadeInNode(node, dur);
-            else fadeOutNode(node, dur, true);
+            if (visible) {
+                fadeInNode(node, dur);
+            } else {
+                fadeOutNode(node, dur, true);
+            }
         };
 
         setVisible(this.payOutDisplay, !isFreeSpin && !isCellFeature);

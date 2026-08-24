@@ -14,7 +14,7 @@ import {
 } from '../core/OpacityFadeUtil';
 import { GameBackgroundPresenter } from '../core/GameBackgroundPresenter';
 import { GameData } from '../data/GameData';
-import { SlotStageType, SpinResponse, ClaimResult, MatchedLinePay, JackpotType, SymbolId, GameState, FeatureItem, PickGameState, StickyCell, TopupReelSlot, TopupReelType, CarnivalTrailHit, CarnivalFeatureTrigger, CarnivalFeatureKind } from '../data/SlotTypes';
+import { SlotStageType, SpinResponse, ClaimResult, MatchedLinePay, JackpotType, SymbolId, GameState, FeatureItem, PickGameState, StickyCell, TopupReelSlot, TopupReelType, CarnivalTrailHit, CarnivalFeatureTrigger, CarnivalFeatureKind, carnivalKindFromApiFeatureType, buildCarnivalFeatureTrigger } from '../data/SlotTypes';
 import {
     buildBuyBonusMatsuriTrigger,
     buildBuyBonusMatsuriTriggerFromKind,
@@ -260,6 +260,10 @@ export class GameManager extends Component {
     private _skipTopUpAbsorb: boolean = false;
     /** Pick Game đang active — block các Progressive Win check khác */
     private _isPickGameActive: boolean = false;
+    /** Pick → Matsuri: giữ BG Pick đến lúc enter Feature rồi mới crossfade. */
+    private _matsuriEnterFromPickGame = false;
+    /** Fade BG dài hơn mặc định khi Pick → Feature. */
+    private _bgFadeOverride: number | null = null;
     /** Chờ TransitionPopup SHOW rồi mới đổi background Pick Game (dưới overlay) */
     private _pickGameBgPending: boolean = false;
     /** TopUp: UI đã prepare dưới TransitionPopup; gameplay (SPIN) chờ DONE */
@@ -306,7 +310,7 @@ export class GameManager extends Component {
         this._bgPresenter = new GameBackgroundPresenter(
             this.backgroundNode,
             this.backgroundSprites,
-            () => this.uiFadeDuration,
+            () => this._bgFadeOverride ?? this.uiFadeDuration,
             this,
         );
         // Không gán BG lúc onLoad — prefetch khi GuideView hiện (GameRoot warm)
@@ -1136,17 +1140,23 @@ export class GameManager extends Component {
 
         Log.e(
             `[GameManager] BURST_DONE → ${f.featureName} jackpotFirst=${f.jackpotFirst}` +
-            ` jackpotAfterFS=${f.jackpotAfterFreeSpin} rows=${f.matsuriRows}`,
+            ` fsAfterJp=${f.freeSpinAfterJackpot} rows=${f.matsuriRows}`,
         );
 
         if (f.jackpotFirst) {
-            // Red-only: mở Pick ngay (Ultra+ không còn Pick-first — API V1.0.2)
-            Log.e('[GameManager] Carnival Jackpot (Red-only) → open PickGame ngay');
+            // Red-only / Ultra+: mở Pick ngay. Ultra+ stash Matsuri để chạy sau PICK_END.
+            if (f.freeSpinAfterJackpot) {
+                GameData.instance.pendingCarnivalMatsuri = f;
+            }
+            Log.e(
+                `[GameManager] Carnival Jackpot → open PickGame` +
+                `${f.freeSpinAfterJackpot ? ' (FS after Pick)' : ' (Red-only)'}`,
+            );
             this._onPotWinDone();
             return;
         }
 
-        // Mighty/Mega/Super/Ultra/Supreme/Ultimate — vào Feature shell trước, popup trong Feature, seed sau đóng popup
+        // Mighty/Mega/Super — vào Feature shell trước, popup trong Feature, seed sau đóng popup
         void this._enterCarnivalMatsuriThenShowStartPopup(f);
     }
 
@@ -1159,8 +1169,17 @@ export class GameManager extends Component {
     private async _enterCarnivalMatsuriThenShowStartPopup(feature: CarnivalFeatureTrigger): Promise<void> {
         this._pendingMatsuriStartFeature = feature;
         this._matsuriAwaitingStartPopup = true;
+        const delayPopup = this._matsuriEnterFromPickGame;
         await this._enterCarnivalMatsuri(feature, true);
-        this._showMatsuriStartPopup(feature);
+        if (delayPopup) {
+            const wait = this._pickToFeatureFadeDuration();
+            this.scheduleOnce(() => {
+                GameData.instance.pickToMatsuriTransition = false;
+                this._showMatsuriStartPopup(feature);
+            }, wait);
+        } else {
+            this._showMatsuriStartPopup(feature);
+        }
     }
 
     /** Popup thông báo feature — hiện sau khi đã vào Feature shell. */
@@ -1221,6 +1240,15 @@ export class GameManager extends Component {
         data.currentMode = 'matsuri';
         data.matsuriRows = rows;
         data.matsuriFeatureName = feature.featureName;
+        this._isPickGameActive = false;
+        this._wakeSlotShellForMatsuri();
+        if (this._matsuriEnterFromPickGame) {
+            this._bgFadeOverride = this._pickToFeatureFadeDuration();
+            this.unschedule(this._clearBgFadeOverride);
+            this.scheduleOnce(this._clearBgFadeOverride, this._bgFadeOverride + 0.05);
+        }
+        this._matsuriEnterFromPickGame = false;
+        this._updateBackgroundSprite();
         // API type 0–5: ưu tiên kind (đúng combo pot); fallback CurrentFeatureType từ spin
         let apiType: number | undefined;
         if (feature.kind >= CarnivalFeatureKind.MIGHTY
@@ -1273,14 +1301,14 @@ export class GameManager extends Component {
         // Overlay được lazy-instantiate lại mỗi feature → cache TopUpManager có thể trỏ instance cũ.
         this._cachedTopUpMgr = null;
 
-        // Real: StarterCoins từ server; Mock: random seed
+        // StarterCoins từ Claim (PICK_END Ultra+) hoặc Spin (Mighty/Mega/Super)
         let placed: StickyCell[];
-        if (USE_REAL_API && spin?.starterCoins && spin.starterCoins.length > 0) {
+        if (spin?.starterCoins && spin.starterCoins.length > 0) {
             placed = spin.starterCoins.map((c) => ({
                 ...c,
                 symbolId: c.symbolId === SymbolId.STICKY_GREEN ? SymbolId.STICKY_GREEN : MATSURI_GOLD_SYMBOL,
             }));
-        } else if (USE_REAL_API && spin?.allStickies && spin.allStickies.length > 0) {
+        } else if (spin?.allStickies && spin.allStickies.length > 0) {
             placed = spin.allStickies.map((c) => ({ ...c, symbolId: MATSURI_GOLD_SYMBOL }));
         } else {
             placed = pickMatsuriStartCoinCells(rows, feature.startCoins, data.totalBet);
@@ -1294,13 +1322,12 @@ export class GameManager extends Component {
             `startCoins=${placed.length}/${feature.startCoins} base=${data.featureBaseCredit} ` +
             `remain=${data.respinRemaining} totalBet=${data.totalBet} ` +
             `credits=[${placed.map(c => `${c.reel}-${c.row}:${c.credit}`).join('|')}]` +
-            ` source=${USE_REAL_API && spin?.starterCoins?.length ? 'StarterCoins' : 'mock'}` +
+            ` source=${spin?.starterCoins?.length ? 'StarterCoins' : (spin?.allStickies?.length ? 'AllStickies' : 'mock')}` +
             ` deferSeed=${deferSeed ? 1 : 0}`,
         );
         this._logMatsuriFeatureStart(placed);
 
         this._updateDisplayVisibility();
-        this._updateBackgroundSprite();
 
         await this._ensureStickyOverlayLoaded();
         this._applyStickyOverlayRowCount(rows);
@@ -2816,13 +2843,12 @@ export class GameManager extends Component {
 
         // ★ Pick Game flow: sau JACKPOT_END, emit PICK_GAME_CLOSE để reset state
         // KHÔNG check progressive win ngay - ProgressiveWin sẽ được check sau khi PICK_GAME_CLOSE
-        // PICK_START: Matsuri→Pick path (trước khi normalize sang POT_WIN); _isPickGameActive: safety net
+        // Chỉ đóng Pick khi đang thực sự trong Pick — KHÔNG dùng POT_WIN (burst/entry trước khi mở Pick).
         if (
             this._isPickGameActive ||
             this._currentStage === SlotStageType.PICK_END ||
             this._currentStage === SlotStageType.PICK ||
             this._currentStage === SlotStageType.PICK_START ||
-            this._currentStage === SlotStageType.POT_WIN ||
             this._currentStage === SlotStageType.PICK_GAME
         ) {
             Log.e(`[DEBUG-PICK] _onJackpotEnd → Pick Game flow detected (stage=${this._currentStage}, pickActive=${this._isPickGameActive}) → emit PICK_GAME_CLOSE`);
@@ -2899,7 +2925,7 @@ export class GameManager extends Component {
     }
 
     /**
-     * POT_WIN_DONE / Carnival Jackpot: vào thẳng Pick Game (bỏ qua JackpotStartPopup).
+     * POT_WIN_DONE / Carnival Jackpot: JackpotStartPopup (Press to Start) rồi mới vào Pick Game.
      */
     private _onPotWinDone(): void {
         Log.e('[DEBUG-PICK] _onPotWinDone ENTER → Pick Game');
@@ -2921,12 +2947,15 @@ export class GameManager extends Component {
     private _pendingJackpotStartPick: PickGameState | null = null;
 
     private _showJackpotStartPopupThenEnter(pickState: PickGameState): void {
-        this._pendingJackpotStartPick = null;
-        this.unschedule(this._jackpotStartPopupFailsafe);
+        this._pendingJackpotStartPick = pickState;
+        this._gameState = GameState.POPUP;
+        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
         this.unschedule(this._prefetchFeatureBackground);
         this.scheduleOnce(this._prefetchFeatureBackground, 0.5);
-        Log.e('[GameManager] Skip JackpotStartPopup → PICK_GAME_OPEN');
-        this._openPickGameNow(pickState);
+        Log.e('[GameManager] JACKPOT_START_POPUP → Press to Start');
+        EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP, pickState);
+        this.unschedule(this._jackpotStartPopupFailsafe);
+        this.scheduleOnce(this._jackpotStartPopupFailsafe, 31.0);
     }
 
     private _jackpotStartPopupFailsafe = (): void => {
@@ -2963,14 +2992,76 @@ export class GameManager extends Component {
      * G\u1ecdi /Claim \u0111\u1ec3 ch\u1ed1t s\u1ed5 v\u00e0 c\u1eadp nh\u1eadt balance. Ch\u1ec9 th\u1ef1c hi\u1ec7n khi USE_REAL_API=true.
      */
     private async _onPickGameNeedClaim(): Promise<void> {
-        if (!USE_REAL_API) return;
-        Log.d('[GameManager] PICK_GAME_NEED_CLAIM → _handleClaim()');
-        await this._handleClaim();
-        const data = GameData.instance;
-        if (data.pickGameWinAmount <= 0 && data.freeSpinTotalWin > 0) {
-            data.pickGameWinAmount = data.freeSpinTotalWin;
-            Log.d(`[GameManager] PICK_GAME_NEED_CLAIM cached pickGameWinAmount=${data.pickGameWinAmount} from Claim WinCash`);
+        Log.d('[GameManager] PICK_GAME_NEED_CLAIM → Claim');
+        try {
+            const result = await NetworkManager.instance.sendClaimRequest();
+            WalletManager.instance.balance = result.balance;
+            const data = GameData.instance;
+            data.lastClaimWinGrade = result.winGrade;
+            if (result.winCash != null && result.winCash > 0) {
+                data.pickGameWinAmount = result.winCash;
+            } else if (data.pickGameWinAmount <= 0 && data.freeSpinTotalWin > 0) {
+                data.pickGameWinAmount = data.freeSpinTotalWin;
+            }
+            this._applyPickEndClaimToFreeSpin(result);
+            Log.d(
+                `[GameManager] PICK_END Claim nextStage=${result.nextStage}` +
+                ` pickWin=${data.pickGameWinAmount}` +
+                ` type=${result.currentFeatureType ?? 'n/a'}`,
+            );
+        } catch (err) {
+            Log.e('[GameManager] PICK_END Claim failed:', err);
         }
+    }
+
+    /** PICK_END Claim Ultra+ → stash Free Spin seed từ Claim. */
+    private _applyPickEndClaimToFreeSpin(result: ClaimResult): boolean {
+        const data = GameData.instance;
+        const ns = Number(result.nextStage ?? SlotStageType.SPIN);
+        const isFs = ns === SlotStageType.FREE_SPIN_START
+            || ns === SlotStageType.CARNIVAL_MATSURI_START
+            || ns === SlotStageType.FREE_SPIN;
+        const pending = data.pendingCarnivalMatsuri;
+        if (!isFs && !pending?.freeSpinAfterJackpot) return false;
+
+        const spin = data.lastSpinResponse;
+        if (spin) {
+            if (result.currentFeatureType != null) spin.currentFeatureType = result.currentFeatureType;
+            if (result.featureRows != null) spin.featureRows = clampMatsuriRows(result.featureRows);
+            if (result.starterCoins?.length) spin.starterCoins = result.starterCoins;
+            if (result.allStickies?.length) spin.allStickies = result.allStickies;
+            if (result.featureEntryJackpotWin != null) {
+                spin.featureEntryJackpotWin = result.featureEntryJackpotWin;
+                if (!(data.pickGameWinAmount > 0) && result.featureEntryJackpotWin > 0) {
+                    data.pickGameWinAmount = result.featureEntryJackpotWin;
+                }
+            }
+            if (result.featureEntryJackpotName) spin.featureEntryJackpotName = result.featureEntryJackpotName;
+            if (result.remainFeatureSpinCount != null) spin.remainRespinCount = result.remainFeatureSpinCount;
+            spin.nextStage = SlotStageType.FREE_SPIN_START;
+        }
+
+        let feature = pending;
+        if (!feature || feature.matsuriRows <= 0) {
+            const apiType = result.currentFeatureType ?? spin?.currentFeatureType;
+            const kind = apiType != null
+                ? carnivalKindFromApiFeatureType(Number(apiType))
+                : CarnivalFeatureKind.NONE;
+            if (kind !== CarnivalFeatureKind.NONE) {
+                feature = buildCarnivalFeatureTrigger(kind, burstPotsForKind(kind));
+            }
+        }
+        if (!feature || feature.matsuriRows <= 0) return false;
+
+        data.pendingCarnivalMatsuri = feature;
+        Log.e(
+            `[PickGame] PICK_END Claim → FREE_SPIN_START type=${spin?.currentFeatureType ?? 'n/a'}` +
+            ` rows=${spin?.featureRows ?? feature.matsuriRows}` +
+            ` starter=${spin?.starterCoins?.length ?? 0}` +
+            ` jpWin=${spin?.featureEntryJackpotWin ?? 0}` +
+            ` jpName=${spin?.featureEntryJackpotName ?? ''}`,
+        );
+        return true;
     }
 
     /**
@@ -3016,15 +3107,31 @@ export class GameManager extends Component {
      */
     private _onPickGameClose(): void {
         Log.e(`[DEBUG-PICK] _onPickGameClose ENTER — checking progressive win now`);
-        this._isPickGameActive = false;
         this._pickGameBgPending = false;
         const data = GameData.instance;
         data.wildTrailCount = 0;
         data.potLevel       = 1;
         EventBus.instance.emit(GameEvents.POT_LEVEL_CHANGED, { level: 1, total: 0 });
 
-        // Ultra+/Supreme/Ultimate: Matsuri cleanup đã trì hoãn → chạy khi Pick đóng
-        // (TOPUP_END hiện lại main reels + unload sticky; mode → normal; BG normal)
+        // Ultra+ Pick → FS: vào Matsuri trước khi restore IDLE / progressive.
+        const pendingMatsuri = data.pendingCarnivalMatsuri;
+        if (pendingMatsuri && pendingMatsuri.matsuriRows > 0 && data.currentMode !== 'matsuri') {
+            data.pickToMatsuriTransition = true;
+            this._matsuriEnterFromPickGame = true;
+            this._prefetchFeatureBackground();
+            // Giữ BG Pick đến lúc _enterCarnivalMatsuri crossfade → Feature.
+            data.pendingCarnivalMatsuri = null;
+            this._pendingFreeSpinEnd = false;
+            this._gameState = GameState.POPUP;
+            EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+            Log.e(`[DEBUG-PICK] _onPickGameClose → Matsuri after Pick "${pendingMatsuri.featureName}"`);
+            void this._enterCarnivalMatsuriThenShowStartPopup(pendingMatsuri);
+            return;
+        }
+
+        this._isPickGameActive = false;
+
+        // Legacy Matsuri→Pick: cleanup trì hoãn đến khi Pick đóng
         const stillInMatsuri = data.currentMode === 'matsuri';
         const deferredMatsuriWin = this._deferredMatsuriTopUpEndWin;
         this._deferredMatsuriTopUpEndWin = null;
@@ -3061,15 +3168,6 @@ export class GameManager extends Component {
         this._updateDisplayVisibility();
         this._updateBackgroundSprite();
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
-
-        // Legacy: Pick-first → Matsuri (không còn dùng cho Ultra+ API V1.0.2)
-        const pendingMatsuri = GameData.instance.pendingCarnivalMatsuri;
-        if (pendingMatsuri && pendingMatsuri.matsuriRows > 0) {
-            GameData.instance.pendingCarnivalMatsuri = null;
-            Log.e(`[DEBUG-PICK] _onPickGameClose → Matsuri feature shell + start popup "${pendingMatsuri.featureName}"`);
-            void this._enterCarnivalMatsuriThenShowStartPopup(pendingMatsuri);
-            return;
-        }
 
         // ★ Nếu có pending Free Spin end (từ _handleClaim trong Pick Game), xử lý trước
         if (this._pendingFreeSpinEnd) {
@@ -3389,6 +3487,7 @@ export class GameManager extends Component {
                             burstPots: burstPotsForKind(CarnivalFeatureKind.MIGHTY),
                             jackpotFirst: false,
                             jackpotAfterFreeSpin: false,
+                            freeSpinAfterJackpot: false,
                             matsuriRows: spinResp?.featureRows ?? 3,
                             startCoins: spinResp?.starterCoins?.length ?? 6,
                             featureName: 'Mighty Matsuri',
@@ -4372,7 +4471,12 @@ export class GameManager extends Component {
             ?? overlay?.node?.getComponentInChildren(TopUpManager)
             ?? this.node.scene?.getComponentInChildren(TopUpManager)
             ?? null;
-        if (overlay?.node) overlay.node.active = true;
+        if (overlay?.node) {
+            overlay.node.active = true;
+            if (GameData.instance.pickToMatsuriTransition) {
+                setNodeOpacity(overlay.node, 255);
+            }
+        }
         overlay?.ensureRowCount(rows, topUpMgr);
         overlay?.applyOrientationLayout(rows);
         // Overlay inactive sau 5×3: scene getComponentInChildren có thể miss TM — luôn gọi trực tiếp.
@@ -5442,6 +5546,26 @@ export class GameManager extends Component {
         this._bgPresenter?.update(this._resolveBackgroundMode());
     }
 
+    private _pickToFeatureFadeDuration(): number {
+        return Math.max(0.55, this.uiFadeDuration);
+    }
+
+    private _clearBgFadeOverride = (): void => {
+        this._bgFadeOverride = null;
+    };
+
+    /**
+     * Overlay là child của SlotMachine — parent inactive thì Feature không hiện.
+     * Dùng ref Inspector (không getComponentInChildren) vì node đang tắt sau Pick.
+     */
+    private _wakeSlotShellForMatsuri(): void {
+        const loader = this.node.scene?.getComponentInChildren(StickyOverlayLoader) ?? null;
+        const smc = loader?.slotMachine ?? null;
+        const node = smc?.node;
+        if (!node?.isValid) return;
+        node.active = true;
+    }
+
     private _resolveBackgroundMode(): 'normal' | 'feature' | 'pickgame' {
         if (this._isPickGameActive) return 'pickgame';
         if (this._isFreeSpin() || this._isTopUp() || this._isMatsuri()) return 'feature';
@@ -5463,7 +5587,7 @@ export class GameManager extends Component {
             this._bgPresenter = new GameBackgroundPresenter(
                 this.backgroundNode,
                 this.backgroundSprites,
-                () => this.uiFadeDuration,
+                () => this._bgFadeOverride ?? this.uiFadeDuration,
                 this,
             );
         }

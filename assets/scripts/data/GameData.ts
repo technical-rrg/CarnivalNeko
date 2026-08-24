@@ -207,10 +207,15 @@ export class GameData {
     /** Index cycle cho MOCK_CARNIVAL_FEATURE_TRIGGER = 'cycle' | 'auto'. */
     carnivalFeatureCycleIndex: number = 0;
     /**
-     * Matsuri chờ chạy sau Jackpot (combo Ultra/Supreme/Ultimate).
-     * Set khi Jackpot-first; clear khi vào Matsuri stub / thật.
+     * Matsuri chờ chạy sau Jackpot (Ultra/Supreme/Ultimate: Pick → Free Spin).
+     * Set khi Jackpot-first; clear khi vào Matsuri.
      */
     pendingCarnivalMatsuri: import('./SlotTypes').CarnivalFeatureTrigger | null = null;
+    /**
+     * Pick Game vừa đóng và đang vào Matsuri — SlotMachine/overlay/pot đọc cờ này
+     * vì pendingCarnivalMatsuri bị clear trước khi listener khác chạy xong.
+     */
+    pickToMatsuriTransition: boolean = false;
 
     // ─── FEATURE ENTRY LOGIC ADDED — Reel UI Gauge state ─────────────────────
     /**
@@ -268,6 +273,11 @@ export class GameData {
     lastClaimWinGrade: string | undefined = undefined;
     /** Jackpot values hiện tại [mini, minor, major, grand] — từ poll Wins / spin After */
     jackpotValues: number[] = [0, 0, 0, 0];
+    /**
+     * True sau khi Pick Game đủ 3 Upgrade đã apply meter.
+     * Poll /Jackpot không được ghi đè cho đến khi Pick đóng.
+     */
+    holdJackpotValues: boolean = false;
     /**
      * Jackpot values trước spin [mini, minor, major, grand] — từ spin Before.
      * Dùng làm số tiền trúng progressive (pool lúc win), trước khi After reset meter.
@@ -557,6 +567,8 @@ export class GameData {
         this.stickyCells.clear();
         this.pickGameState = null;
         this.pickGameWinAmount = 0;
+        this.holdJackpotValues = false;
+        this.pickToMatsuriTransition = false;
         this.currentMode = 'normal';
         this.freeSpinGoldRemaining = 0;
         this.freeSpinGoldTotalWin = 0;
@@ -572,6 +584,7 @@ export class GameData {
         this.lastWinMsgId = '0';
         this.jackpotValues = [0, 0, 0, 0];
         this.jackpotValuesBefore = [0, 0, 0, 0];
+        this.holdJackpotValues = false;
     }
 
     /**

@@ -11,6 +11,7 @@
  *   SCENARIO_BIG_WIN         → BIG_WIN     (Cleopatra 5×3)
  *   SCENARIO_LONG_SPIN       → LONG_SPIN_TRIGGER (3 Red reel 0..2)
  *   SCENARIO_JACKPOT         → GRAND_JACKPOT (Pick Game Grand)
+ *   SCENARIO_PICK_GAME       → POT_WIN (1 spin → Pick Game, grid theo MOCK_PICK_GAME_MODE)
  *   DEFAULT_SEQUENCE         → [NO_WIN, NORMAL_WIN, …]
  */
 
@@ -25,6 +26,8 @@ export const SCENARIO_MULTI_LINE: SpinResponse = MockDataProvider.buildScenario(
 export const SCENARIO_BIG_WIN:    SpinResponse = MockDataProvider.buildScenario(TestScenario.BIG_WIN);
 export const SCENARIO_LONG_SPIN:  SpinResponse = MockDataProvider.buildScenario(TestScenario.LONG_SPIN_TRIGGER);
 export const SCENARIO_JACKPOT:    SpinResponse = MockDataProvider.buildScenario(TestScenario.GRAND_JACKPOT);
+/** 1 spin → Pot Win → Pick (grid = MOCK_PICK_GAME_MODE, có trail visual). */
+export const SCENARIO_PICK_GAME:  SpinResponse = MockDataProvider.buildScenario(TestScenario.POT_WIN);
 
 // ─── SEQUENCE SCENARIOS ───────────────────────────────────────────────────────
 

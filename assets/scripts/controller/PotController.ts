@@ -405,9 +405,14 @@ export class PotController extends Component {
         }
     }
 
-    /** PICK_GAME_CLOSE: Pick Game kết thúc → hiện Pot lại */
+    /** PICK_GAME_CLOSE: Pick Game kết thúc → hiện Pot lại (trừ khi vào Matsuri sau Pick). */
     private _onPickGameClose(): void {
         this._pendingPickGameHide = false;
+        const data = GameData.instance;
+        const goingToMatsuri = data.currentMode === 'matsuri'
+            || data.pickToMatsuriTransition
+            || !!(data.pendingCarnivalMatsuri?.matsuriRows);
+        if (goingToMatsuri) return;
         if (this._wasActiveBeforePickGame && !this.node.active) {
             this.node.active = true;
             Log.d('[PotController] Shown — Pick Game close');

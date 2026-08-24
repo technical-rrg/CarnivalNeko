@@ -126,8 +126,8 @@ export class StickyOverlayController extends Component {
     @property({ tooltip: 'Thời gian scale DOWN settle khi đồng vàng/xanh xuất hiện (giây).' })
     goldCoinBounceDownDuration: number = 0.36;
 
-    @property({ tooltip: 'Fade-in toàn overlay khi vừa vào TopUp (giây).' })
-    topUpEnterFadeDuration: number = 0.4;
+    @property({ tooltip: 'Fade-in toàn overlay khi vừa vào TopUp / Feature (giây).' })
+    topUpEnterFadeDuration: number = 0.55;
 
     @property({ tooltip: 'Fade Cat ↔ Top trên FramFront khi seed / vào feature (giây).' })
     matsuriFrameHudFadeDuration: number = 0.35;
@@ -1361,8 +1361,8 @@ export class StickyOverlayController extends Component {
         this._fadeMatsuriFrameNode(top, !showCat, animate, false);
     }
 
-    private _syncFeatureHud(): void {
-        this._applyMatsuriFrameNodes();
+    private _syncFeatureHud(animateFrames = true): void {
+        this._applyMatsuriFrameNodes(animateFrames);
         if (!this._isMatsuriMode() || this._inSeedThrowPhase) return;
         const data = GameData.instance;
         const remain = data.respinRemaining;
@@ -1827,6 +1827,12 @@ export class StickyOverlayController extends Component {
     }
 
     private _onTopUpStart(): void {
+        const fromPick = GameData.instance.pickToMatsuriTransition;
+        const isMatsuri = GameData.instance.currentMode === 'matsuri' || fromPick;
+        const op = this.node.getComponent(UIOpacity) ?? this.node.addComponent(UIOpacity);
+        Tween.stopAllByTarget(op);
+        // Pick → Feature: parent SlotMachine đang fade 0→255 — overlay giữ 255, không nhân đôi opacity.
+        op.opacity = fromPick ? 255 : 0;
         this.node.active = true;
         this._topUpSpinCounter = 0;
         this._enterAnimPlayed = false;
@@ -1834,21 +1840,17 @@ export class StickyOverlayController extends Component {
         this._scheduleOrientationApply();
         this.alignPositionsFromTopUpManager();
         this._previouslyActiveSlots.clear();
-        this._syncFeatureHud();
+        this._syncFeatureHud(false);
 
-        // Dưới Transition (sau READY): setup tĩnh, nhún khi DONE
-        if (this._deferEnterAnim || this._isTopUpTransitionActive()) {
+        // Matsuri không đi qua Transition TopUp — đừng defer (overlay sẽ kẹt opacity 0).
+        if (!isMatsuri && (this._deferEnterAnim || this._isTopUpTransitionActive())) {
             this._deferEnterAnim = true;
-            const op = this.node.getComponent(UIOpacity) ?? this.node.addComponent(UIOpacity);
-            Tween.stopAllByTarget(op);
-            op.opacity = 0;
             this._refreshAll(false, false);
             this._pendingEnterAnim = true;
             Log.d('[StickyOverlay] TopUp coins prepared under Transition — bounce deferred to DONE');
             return;
         }
 
-        // Resume / không qua Transition → nhún ngay
         this._playEnterAnim();
     }
 
@@ -1866,11 +1868,22 @@ export class StickyOverlayController extends Component {
         this._enterAnimPlayed = true;
         this._pendingEnterAnim = false;
         this._deferEnterAnim = false;
+        const op = this.node.getComponent(UIOpacity) ?? this.node.addComponent(UIOpacity);
+        const fromPick = GameData.instance.pickToMatsuriTransition;
+        if (!fromPick && op.opacity > 0) {
+            Tween.stopAllByTarget(op);
+            op.opacity = 0;
+        }
         this.node.active = true;
         this.applyOrientationLayout();
         this._scheduleOrientationApply();
         this._previouslyActiveSlots.clear();
-        this._fadeInOverlay();
+        if (fromPick) {
+            Tween.stopAllByTarget(op);
+            op.opacity = 255;
+        } else {
+            this._fadeInOverlay();
+        }
         const isMatsuri = GameData.instance.currentMode === 'matsuri';
         if (isMatsuri) {
             this.alignPositionsFromTopUpManager();
@@ -1885,10 +1898,16 @@ export class StickyOverlayController extends Component {
                 Log.d(`[StickyOverlay] Matsuri resume — show ${GameData.instance.stickyCells.size} stickies`);
                 return;
             }
-            // Enter mới: grid trống — FramFront/Top hiện; Cat + seed chờ MatsuriStartPopup đóng
+            // Enter mới: grid trống — FramFront/Top hiện cùng fade overlay
             this._inSeedThrowPhase = false;
             this._hideAll();
-            this._syncFeatureHud();
+            this._ensureLayoutBaselines();
+            this._syncFeatureHud(false);
+            if (this._frontFrameNode?.isValid) this._frontFrameNode.active = true;
+            if (this._gridNode?.isValid) this._gridNode.active = true;
+            if (this._arrayNode?.isValid) this._arrayNode.active = true;
+            const top = this._findFeatureTop();
+            if (top?.isValid) top.active = true;
             Log.d('[StickyOverlay] Matsuri enter — blank overlay, Top HUD (chờ start popup)');
             return;
         }
@@ -2848,6 +2867,7 @@ export class StickyOverlayController extends Component {
             try {
                 skel.setCompleteListener(null);
                 skel.setAnimation(0, GOLD_COIN_SPINE_IMPACT2, true);
+                SoundManager.instance?.playYellowFocus();
             } catch {
                 this.clearGoldCoinImpact2AtSlot(slotNode);
             }
@@ -2934,8 +2954,6 @@ export class StickyOverlayController extends Component {
         const greenS = this._getBaseScale(SymbolId.STICKY_GREEN);
         const goldS = this._getBaseScale(MATSURI_GOLD_SYMBOL);
         slotNode.setScale(greenS, greenS, 1);
-
-        SoundManager.instance?.playSfxByName('sxBonusStickyGoldLand');
 
         let finished = false;
         const finish = () => {
@@ -3054,6 +3072,7 @@ export class StickyOverlayController extends Component {
             try {
                 skel.setCompleteListener(null);
                 skel.setAnimation(0, GREEN_COIN_SPINE_TRANSITION_GOLD, false);
+                SoundManager.instance?.playSfxByName('sxYellowGreenAppear');
             } catch {
                 complete();
             }
@@ -3183,6 +3202,7 @@ export class StickyOverlayController extends Component {
             try {
                 skel.setCompleteListener(null);
                 skel.setAnimation(0, GREEN_COIN_SPINE_ANIM_LOOP, true);
+                SoundManager.instance?.playYellowFocus();
             } catch {
                 this.clearGreenCoinAnimLoopAtSlot(slotNode);
             }

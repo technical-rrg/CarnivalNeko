@@ -21,7 +21,7 @@
  *   - jackpotValues: [MINI, MINOR, MAJOR, GRAND] (thứ tự từ server API).
  */
 
-import { _decorator, Component, Node, ParticleSystem, sp, tween, Tween } from 'cc';
+import { _decorator, Component, Node, ParticleSystem, sp, tween, Tween, Vec3 } from 'cc';
 import { GameData } from '../data/GameData';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -34,6 +34,9 @@ const { ccclass, property } = _decorator;
 
 @ccclass('JackpotDisplay')
 export class JackpotDisplay extends Component {
+
+    private static _instance: JackpotDisplay | null = null;
+    static get instance(): JackpotDisplay | null { return JackpotDisplay._instance; }
 
     // ─── SPRITE NUMBERS ───────────────────────────────────────────────────────
 
@@ -190,7 +193,9 @@ export class JackpotDisplay extends Component {
     // ─── LIFECYCLE ───────────────────────────────────────────────────────────
 
     onLoad(): void {
+        JackpotDisplay._instance = this;
         Log.d('[JackpotDisplay] onLoad — component initialized');
+        this._ensureLabels();
         this._setAllEffectsInactive();
         this._updateAll();
         this._startSequential();
@@ -205,6 +210,7 @@ export class JackpotDisplay extends Component {
     }
 
     onDestroy(): void {
+        if (JackpotDisplay._instance === this) JackpotDisplay._instance = null;
         this._seqActive = false;
         for (const tw of this._tweenMap.values()) {
             tw.stop();
@@ -277,6 +283,61 @@ export class JackpotDisplay extends Component {
         for (const effect of this._effectByIndex) {
             if (effect) effect.active = false;
         }
+    }
+
+    /**
+     * Prize nodes theo thứ tự presentation: Grand → Major → Minor → Mini.
+     * Dùng làm đích bay Upgrade coin.
+     */
+    public getUpgradeTargetNodes(): Node[] {
+        const grand = this.jackpotSlotNodes[0] ?? this.grandLabel?.node ?? null;
+        const major = this.jackpotSlotNodes[2] ?? this.majorLabel?.node ?? null;
+        const minor = this.jackpotSlotNodes[1] ?? this.minorLabel?.node ?? null;
+        const mini  = this.jackpotSlotNodes[3] ?? this.miniLabel?.node ?? null;
+        return [grand, major, minor, mini].filter((n): n is Node => !!n?.isValid);
+    }
+
+    /** Nhún slot jackpot khi 3 clone Upgrade chạm đích — FX dùng template trên PickGamePopup. */
+    public playUpgradeSlotPulse(waveIndex: number): void {
+        this._ensureLabels();
+        const slot = this.getUpgradeTargetNodes()[waveIndex];
+        this._pulseUpgradeSlot(slot);
+        Log.d(`[JackpotDisplay] upgrade slot pulse wave=${waveIndex}`);
+    }
+
+    /** @deprecated FX cũ — chỉ giữ pulse slot; dùng playUpgradeSlotPulse. */
+    public playUpgradeBurstAtTier(waveIndex: number): void {
+        this.playUpgradeSlotPulse(waveIndex);
+    }
+
+    /** Pulse đồng thời 4 slot (fallback). */
+    public playUpgradeBurst(): void {
+        this._ensureLabels();
+        const slots = this.getUpgradeTargetNodes();
+        for (const slot of slots) {
+            this._pulseUpgradeSlot(slot);
+        }
+        Log.d(`[JackpotDisplay] upgrade slot pulse all slots=${slots.length}`);
+    }
+
+    private _pulseUpgradeSlot(slot: Node | null | undefined): void {
+        if (!slot?.isValid) return;
+        Tween.stopAllByTarget(slot);
+        const base = slot.scale.clone();
+        slot.setScale(base);
+        tween(slot)
+            .to(0.12, { scale: new Vec3(base.x * 1.18, base.y * 1.18, 1) }, { easing: 'sineOut' })
+            .to(0.18, { scale: base }, { easing: 'backOut' })
+            .start();
+    }
+
+    private _ensureLabels(): void {
+        const fromSlot = (slot: Node | null | undefined): SpriteNumber | null =>
+            slot?.getComponentInChildren(SpriteNumber) ?? null;
+        if (!this.grandLabel) this.grandLabel = fromSlot(this.jackpotSlotNodes[0]);
+        if (!this.minorLabel) this.minorLabel = fromSlot(this.jackpotSlotNodes[1]);
+        if (!this.majorLabel) this.majorLabel = fromSlot(this.jackpotSlotNodes[2]);
+        if (!this.miniLabel) this.miniLabel = fromSlot(this.jackpotSlotNodes[3]);
     }
 
     // ─── SEQUENTIAL LOOP ─────────────────────────────────────────────────────
@@ -409,6 +470,7 @@ export class JackpotDisplay extends Component {
      * Không hardcode / không tính totalBet × multiplier.
      */
     private _updateAll(): void {
+        this._ensureLabels();
         const vals = GameData.instance.jackpotValues;   // [MINI=0, MINOR=1, MAJOR=2, GRAND=3]
         const truncate3 = (n: number) => Math.floor(n * 1000) / 1000;
         const mini  = truncate3(Number(vals?.[0]) || 0);

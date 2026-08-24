@@ -56,9 +56,10 @@ import {
     TrailColor,
     ClaimResult,
     cnFreeSpinStripGroupStart,
+    CarnivalFeatureKind,
 } from '../data/SlotTypes';
 import { buildCarnivalFeatureFromSpin } from '../data/CarnivalFeatureResolve';
-import { parseCnStickyCells, parseCnStickyCredit, MATSURI_GOLD_SYMBOL, clampMatsuriRows } from '../data/MatsuriGridUtil';
+import { parseCnStickyCells, parseCnStickyCredit, MATSURI_GOLD_SYMBOL, clampMatsuriRows, pickMatsuriStartCoinCells, MATSURI_SPIN_COUNT } from '../data/MatsuriGridUtil';
 import { MockDataProvider, TestScenario } from '../data/MockDataProvider';
 import {
     buildBuyBonusMatsuriTrigger,
@@ -72,6 +73,8 @@ import { GameData } from '../data/GameData';
 import {
     clientPickToPs,
     clientSymToJackpotType,
+    computeUpgradedJackpotValues,
+    isPickUpgradeSymbol,
     psPickToClient,
     resolvePickState,
     JP_TYPE_TO_TIER_NAME,
@@ -87,10 +90,11 @@ import {
     MOCK_SPIN_SCENARIO,
     DEBUG_RANDS,
     MOCK_RESUME_SCENARIO,
+    MOCK_PICK_GAME_MODE,
 } from '../data/ServerConfig';
 import {
     SCENARIO_NO_WIN, SCENARIO_NORMAL_WIN, SCENARIO_MULTI_LINE, SCENARIO_BIG_WIN,
-    SCENARIO_LONG_SPIN, SCENARIO_JACKPOT, FULL_FREE_RETRIGGER_SEQUENCE, DEFAULT_SEQUENCE,
+    SCENARIO_LONG_SPIN, SCENARIO_JACKPOT, SCENARIO_PICK_GAME, FULL_FREE_RETRIGGER_SEQUENCE, DEFAULT_SEQUENCE,
     BUY_FREE_SPIN_SEQUENCE,
     MOCK_RESUME_NORMAL_SPIN, MOCK_RESUME_FREE_SPIN_MID, MOCK_RESUME_FREE_SPIN_NEED_CLAIM,
     MOCK_RESUME_FREE_SPIN_JACKPOT_MID, MOCK_RESUME_BUY_FREE_SPIN_MID, MOCK_RESUME_BUY_FREE_SPIN_NEED_CLAIM,
@@ -372,6 +376,31 @@ function _normalizeJackpotValues(raw: any): number[] | null {
     return vals.some((v) => v > 0) ? vals : null;
 }
 
+/** Lấy meter jackpot từ AckPick (After/Wins trên outer, Res, hoặc CNPickResponse). */
+function _extractPickJackpotValues(outer: any, res: any, pickRes: any): number[] | null {
+    const bags = [pickRes, res, outer];
+    const fields = [
+        'After', 'after',
+        'JackpotAfter', 'jackpotAfter',
+        'Wins', 'wins',
+        'JackpotValues', 'jackpotValues',
+        'Jackpot', 'jackpot',
+        'UpgradedJackpot', 'upgradedJackpot',
+    ];
+    for (const bag of bags) {
+        if (!bag || typeof bag !== 'object') continue;
+        for (const field of fields) {
+            const normalized = _normalizeJackpotValues(bag[field]);
+            if (normalized) return normalized;
+        }
+        if (bag.GRAND != null || bag.Grand != null || bag.MINI != null || bag.Mini != null) {
+            const named = _normalizeJackpotValues(bag);
+            if (named) return named;
+        }
+    }
+    return null;
+}
+
 // ─── Đăng ký LZ4BlockArray ext type -1 (0xFF) ── MessagePack-CSharp v2 ──────
 // Format: [uncompressedLen: int32 LE][lz4BlockData...]
 addExtension({
@@ -586,10 +615,39 @@ class MockNetworkAdapter implements INetworkAdapter {
             case 'long_spin':           this._queue = [SCENARIO_LONG_SPIN];             break;
             case 'pot_win':             this._queue = [...FULL_FREE_RETRIGGER_SEQUENCE]; break;
             case 'grand_jackpot':       this._queue = [SCENARIO_JACKPOT];               break;
+            case 'pick_game':           this._queue = [SCENARIO_PICK_GAME];             break;
             case 'sequence':            this._queue = [...DEFAULT_SEQUENCE];             break;
             default:                    this._queue = [];                                break; // 'random'
         }
         this._queueIdx = 0;
+    }
+
+    /**
+     * Mock upgrade modes: 3 lần pick đầu (chưa armed) luôn lộ Upgrade,
+     * kể cả khi người chơi bấm ô không phải 0–2 — hoán đổi symbol trên grid.
+     */
+    private _mockEnsureUpgradeOnFirstPicks(
+        pickState: PickGameState,
+        pickIndex: number,
+        revealed: number[],
+    ): void {
+        if (pickState.upgradeArmed) return;
+        const mode = MOCK_PICK_GAME_MODE;
+        if (mode !== 'upgrade_to_major' && mode !== 'upgrade_grand_x2') return;
+        if (revealed.length > 3) return;
+
+        const grid = pickState.grid;
+        if (!grid?.length || isPickUpgradeSymbol(grid[pickIndex] ?? -1)) return;
+
+        for (let i = 0; i < grid.length; i++) {
+            if (i === pickIndex || revealed.includes(i)) continue;
+            if (!isPickUpgradeSymbol(grid[i])) continue;
+            const tmp = grid[pickIndex];
+            grid[pickIndex] = grid[i];
+            grid[i] = tmp;
+            Log.d(`[MockPick] first-pick assist: cell=${pickIndex} ← Upgrade (swap from ${i})`);
+            return;
+        }
     }
 
     async login(_params?: any): Promise<ServerSession> {
@@ -739,6 +797,8 @@ class MockNetworkAdapter implements INetworkAdapter {
         const revealed = (pickState.revealed ?? []).concat(pickIndex);
         pickState.revealed = revealed;
 
+        this._mockEnsureUpgradeOnFirstPicks(pickState, pickIndex, revealed);
+
         const resolved = resolvePickState(pickState.grid, revealed, !!pickState.upgradeArmed);
         pickState.upgradeCount = resolved.upgradeCount;
         pickState.upgradeArmed = resolved.upgradeArmed;
@@ -763,7 +823,6 @@ class MockNetworkAdapter implements INetworkAdapter {
                 return (map[resolved.paidTier] ?? 10) * data.totalBet;
             })();
             winCash = meter > 0 ? meter : betFallback;
-            if (resolved.doubleGrand) winCash *= 2;
         }
 
         // CNPickResponse: -1 = unselected; positive = revealed PS ID
@@ -800,6 +859,13 @@ class MockNetworkAdapter implements INetworkAdapter {
             );
         }
 
+        const jackpotAfter = resolved.upgradeJustCompleted
+            ? computeUpgradedJackpotValues(data.jackpotValues)
+            : undefined;
+        if (jackpotAfter) {
+            Log.d(`[PickGame] MOCK Upgrade×3 JackpotAfter=[${jackpotAfter.join(',')}]`);
+        }
+
         return {
             PickGame: pickGameIds,
             PickResults: pickResults,
@@ -812,6 +878,7 @@ class MockNetworkAdapter implements INetworkAdapter {
             UpgradeCount: resolved.upgradeCount,
             IsUpgradeComplete: resolved.upgradeJustCompleted,
             DoubleGrand: resolved.doubleGrand,
+            JackpotAfter: jackpotAfter,
         };
     }
 
@@ -820,18 +887,46 @@ class MockNetworkAdapter implements INetworkAdapter {
         const data = GameData.instance;
         const winCash = (data.currentMode === 'respin' || data.currentMode === 'matsuri')
             ? data.respinTotalWin
-            : data.freeSpinTotalWin;
+            : (data.pickGameWinAmount > 0 ? data.pickGameWinAmount : data.freeSpinTotalWin);
 
         // Nếu freeSpinTotalWin được restore từ server (resume scenario), số đó đã bao gồm
         // toàn bộ tiền thắng trước khi tắt game. Chỉ cộng vào balance 1 lần ở đây.
         // _onFreeSpinEndPopupClosed sẽ KHÔNG add lại (vì flag = true).
         const newBalance = data.player.balance + winCash;
 
-        // Ultra/Supreme/Ultimate (API type 3–5): Claim sau FS → PICK_START + PickGame
-        const apiType = data.cnApiFeatureType;
-        const pickAfterFs = data.currentMode === 'matsuri' && apiType >= 3 && apiType <= 5;
-        const pickGame = pickAfterFs ? MockDataProvider.buildPickGame() : undefined;
-        const nextStage = pickAfterFs ? SlotStageType.PICK_START : SlotStageType.SPIN;
+        // Ultra/Supreme/Ultimate: PICK_END Claim → FREE_SPIN_START (Pick → FS).
+        // Mighty/Mega/Super / Red-only: Claim → SPIN.
+        const inMatsuri = data.currentMode === 'matsuri';
+        const pendingFs = data.pendingCarnivalMatsuri;
+        const fsAfterPick = !inMatsuri && !!(
+            pendingFs?.freeSpinAfterJackpot
+            || data.lastSpinResponse?.carnivalFeature?.freeSpinAfterJackpot
+        );
+
+        let nextStage = SlotStageType.SPIN;
+        let currentFeatureType: number | undefined;
+        let featureRows: number | undefined;
+        let starterCoins: StickyCell[] | undefined;
+        let allStickies: StickyCell[] | undefined;
+        let featureEntryJackpotWin: number | undefined;
+        let featureEntryJackpotName: string | undefined;
+        let remainFeatureSpinCount: number | undefined;
+
+        if (fsAfterPick) {
+            const feature = pendingFs ?? data.lastSpinResponse?.carnivalFeature;
+            const rows = clampMatsuriRows(feature?.matsuriRows ?? 3);
+            const startCount = feature?.startCoins ?? 6;
+            const starter = pickMatsuriStartCoinCells(rows, startCount, data.totalBet);
+            nextStage = SlotStageType.FREE_SPIN_START;
+            currentFeatureType = feature
+                ? feature.kind - CarnivalFeatureKind.MIGHTY
+                : 3;
+            featureRows = rows;
+            starterCoins = starter;
+            allStickies = starter;
+            featureEntryJackpotWin = data.pickGameWinAmount;
+            remainFeatureSpinCount = MATSURI_SPIN_COUNT;
+        }
 
         // Reset buy queue + normal queue khi claim xong
         this._buyQueue = [];
@@ -839,7 +934,7 @@ class MockNetworkAdapter implements INetworkAdapter {
         this._queueIdx = this._savedQueueIdx;
         Log.d(
             `[MockAdapter] Claim: winCash=${winCash}, newBalance=${newBalance}` +
-            ` nextStage=${nextStage} pickAfterFs=${pickAfterFs}` +
+            ` nextStage=${nextStage} fsAfterPick=${fsAfterPick} inMatsuri=${inMatsuri}` +
             ` wasRestoredFromServer=${data.freeSpinTotalWinRestoredFromServer}`,
         );
         return {
@@ -848,7 +943,13 @@ class MockNetworkAdapter implements INetworkAdapter {
             claimTotalWin: winCash,
             topLevelWinCash: winCash,
             nextStage,
-            pickGame,
+            currentFeatureType,
+            featureRows,
+            starterCoins,
+            allStickies,
+            featureEntryJackpotWin,
+            featureEntryJackpotName,
+            remainFeatureSpinCount,
         };
     }
 
@@ -1371,6 +1472,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             UpgradeCount: pickRes.UpgradeCount ?? pickRes.upgradeCount,
             IsUpgradeComplete: pickRes.IsUpgradeComplete ?? pickRes.isUpgradeComplete,
             DoubleGrand: pickRes.DoubleGrand ?? pickRes.doubleGrand,
+            JackpotAfter: _extractPickJackpotValues(outer, res, pickRes) ?? undefined,
         };
         const pickGameRaw = Array.isArray(raw.PickGame) ? raw.PickGame : [];
         const revealedRaw = pickGameRaw
@@ -1390,6 +1492,14 @@ class RealNetworkAdapter implements INetworkAdapter {
         );
         Log.d(`[PickGame] ACK RAW PickGame[15]=${JSON.stringify(pickGameRaw)}`);
         Log.d(`[PickGame] ACK RAW revealed=${revealedRaw}`);
+        const outerKeys = outer && typeof outer === 'object' ? Object.keys(outer).join(',') : '';
+        const resKeys = res && typeof res === 'object' ? Object.keys(res).join(',') : '';
+        const pickKeys = pickRes && typeof pickRes === 'object' ? Object.keys(pickRes).join(',') : '';
+        Log.d(
+            `[PickGame] ACK jackpot After=${raw.JackpotAfter ? `[${raw.JackpotAfter.join(',')}]` : 'none'}`
+            + ` IsUpgradeComplete=${raw.IsUpgradeComplete ?? false}`
+            + ` keys(outer)=${outerKeys} keys(res)=${resKeys} keys(pick)=${pickKeys}`,
+        );
         ResponseLogger.log('Pick', raw);
         return raw;
     }
@@ -1450,12 +1560,46 @@ class RealNetworkAdapter implements INetworkAdapter {
             claimResponse.PickGame ?? claimResponse.pickGame ?? claimResponse.PickGameState,
         );
 
+        const currentFeatureTypeRaw = claimResponse.CurrentFeatureType ?? claimResponse.currentFeatureType
+            ?? (raw as any).CurrentFeatureType ?? (raw as any).currentFeatureType;
+        const currentFeatureType = currentFeatureTypeRaw != null ? Number(currentFeatureTypeRaw) : undefined;
+        const featureRowsRaw = claimResponse.FeatureRows ?? claimResponse.featureRows
+            ?? (raw as any).FeatureRows ?? (raw as any).featureRows;
+        const featureRows = featureRowsRaw != null ? clampMatsuriRows(Number(featureRowsRaw)) : undefined;
+        const rows = featureRows ?? 3;
+        const starterCoins = parseCnStickyCells(
+            claimResponse.StarterCoins ?? claimResponse.starterCoins ?? (raw as any).StarterCoins,
+            rows,
+            MATSURI_GOLD_SYMBOL,
+            data.totalBet,
+        );
+        const allStickies = parseCnStickyCells(
+            claimResponse.AllStickies ?? claimResponse.allStickies ?? (raw as any).AllStickies,
+            rows,
+            MATSURI_GOLD_SYMBOL,
+            data.totalBet,
+        );
+        const entryJpRaw = claimResponse.FeatureEntryJackpotWin ?? claimResponse.featureEntryJackpotWin
+            ?? (raw as any).FeatureEntryJackpotWin ?? (raw as any).featureEntryJackpotWin;
+        const featureEntryJackpotWin = entryJpRaw != null ? Number(entryJpRaw) : undefined;
+        const featureEntryJackpotName = claimResponse.FeatureEntryJackpotName
+            ?? claimResponse.featureEntryJackpotName
+            ?? (raw as any).FeatureEntryJackpotName ?? (raw as any).featureEntryJackpotName;
+        const remainRaw = claimResponse.RemainFeatureSpinCount ?? claimResponse.remainFeatureSpinCount
+            ?? (raw as any).RemainFeatureSpinCount ?? (raw as any).remainFeatureSpinCount;
+        const remainFeatureSpinCount = remainRaw != null ? this._toFiniteNumber(remainRaw) : undefined;
+
         if (jackpotName) {
             Log.d(
                 `[Jackpot] CLAIM serverJackpot=${jackpotName}`
                 + ` winCash=${winCash ?? 'n/a'} nextStage=${nextStage}`,
             );
         }
+        Log.d(
+            `[Claim] nextStage=${nextStage} type=${currentFeatureType ?? 'n/a'} rows=${featureRows ?? 'n/a'}`
+            + ` starter=${starterCoins.length} all=${allStickies.length}`
+            + ` entryJp=${featureEntryJackpotWin ?? 0} entryName=${featureEntryJackpotName ?? ''}`,
+        );
         return {
             balance: cash,
             winCash,
@@ -1468,6 +1612,15 @@ class RealNetworkAdapter implements INetworkAdapter {
             startRands: Array.isArray(startRands) ? startRands : undefined,
             nextStage: Number(nextStage),
             pickGame,
+            currentFeatureType: currentFeatureType != null && Number.isFinite(currentFeatureType)
+                ? currentFeatureType : undefined,
+            featureRows,
+            starterCoins: starterCoins.length ? starterCoins : undefined,
+            allStickies: allStickies.length ? allStickies : undefined,
+            featureEntryJackpotWin: featureEntryJackpotWin != null && Number.isFinite(featureEntryJackpotWin)
+                ? featureEntryJackpotWin : undefined,
+            featureEntryJackpotName: featureEntryJackpotName != null ? String(featureEntryJackpotName) : undefined,
+            remainFeatureSpinCount,
         };
     }
 
@@ -1521,13 +1674,17 @@ class RealNetworkAdapter implements INetworkAdapter {
 
         // Update jackpot values — Wins is number[] array: [mini, minor, major, grand]
         if (raw.Wins && Array.isArray(raw.Wins) && raw.Wins.length > 0) {
-            const prev = data.jackpotValues?.slice?.() ?? [];
-            const changed = raw.Wins.some((v, i) => v !== prev[i]);
-            data.jackpotValues = raw.Wins;
-            if (changed) {
-                Log.e(`[Jackpot] Poll Wins changed [${prev.join(',')}] → [${raw.Wins.join(',')}]`);
+            if (data.holdJackpotValues) {
+                Log.d('[Jackpot] Poll skip — holdJackpotValues (Pick upgrade applied)');
+            } else {
+                const prev = data.jackpotValues?.slice?.() ?? [];
+                const changed = raw.Wins.some((v, i) => v !== prev[i]);
+                data.jackpotValues = raw.Wins;
+                if (changed) {
+                    Log.e(`[Jackpot] Poll Wins changed [${prev.join(',')}] → [${raw.Wins.join(',')}]`);
+                }
+                EventBus.instance.emit(GameEvents.JACKPOT_VALUES_UPDATED, raw.Wins);
             }
-            EventBus.instance.emit(GameEvents.JACKPOT_VALUES_UPDATED, raw.Wins);
         }
 
         // Update last win msg ID
@@ -2457,7 +2614,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             if (n != null) resp.remainRespinCount = n;
         }
 
-        // Reserved (API V1.0.2): luôn 0 / empty — JP Ultra+ qua Pick sau FS, không dùng field này
+        // PICK_END Claim Ultra+: FeatureEntryJackpotWin/Name mang sang Free Spin.
         const entryJp = anyRes.FeatureEntryJackpotWin ?? anyRes.featureEntryJackpotWin;
         if (entryJp != null) resp.featureEntryJackpotWin = Number(entryJp);
         const entryName = anyRes.FeatureEntryJackpotName ?? anyRes.featureEntryJackpotName;
@@ -2483,11 +2640,18 @@ class RealNetworkAdapter implements INetworkAdapter {
         const feature = buildCarnivalFeatureFromSpin(anyRes, resp.nextStage);
         if (feature && !inMatsuri) {
             resp.carnivalFeature = feature;
+            // Ultra+: nếu server còn gửi FREE_SPIN_START kèm PickGame → vẫn Pick trước.
+            if (feature.freeSpinAfterJackpot && resp.pickGame
+                && (resp.nextStage === SlotStageType.FREE_SPIN_START
+                    || resp.nextStage === SlotStageType.CARNIVAL_MATSURI_START)) {
+                resp.nextStage = SlotStageType.PICK_START;
+                resp.triggerPotWin = true;
+            }
             if (!feature.jackpotFirst
                 && resp.nextStage === SlotStageType.FREE_SPIN_START) {
                 resp.nextStage = SlotStageType.CARNIVAL_MATSURI_START;
             }
-            // Red-only: PICK_START → pot burst / Pick ngay
+            // Red-only / Ultra+: PICK_START → pot burst / Pick ngay
             if (feature.jackpotFirst
                 && (resp.nextStage === SlotStageType.PICK_START || resp.nextStage === SlotStageType.PICK)) {
                 resp.triggerPotWin = true;
@@ -2495,7 +2659,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             Log.e(
                 `[CN-FEATURE] kind=${feature.featureName} apiType=${resp.currentFeatureType ?? 'n/a'}` +
                 ` rows=${feature.matsuriRows} startCoins=${feature.startCoins}` +
-                ` jackpotFirst=${feature.jackpotFirst} jackpotAfterFS=${feature.jackpotAfterFreeSpin}` +
+                ` jackpotFirst=${feature.jackpotFirst} fsAfterJp=${feature.freeSpinAfterJackpot}` +
                 ` nextStage=${resp.nextStage}` +
                 ` starter=${starter.length} new=${news.length} all=${all.length}`,
             );

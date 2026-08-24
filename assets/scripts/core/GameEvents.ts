@@ -153,9 +153,7 @@ export const GameEvents = {
     JACKPOT_LOOP_START: 'jackpot:loop:start',
     /** Pick Game vừa tìm ra 3 ô match — emit ngay, trước khi JACKPOT_TRIGGER (payload: JackpotType) */
     PICK_GAME_MATCH_FOUND: 'pickgame:match:found',
-    /** Đủ 3 Upgrade Coin — feature tiếp tục, lần win sẽ nâng tier (payload: upgradeCount). */
-    PICK_GAME_UPGRADE_COMPLETE: 'pickgame:upgrade:complete',
-    /** Đủ 3 Upgrade Coin — feature tiếp tục, lần win sẽ nâng tier (payload: upgradeCount). */
+    /** Đủ 3 Upgrade Coin — payload: { upgradeCount, jackpotValues }. */
     PICK_GAME_UPGRADE_COMPLETE: 'pickgame:upgrade:complete',
 
     // ─── WALLET & BET ───

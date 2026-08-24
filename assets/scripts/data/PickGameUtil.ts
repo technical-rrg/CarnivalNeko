@@ -184,33 +184,39 @@ export function isPickPsTransitionAnim(animName: string | null | undefined): boo
 }
 
 /**
- * Nâng tier khi đã đủ 3 Upgrade trước khi match 3 JP.
- * Grand + upgrade → vẫn GRAND nhưng doubleGrand = true.
+ * Cascade meter khi đủ 3 Upgrade coin.
+ * Input/output: [MINI, MINOR, MAJOR, GRAND]
+ *   Grand = Grand × 2
+ *   Major = Grand cũ
+ *   Minor = Major cũ
+ *   Mini  = Minor cũ
+ */
+export function computeUpgradedJackpotValues(current: number[] | null | undefined): number[] {
+    const minor = Number(current?.[1]) || 0;
+    const major = Number(current?.[2]) || 0;
+    const grand = Number(current?.[3]) || 0;
+    return [minor, major, grand, grand * 2];
+}
+
+/**
+ * 3 Upgrade chỉ cascade số tiền trên meter — không đổi tier trả thưởng.
+ * JackpotName / 3 symbol match là tier vẽ; không Mini→Minor / Grand×2 local.
  */
 export function applyPickUpgrade(
     matched: JackpotType,
-    upgradeArmed: boolean,
+    _upgradeArmed: boolean,
 ): { paidTier: JackpotType; doubleGrand: boolean } {
-    if (!upgradeArmed || matched === JackpotType.NONE) {
-        return { paidTier: matched, doubleGrand: false };
-    }
-    switch (matched) {
-        case JackpotType.MINI:  return { paidTier: JackpotType.MINOR, doubleGrand: false };
-        case JackpotType.MINOR: return { paidTier: JackpotType.MAJOR, doubleGrand: false };
-        case JackpotType.MAJOR: return { paidTier: JackpotType.GRAND, doubleGrand: false };
-        case JackpotType.GRAND: return { paidTier: JackpotType.GRAND, doubleGrand: true };
-        default: return { paidTier: matched, doubleGrand: false };
-    }
+    return { paidTier: matched, doubleGrand: false };
 }
 
 export interface PickResolveResult {
     /** Đã match 3 JP (sau lần pick này). */
     isJackpot: boolean;
-    /** Tier của 3 symbol match (trước upgrade). */
+    /** Tier của 3 symbol match — cũng là tier vẽ jackpot (không nâng vì Upgrade). */
     matchedTier: JackpotType;
-    /** Tier trả thưởng (sau upgrade). */
+    /** = matchedTier. Upgrade chỉ đổi meter, không đổi tier. */
     paidTier: JackpotType;
-    /** Grand ×2. */
+    /** Không dùng local Grand×2 — meter đã cascade lúc 3 Upgrade. */
     doubleGrand: boolean;
     /** Vừa đủ 3 Upgrade ở lần pick này. */
     upgradeJustCompleted: boolean;
@@ -264,7 +270,7 @@ export function resolvePickState(
     }
 
     const isJackpot = matchedTier !== JackpotType.NONE;
-    const { paidTier, doubleGrand } = applyPickUpgrade(matchedTier, upgradeArmed && isJackpot);
+    const { paidTier, doubleGrand } = applyPickUpgrade(matchedTier, upgradeArmed);
     const jackpotIndex = isJackpot ? (JP_TYPE_TO_INDEX[paidTier] ?? 0) : -1;
 
     return {

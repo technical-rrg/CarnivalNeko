@@ -22,6 +22,7 @@
  * ★ OUTPUT:
  *   cdn-manifest.json       ← file cần upload lên CDN
  *   .cdn-hashes.json        ← cache nội bộ, KHÔNG upload, nên gitignore
+ *   ../supernova-cdn-export/YYYYMMDD_HHMM/  ← folder export đầy đủ để upload
  *
  * ★ LẦN ĐẦU chạy (chưa có .cdn-hashes.json):
  *   Tất cả files được coi là "mới" → đều có version = hôm nay.
@@ -95,6 +96,42 @@ function loadJson(filePath) {
     try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return {}; }
 }
 
+/**
+ * Copy manifest + locale + fonts ra folder ngoài project (mirror CDN structure).
+ * Cùng logic với extensions/localization-tools/main.js → exportCdnFiles().
+ */
+function exportCdnFiles(trackedEntries) {
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+    const exportDir = path.join(ROOT, '..', 'supernova-cdn-export', stamp);
+    const fontsDir = path.join(exportDir, 'fonts');
+
+    fs.mkdirSync(fontsDir, { recursive: true });
+
+    const copied = [];
+
+    fs.copyFileSync(MANIFEST_OUT, path.join(exportDir, 'cdn-manifest.json'));
+    copied.push('cdn-manifest.json');
+
+    for (const entry of trackedEntries) {
+        if (!entry.filePath || !fs.existsSync(entry.filePath)) continue;
+
+        if (entry.key === 'locale') {
+            fs.copyFileSync(entry.filePath, path.join(exportDir, 'locale-online.json'));
+            copied.push('locale-online.json');
+            continue;
+        }
+
+        if (entry.lang) {
+            const filename = `${entry.lang}-subset.ttf`;
+            fs.copyFileSync(entry.filePath, path.join(fontsDir, filename));
+            copied.push(`fonts/${filename}`);
+        }
+    }
+
+    return { exportDir, copied };
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 function main() {
@@ -110,6 +147,7 @@ function main() {
     let changed = 0;
     let skipped = 0;
     let missing = 0;
+    const presentEntries = [];
 
     for (const entry of TRACKED_FILES) {
         const { key, filePath, label, lang } = entry;
@@ -144,6 +182,8 @@ function main() {
 
         if (hasChanged) changed++;
         else skipped++;
+
+        presentEntries.push(entry);
 
         // Ghi vào manifest
         if (key === 'locale') {
@@ -185,12 +225,17 @@ function main() {
 
     // ─── Nhắc bước tiếp theo ─────────────────────────────────────────────────
 
+    const exported = exportCdnFiles(presentEntries);
+    console.log(`\n  ✅ Export folder: ${exported.exportDir}`);
+    console.log(`     (${exported.copied.length} files — upload fonts/locale trước, cdn-manifest.json sau cùng)`);
+
     if (changed > 0 || FORCE) {
-        console.log('\n★ BƯỚC TIẾP THEO — Gửi cho người upload:');
-        console.log('   1. cdn-manifest.json');
-        console.log('   2. locale-online.json       (nếu locale CHANGED)');
-        console.log('   3. assets/Font/<lang>-subset.ttf  (các fonts CHANGED)');
-        console.log('\n★ LƯU Ý: Upload fonts + locale TRƯỚC, cdn-manifest.json SAU CÙNG.');
+        console.log('\n★ BƯỚC TIẾP THEO — Upload folder export lên CDN:');
+        console.log('   1. fonts/*.ttf');
+        console.log('   2. locale-online.json');
+        console.log('   3. cdn-manifest.json  ← SAU CÙNG');
+    } else {
+        console.log('\n  Không có file đổi nội dung — vẫn export folder đầy đủ nếu CDN server chưa có bộ mới.');
     }
 
     console.log('');

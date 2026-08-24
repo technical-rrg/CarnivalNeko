@@ -29,7 +29,7 @@ export const ENABLE_DEBUG_TOOLS: boolean = true;
  * Tắt khi muốn mock feature cũ (Wild Trail GoF).
  * Real API: bỏ qua flag này — trails đến từ server grid (PS 41/42/43).
  */
-export const MOCK_FORCE_CARNIVAL_TRAILS: boolean = false;
+export const MOCK_FORCE_CARNIVAL_TRAILS: boolean = true;
 
 /** Số Trail tối thiểu / tối đa mỗi spin khi MOCK_FORCE_CARNIVAL_TRAILS = true. */
 export const MOCK_CARNIVAL_TRAIL_COUNT_MIN: number = 2;
@@ -54,14 +54,14 @@ export type MockCarnivalFeatureMode =
     | 'all'
     | 'cycle';
 
-/** Đổi mode để test: 'cycle' = xoay đủ loại feature mỗi lần trigger. 'red' = vào Pick Game. */
-export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'none';
+/** Chỉ khi MOCK_SPIN_SCENARIO = 'random' — mỗi spin có trail → red pot → Pick (chậm hơn pick_game). */
+export const MOCK_CARNIVAL_FEATURE_TRIGGER: MockCarnivalFeatureMode = 'red';
 
 /**
  * ★ Mock Pick Game grid khi vào Jackpot Feature.
  *   random              — random wonTier + đôi khi có Upgrade
  *   plain_mini          — match 3 Mini, không Upgrade
- *   upgrade_to_major    — 3 Upgrade + 3 Minor → trả Major
+ *   upgrade_to_major    — 3 Upgrade (pick 0–2 hoặc bất kỳ 3 pick đầu) + 3 Minor → trả Major
  *   upgrade_grand_x2    — 3 Upgrade + 3 Grand → Grand ×2
  */
 export type MockPickGameMode =
@@ -70,6 +70,7 @@ export type MockPickGameMode =
     | 'upgrade_to_major'
     | 'upgrade_grand_x2';
 
+/** Đổi mode để test Pick grid: upgrade_to_major = 3 Upgrade + fly clone; plain_mini = match Mini nhanh */
 export const MOCK_PICK_GAME_MODE: MockPickGameMode = 'upgrade_to_major';
 
 /** Khi mode='auto': sau bao nhiêu spin có Trail thì force trigger 1 lần. */
@@ -111,7 +112,7 @@ export const ServerConfig = {
      *  Để null → bỏ qua CDN, dùng local bundled assets.
      *  Để test: set CDN_BASE = null, xoá localStorage 'sn_cdn_*' để clear cache.
      */
-    CDN_BASE: 'https://downloads.realreelsgaming.com/slotlanguage/shangrila' as string | null,
+    CDN_BASE: 'https://downloads.realreelsgaming.com/slotlanguage/carnivalneko' as string | null,
 
     /**
      * Bật/tắt tải locale từ CDN.
@@ -192,8 +193,9 @@ export const ServerConfig = {
  *  'normal_win'        — Cleopatra 3-of-kind
  *  'big_win'           — Cleopatra 5×3 (243 ways combo)
  *  'long_spin'         — 3 Red sticky reel 0..2 → Long Spin
- *  'pot_win'           — Wild Trail tích lũy → Pot Win → Pick Game
- *  'grand_jackpot'     — Pick Game match 3 Grand
+ *  'pot_win'           — Wild Trail tích lũy → Pot Win → Pick Game (3 spin sequence)
+ *  'grand_jackpot'     — 1 spin → Pick Game (Grand, không trail)
+ *  'pick_game'         — ★ 1 spin → Pot Win → Pick Game (grid = MOCK_PICK_GAME_MODE)
  *  'sequence'          — Lần lượt: no_win → normal_win → big_win → long_spin
  */
 export type MockScenario =
@@ -204,9 +206,11 @@ export type MockScenario =
     | 'long_spin'
     | 'pot_win'
     | 'grand_jackpot'
+    | 'pick_game'
     | 'sequence';
 
-export const MOCK_SPIN_SCENARIO: MockScenario = 'random';
+/** ★ Pick Game local test: spin 1 lần → POT_WIN → Press to Start → Pick. */
+export const MOCK_SPIN_SCENARIO: MockScenario = 'pick_game';
 
 // ═══════════════════════════════════════════════════════════
 //  ★★★  DEBUG RANDS: Force server result (dùng DebugArray)  ★★★
@@ -325,9 +329,12 @@ export type MockResumeScenario =
     | 'matsuri_start'
     | 'matsuri_need_claim';
 
-// ★ 'none' = vào game bình thường (dùng MOCK_SPIN_SCENARIO cho spin test)
-// ★ 'pick_game' = giả lập tắt game giữa Pick Game → mở lại Pick Game ngay khi Enter
-export const MOCK_RESUME_SCENARIO: MockResumeScenario = 'none';
+/**
+ * ★ Pick Game test ngay khi vào game: 'pick_game'
+ *   → mock Enter trả NextStage=POT_WIN + PickGame grid → mở PickGamePopup (không cần spin).
+ * Để test full flow Pot burst → Press to Start: đổi về 'none' + MOCK_SPIN_SCENARIO='pick_game'.
+ */
+export const MOCK_RESUME_SCENARIO: MockResumeScenario = 'pick_game';
 
 // ─── Test Login config (chỉ dùng khi dev) ───
 export const TestLoginConfig = {

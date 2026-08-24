@@ -19,6 +19,7 @@ if (_c) {
     _c.info = noop;
     _c.debug = noop;
     _c.warn = noop;
+    _c.error = noop;
     _c.trace = noop;
 }
 
@@ -61,9 +62,5 @@ export const Log = {
     clearWhitelist: (): void => { _white.clear(); },
 };
 
-// Tag mới PHẢI thêm vào đây — Log.d/w/e bị nuốt nếu không whitelist.
-Log.setWhitelist([
-    'pickgame',       // [PickGame] pick cell, result PS ID, 3 ID trúng, server JackpotName
-    'jackpot',        // [Jackpot] claim / trigger sau pick game
-    'multi-line-win', // [MULTI-LINE-WIN] debug per-line animation + payout summation
-]);
+// Chỉ bật log âm thanh — tag "sound" khớp prefix [SOUND] trong SoundManager.
+Log.setWhitelist(['sound']);

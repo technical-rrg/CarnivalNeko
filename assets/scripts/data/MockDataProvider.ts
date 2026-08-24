@@ -137,15 +137,18 @@ export class MockDataProvider {
             nextStage = SlotStageType.POT_WIN;
         }
 
-        // ★ Carnival Feature Trigger → nextStage (API V1.0.2)
-        // Red-only: Pick ngay. Matsuri (+ Ultra/Supreme/Ultimate): FREE_SPIN trước,
-        // Pick (nếu có) sau Claim FREE_SPIN_END (NextStage=PICK_START).
+        // ★ Carnival Feature Trigger → nextStage
+        // Red-only + Ultra/Supreme/Ultimate: Pick ngay.
+        // Mighty/Mega/Super: FREE_SPIN trước. Ultra+ Free Spin sau PICK_END Claim.
         if (carnivalFeature) {
             data.pendingCarnivalMatsuri = null;
             if (carnivalFeature.jackpotFirst) {
                 triggerPotWin = true;
                 pickGame = MockDataProvider.buildPickGame();
                 nextStage = SlotStageType.POT_WIN;
+                if (carnivalFeature.freeSpinAfterJackpot) {
+                    data.pendingCarnivalMatsuri = carnivalFeature;
+                }
             } else {
                 nextStage = SlotStageType.CARNIVAL_MATSURI_START;
             }
@@ -614,7 +617,7 @@ export class MockDataProvider {
                 break;
             case 'upgrade_to_major':
                 matchTier = 'MINOR';
-                paidTier = 'MAJOR';
+                paidTier = 'MINOR';
                 withUpgrade = true;
                 break;
             case 'upgrade_grand_x2':
@@ -628,33 +631,61 @@ export class MockDataProvider {
                     ['MINI', 'MINI', 'MINOR', 'MINOR', 'MAJOR', 'GRAND'];
                 matchTier = tiers[Math.floor(Math.random() * tiers.length)];
                 withUpgrade = Math.random() < 0.35;
-                if (withUpgrade) {
-                    if (matchTier === 'MINI') paidTier = 'MINOR';
-                    else if (matchTier === 'MINOR') paidTier = 'MAJOR';
-                    else if (matchTier === 'MAJOR') paidTier = 'GRAND';
-                    else paidTier = 'GRAND';
-                } else {
-                    paidTier = matchTier;
-                }
+                paidTier = matchTier;
                 break;
             }
         }
 
         const winSym = tierToSym[matchTier];
-        const grid: number[] = [winSym, winSym, winSym];
-        if (withUpgrade) {
-            grid.push(SymbolId.JP_UPGRADE, SymbolId.JP_UPGRADE, SymbolId.JP_UPGRADE);
-        }
-        for (const t of ['GRAND', 'MAJOR', 'MINOR', 'MINI'] as const) {
-            if (t === matchTier) continue;
-            // Mỗi tier còn lại tối đa 2 (tránh match sớm tier khác)
-            grid.push(tierToSym[t], tierToSym[t]);
-        }
-        // Pad đủ 15 ô — không cho tier JP nào khác winSym đạt 3; dư thì thêm winSym
-        const countOf = (sym: number) => grid.reduce((n, s) => n + (s === sym ? 1 : 0), 0);
         const padPool = [
             SymbolId.JP_GRAND, SymbolId.JP_MAJOR, SymbolId.JP_MINOR, SymbolId.JP_MINI,
         ].filter((s) => s !== winSym);
+
+        if (withUpgrade) {
+            // Mock: 3 pick đầu luôn Upgrade — ô 0–2 cố định; ô 3–5 = match tier (pick tiếp để win).
+            const tail: number[] = [];
+            for (const t of ['GRAND', 'MAJOR', 'MINOR', 'MINI'] as const) {
+                if (t === matchTier) continue;
+                tail.push(tierToSym[t], tierToSym[t]);
+            }
+            const countInTail = (sym: number) => tail.filter((s) => s === sym).length;
+            while (tail.length < PICK_GAME_CELL_COUNT - 6) {
+                const candidates = padPool.filter((s) => countInTail(s) < 2);
+                tail.push(
+                    candidates.length > 0
+                        ? candidates[tail.length % candidates.length]
+                        : winSym,
+                );
+            }
+            for (let i = tail.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [tail[i], tail[j]] = [tail[j], tail[i]];
+            }
+            const grid = [
+                SymbolId.JP_UPGRADE, SymbolId.JP_UPGRADE, SymbolId.JP_UPGRADE,
+                winSym, winSym, winSym,
+                ...tail.slice(0, PICK_GAME_CELL_COUNT - 6),
+            ];
+            Log.e(
+                `[MockPick] buildPickGame mode=${m} FIXED:`
+                + ` [0-2]=Upgrade [3-5]=${matchTier} (paid=${paidTier})`,
+            );
+            return {
+                grid,
+                revealed: [],
+                wonTier: paidTier,
+                upgradeArmed: false,
+                upgradeCount: 0,
+                doubleGrand: false,
+            };
+        }
+
+        const grid: number[] = [winSym, winSym, winSym];
+        for (const t of ['GRAND', 'MAJOR', 'MINOR', 'MINI'] as const) {
+            if (t === matchTier) continue;
+            grid.push(tierToSym[t], tierToSym[t]);
+        }
+        const countOf = (sym: number) => grid.reduce((n, s) => n + (s === sym ? 1 : 0), 0);
         while (grid.length < PICK_GAME_CELL_COUNT) {
             const candidates = padPool.filter((s) => countOf(s) < 2);
             grid.push(candidates.length > 0
@@ -675,7 +706,7 @@ export class MockDataProvider {
             wonTier: paidTier,
             upgradeArmed: false,
             upgradeCount: 0,
-            doubleGrand: withUpgrade && matchTier === 'GRAND',
+            doubleGrand: false,
         };
     }
 
@@ -834,7 +865,7 @@ export class MockDataProvider {
             }
 
             case TestScenario.GRAND_JACKPOT: {
-                const pick = MockDataProvider.buildPickGame('upgrade_grand_x2');
+                const pick = MockDataProvider.buildPickGame();
                 return enrich({
                     rands: [0, 0, 0, 0, 0],
                     waysPayWins: [], matchedLinePays: [],

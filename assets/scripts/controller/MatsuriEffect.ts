@@ -678,7 +678,6 @@ export class MatsuriEffect extends Component {
 
     /** Bay tiền — cùng thứ tự Impact2: hàng trên→dưới, trái→phải. */
     private async _phaseFlyAll(cells: StickyCell[]): Promise<void> {
-        SoundManager.instance?.playBonusTrail();
         this._lastFlyArriveSfxAt = 0;
 
         const ordered = this._sortCollectOrder(cells);
@@ -736,6 +735,7 @@ export class MatsuriEffect extends Component {
 
             const clone = instantiate(srcNode);
             clone.name = `MatsuriGoldFly_${cell.reel}_${cell.row}`;
+            SoundManager.instance?.playYellowFly();
             this._stripGoldSpineFxFromClone(clone);
             clone.setParent(layer);
             clone.setSiblingIndex(layer.children.length - 1);

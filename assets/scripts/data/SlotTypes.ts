@@ -231,11 +231,11 @@ export enum CarnivalFeatureKind {
     MEGA = 3,
     /** Blue+Green → Super Matsuri 5×5 / StartCoin 10 */
     SUPER = 4,
-    /** Blue+Red → Ultra Matsuri rồi Jackpot Pick sau Claim (API V1.0.2) */
+    /** Blue+Red → Jackpot Pick trước, rồi Ultra Matsuri */
     ULTRA = 5,
-    /** Red+Green → Supreme Matsuri rồi Jackpot Pick sau Claim */
+    /** Red+Green → Jackpot Pick trước, rồi Supreme Matsuri */
     SUPREME = 6,
-    /** Cả 3 → Ultimate Matsuri rồi Jackpot Pick sau Claim */
+    /** Cả 3 → Jackpot Pick trước, rồi Ultimate Matsuri */
     ULTIMATE = 7,
 }
 
@@ -244,14 +244,18 @@ export interface CarnivalFeatureTrigger {
     /** Pot nào nổ spin này */
     burstPots: TrailColor[];
     /**
-     * Red-only: mở Jackpot Pick ngay sau spin.
-     * Ultra/Supreme/Ultimate = false — Pick sau FREE_SPIN_END Claim (NextStage=PICK_START).
+     * Red-only + Ultra/Supreme/Ultimate: mở Jackpot Pick ngay sau spin.
+     * Mighty/Mega/Super = false — vào Matsuri trước.
      */
     jackpotFirst: boolean;
     /**
-     * Ultra/Supreme/Ultimate: sau Matsuri Claim server trả PickGame + NextStage=PICK_START.
+     * Legacy: Pick sau Matsuri Claim. Ultra+ hiện không dùng (đảo thành Pick → FS).
      */
     jackpotAfterFreeSpin: boolean;
+    /**
+     * Ultra/Supreme/Ultimate: PICK_END Claim → NextStage=FREE_SPIN_START (Matsuri sau Pick).
+     */
+    freeSpinAfterJackpot: boolean;
     /** Matsuri rows: 3/4/5 — 0 nếu chỉ Jackpot */
     matsuriRows: number;
     /** Số Start Gold Sticky */
@@ -264,42 +268,42 @@ export function describeCarnivalFeature(kind: CarnivalFeatureKind): Omit<Carniva
     switch (kind) {
         case CarnivalFeatureKind.JACKPOT:
             return {
-                jackpotFirst: true, jackpotAfterFreeSpin: false,
+                jackpotFirst: true, jackpotAfterFreeSpin: false, freeSpinAfterJackpot: false,
                 matsuriRows: 0, startCoins: 0, featureName: 'Jackpot Feature',
             };
         case CarnivalFeatureKind.MIGHTY:
             return {
-                jackpotFirst: false, jackpotAfterFreeSpin: false,
+                jackpotFirst: false, jackpotAfterFreeSpin: false, freeSpinAfterJackpot: false,
                 matsuriRows: 3, startCoins: 6, featureName: 'Mighty Matsuri',
             };
         case CarnivalFeatureKind.MEGA:
             return {
-                jackpotFirst: false, jackpotAfterFreeSpin: false,
+                jackpotFirst: false, jackpotAfterFreeSpin: false, freeSpinAfterJackpot: false,
                 matsuriRows: 4, startCoins: 8, featureName: 'Mega Matsuri',
             };
         case CarnivalFeatureKind.SUPER:
             return {
-                jackpotFirst: false, jackpotAfterFreeSpin: false,
+                jackpotFirst: false, jackpotAfterFreeSpin: false, freeSpinAfterJackpot: false,
                 matsuriRows: 5, startCoins: 10, featureName: 'Super Matsuri',
             };
         case CarnivalFeatureKind.ULTRA:
             return {
-                jackpotFirst: false, jackpotAfterFreeSpin: true,
+                jackpotFirst: true, jackpotAfterFreeSpin: false, freeSpinAfterJackpot: true,
                 matsuriRows: 3, startCoins: 6, featureName: 'Ultra Matsuri + Jackpot',
             };
         case CarnivalFeatureKind.SUPREME:
             return {
-                jackpotFirst: false, jackpotAfterFreeSpin: true,
+                jackpotFirst: true, jackpotAfterFreeSpin: false, freeSpinAfterJackpot: true,
                 matsuriRows: 4, startCoins: 8, featureName: 'Supreme Matsuri + Jackpot',
             };
         case CarnivalFeatureKind.ULTIMATE:
             return {
-                jackpotFirst: false, jackpotAfterFreeSpin: true,
+                jackpotFirst: true, jackpotAfterFreeSpin: false, freeSpinAfterJackpot: true,
                 matsuriRows: 5, startCoins: 10, featureName: 'Ultimate Matsuri + Jackpot',
             };
         default:
             return {
-                jackpotFirst: false, jackpotAfterFreeSpin: false,
+                jackpotFirst: false, jackpotAfterFreeSpin: false, freeSpinAfterJackpot: false,
                 matsuriRows: 0, startCoins: 0, featureName: 'None',
             };
     }
@@ -680,9 +684,9 @@ export interface SpinResponse {
     /** API: tổng credit sticky đang hold (AllStickies). */
     accumulatedStickyCredit?: number;
     stickyCount?: number;
-    /** Reserved — luôn 0. JP Ultra/Supreme/Ultimate qua Pick sau FS. */
+    /** PICK_END Claim Ultra+: jackpot win mang sang Free Spin. */
     featureEntryJackpotWin?: number;
-    /** Reserved — luôn empty. Tier JP do Pick quyết định. */
+    /** PICK_END Claim Ultra+: tên tier JP (MINI/MINOR/MAJOR/GRAND). */
     featureEntryJackpotName?: string;
     /** Mystery envelope instant payout (normal spin). */
     redEnvelopePay?: number;
@@ -881,6 +885,8 @@ export interface ServerPickResponse {
     UpgradeCount?: number;
     IsUpgradeComplete?: boolean;
     DoubleGrand?: boolean;
+    /** Meter sau upgrade [MINI, MINOR, MAJOR, GRAND] — từ AckPick After/Wins nếu server trả. */
+    JackpotAfter?: number[];
 }
 
 /** Claim response từ server (AckClaimFeature / CNClaimResponse) — API V1.0.2 */
@@ -888,14 +894,21 @@ export interface ServerClaimResponse {
     ClaimResponse: {
         TotalWin: number;
         FeatureName: string;
-        /** SPIN, hoặc PICK_START sau Ultra/Supreme/Ultimate FREE_SPIN_END. */
+        /** SPIN, PICK_START (legacy), hoặc FREE_SPIN_START sau PICK_END Ultra+. */
         NextStage: number;
         WinGrade: string;
         StartRands: number[];
         /** Chỉ có nghĩa khi claim PICK_END. */
         JackpotName?: string;
-        /** Grid 15 ô khi NextStage=PICK_START (Ultra/Supreme/Ultimate). */
+        /** Grid 15 ô khi NextStage=PICK_START (legacy Ultra+ FS→Pick). */
         PickGame?: number[];
+        CurrentFeatureType?: number;
+        FeatureRows?: number;
+        StarterCoins?: any[];
+        AllStickies?: any[];
+        FeatureEntryJackpotWin?: number;
+        FeatureEntryJackpotName?: string;
+        RemainFeatureSpinCount?: number;
     };
     WinCash: number;
     Cash: number;
@@ -914,10 +927,18 @@ export interface ClaimResult {
     /** PICK_END claim only — tier Mini/Minor/Major/Grand. */
     jackpotName?: string;
     startRands?: number[];
-    /** SPIN hoặc PICK_START (Pick sau Matsuri Ultra/Supreme/Ultimate). */
+    /** SPIN, PICK_START (legacy FS→Pick), hoặc FREE_SPIN_START (Pick→FS Ultra+). */
     nextStage?: number;
     /** Seed Pick khi Claim NextStage=PICK_START. */
     pickGame?: PickGameState;
+    /** PICK_END Claim Ultra+ → Free Spin. */
+    currentFeatureType?: number;
+    featureRows?: number;
+    starterCoins?: StickyCell[];
+    allStickies?: StickyCell[];
+    featureEntryJackpotWin?: number;
+    featureEntryJackpotName?: string;
+    remainFeatureSpinCount?: number;
 }
 
 /** BalanceGet response từ server (AckBalanceGet) — 4.11 /Slot/{SlotId}/BalanceGet */

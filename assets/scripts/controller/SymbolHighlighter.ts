@@ -328,8 +328,7 @@ export class SymbolHighlighter extends Component {
         this._deactivateAllSpines();
         this.paylineIndicator?.showWinLine(linePay.payLineIndex);
         if (this._canPlayCycleMatchSound()) {
-            // Cycle lẻ: không play wild_layer — có Wild thì dùng high_value.
-            this._playSymbolMatchSound(linePay.matchedSymbols ?? [], linePay.containsWild, false, 'ps');
+            this._playSymbolMatchSound(linePay.matchedSymbols ?? [], linePay.containsWild, 'ps');
         }
         void this._runHighlightWithSpines(cells, this.lineCycleHighlightDuration, false, () => {
             if (USE_SPINE_HIGHLIGHT) this._zoomCells(cells);
@@ -337,38 +336,36 @@ export class SymbolHighlighter extends Component {
     }
 
     /**
-     * Play đúng 1 SFX match + emit cat tier.
-     * System ID: High = 11..15 → Win_lv1 | còn lại (kể cả Wild=21) → Win_Lv2.
-     * @param idSpace 'ps' = matchedSymbols server; 'client' = WaysPayWin (map → PS trước khi check).
+     * Match SFX: low/high theo symbol PS 11–15; Wild (21) thêm wild_layer (không thay tier).
+     * @param idSpace 'ps' = matchedSymbols server; 'client' = WaysPayWin.
      */
     private _playSymbolMatchSound(
         syms: number[],
         containsWild = false,
-        allowWildLayer = false,
         idSpace: 'ps' | 'client' = 'ps',
     ): void {
         const snd = SoundManager.instance;
         if (!snd) return;
 
-        // So theo system/PS: high 11–15, wild 21
         const hasHighSymbol = syms.some(s => isHighPaySymbol(s, idSpace));
         const hasWild = containsWild || syms.some(s => isWildSymbol(s, idSpace));
 
-        // Girl SFX: Cleopatra = system 15
         const hasGirl = syms.some(s => toSystemPsId(s, idSpace) === 15);
         if (hasGirl) {
             snd.playGirlSymbolAnim();
         }
 
-        // SFX (Wild=21 ưu tiên âm thanh — không gắn cat tier)
-        if (hasWild && allowWildLayer) {
-            snd.playSymbolMatchWild();
-        } else if (hasWild || hasHighSymbol) {
+        if (syms.length === 0 && !hasWild) return;
+
+        // Tier chính: chỉ high symbol quyết định — Wild không ép high.
+        if (hasHighSymbol) {
             snd.playSymbolMatchHigh();
-        } else if (syms.length > 0 || hasWild) {
-            snd.playSymbolMatchLow();
         } else {
-            return;
+            snd.playSymbolMatchLow();
+        }
+
+        if (hasWild) {
+            snd.playSymbolMatchWild();
         }
 
         EventBus.instance.emit(GameEvents.WIN_SYMBOL_MATCH_TIER, hasHighSymbol ? 'high' : 'low');
@@ -452,7 +449,7 @@ export class SymbolHighlighter extends Component {
         const allSyms = lines.flatMap(l => l.matchedSymbols ?? []);
         const hasWild = lines.some(l => l.containsWild)
             || allSyms.some(s => isWildSymbol(s, 'ps'));
-        this._playSymbolMatchSound(allSyms, hasWild, true, 'ps');
+        this._playSymbolMatchSound(allSyms, hasWild, 'ps');
 
         // Chờ prefab (Wild/11…) sẵn sàng TRƯỚC fillBlack — tránh overlay hiện sớm hơn spine.
         void this._runHighlightWithSpines(allCells, duration ?? this.showAllHighlightDuration, loopSpine)
@@ -498,7 +495,7 @@ export class SymbolHighlighter extends Component {
             const n = Math.max(1, w.cells?.length ?? 1);
             for (let i = 0; i < n; i++) waySyms.push(w.symbolId);
         }
-        this._playSymbolMatchSound(waySyms, hasWild, true, 'client');
+        this._playSymbolMatchSound(waySyms, hasWild, 'client');
 
         // Chờ prefab (Wild/11…) sẵn sàng TRƯỚC fillBlack — tránh overlay hiện sớm hơn spine.
         void this._runHighlightWithSpines(allCells, duration ?? this.showAllHighlightDuration, loopSpine)
@@ -544,11 +541,9 @@ export class SymbolHighlighter extends Component {
         if (this._canPlayCycleMatchSound()) {
             const n = Math.max(1, way.cells?.length ?? 1);
             const syms = Array(n).fill(way.symbolId);
-            // Cycle lẻ: không play wild_layer — có Wild thì dùng high_value.
             this._playSymbolMatchSound(
                 syms,
                 way.containsWild || isWildSymbol(way.symbolId, 'client'),
-                false,
                 'client',
             );
         }

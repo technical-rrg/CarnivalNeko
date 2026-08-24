@@ -21,6 +21,9 @@ import { SoundManager } from '../manager/SoundManager';
 const { ccclass, property } = _decorator;
 
 const AUTO_CLOSE_SECONDS = 30;
+/** Scale panel từ nhỏ → 1 khi mở. */
+const SCALE_IN_FROM = 0.2;
+const SCALE_IN_DURATION = 0.28;
 
 @ccclass('JackpotStartPopup')
 export class JackpotStartPopup extends Component {
@@ -71,6 +74,7 @@ export class JackpotStartPopup extends Component {
         this._ensureRefs();
         this._pickState = pickState;
         this._isOpen = true;
+        SoundManager.instance?.enterPickGameBgm();
 
         this._applyLabels();
 
@@ -78,6 +82,10 @@ export class JackpotStartPopup extends Component {
         if (this.overlayNode) {
             this.overlayNode.setScale(1, 1, 1);
             this.overlayNode.active = true;
+            const ovOp = this.overlayNode.getComponent(UIOpacity) ?? this.overlayNode.addComponent(UIOpacity);
+            Tween.stopAllByTarget(ovOp);
+            ovOp.opacity = 0;
+            tween(ovOp).to(SCALE_IN_DURATION, { opacity: 255 }, { easing: 'sineOut' }).start();
         }
         if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
             this.clickOverlay.setScale(1, 1, 1);
@@ -87,13 +95,15 @@ export class JackpotStartPopup extends Component {
         this._fitOverlayFullscreen();
         EventBus.instance.emit(GameEvents.POPUP_OPENED);
 
-        const panel = this.popupNode;
-        if (panel) {
-            panel.setScale(1, 1, 1);
-            const op = panel.getComponent(UIOpacity) ?? panel.addComponent(UIOpacity);
-            op.opacity = 255;
-            Tween.stopAllByTarget(panel);
-        }
+        const panel = this.popupNode ?? this.node;
+        Tween.stopAllByTarget(panel);
+        panel.setScale(SCALE_IN_FROM, SCALE_IN_FROM, 1);
+        const op = panel.getComponent(UIOpacity) ?? panel.addComponent(UIOpacity);
+        Tween.stopAllByTarget(op);
+        op.opacity = 255;
+        tween(panel)
+            .to(SCALE_IN_DURATION, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
+            .start();
 
         if (this.hintLabel) {
             const hn = this.hintLabel.node;
@@ -107,7 +117,7 @@ export class JackpotStartPopup extends Component {
                 .start();
         }
 
-        this.scheduleOnce(() => this._bindInput(), 0.15);
+        this.scheduleOnce(() => this._bindInput(), SCALE_IN_DURATION + 0.05);
         this._scheduleAutoClose();
 
         Log.d(`[JackpotStartPopup] show — PRESS TO START → Pick Game (auto-close ${AUTO_CLOSE_SECONDS}s)`);
@@ -278,6 +288,9 @@ export class JackpotStartPopup extends Component {
         if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
             this.clickOverlay.active = false;
         }
+        const panel = this.popupNode ?? this.node;
+        Tween.stopAllByTarget(panel);
+        panel.setScale(1, 1, 1);
         this.node.active = false;
     }
 

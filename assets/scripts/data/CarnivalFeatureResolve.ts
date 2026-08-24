@@ -116,7 +116,8 @@ export function resolveMockCarnivalFeature(
 
 /**
  * Real API: dựng CarnivalFeatureTrigger từ CNSpinResponse (V1.0.2).
- * CurrentFeatureType 0–5 = Mighty→Ultimate (Matsuri trước; Ultra+ Pick sau Claim).
+ * CurrentFeatureType 0–5 = Mighty→Ultimate.
+ * Ultra/Supreme/Ultimate: Pick trước (jackpotFirst), Free Spin sau PICK_END Claim.
  * PICK_START + type −1 (hoặc thiếu type) + có PickGame → Jackpot Red-only.
  */
 export function buildCarnivalFeatureFromSpin(anyRes: any, nextStage: number): CarnivalFeatureTrigger | null {

@@ -9703,14 +9703,14 @@
       "__id__": 154
     },
     "popupFxTransitionDelay": 0.2,
-    "tierDurationBig": 5.9,
-    "tierDurationMega": 5.5,
-    "tierDurationMajor": 5.5,
-    "tierDurationSuper": 5.5,
-    "tierDurationEpic": 5.5,
-    "tierDurationUltra": 5.5,
-    "tierDurationMonster": 5.5,
-    "tierDurationMax": 5.5,
+    "tierDurationBig": 6.4,
+    "tierDurationMega": 6,
+    "tierDurationMajor": 6,
+    "tierDurationSuper": 6,
+    "tierDurationEpic": 6,
+    "tierDurationUltra": 6,
+    "tierDurationMonster": 6,
+    "tierDurationMax": 7,
     "autoCloseTimeout": 3,
     "outAnimCloseDelay": 0.5,
     "_id": ""
@@ -9877,7 +9877,7 @@
     "portrait": {
       "__id__": 673
     },
-    "_id": "db9uU6emJFkoU4elZ5kH3T"
+    "_id": "0b8WlHN8xLWKrADguM2Lor"
   },
   {
     "__type__": "cc.CompPrefabInfo",
@@ -9975,7 +9975,7 @@
     "portrait": {
       "__id__": 679
     },
-    "_id": "03NxlQeb9My4VOvDFZG3XW"
+    "_id": "f9ft5EzDlMoppICKIjxECU"
   },
   {
     "__type__": "cc.CompPrefabInfo",

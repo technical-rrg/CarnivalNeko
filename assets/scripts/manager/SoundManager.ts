@@ -28,6 +28,7 @@ const LAZY_AUDIO_PATHS: Record<string, string> = {
     sxReelSpin: 'sound/sx_reel_spin',
     mxBonusIdle: 'sound/mx_bonus_idle',
     mxBonusLoop: 'sound/mx_bonus_loop',
+    mxPickgameLoop: 'sound/mx_pickgame_loop',
     mxBonusCongratulation: 'sound/mx_bonus_congratulation',
     mxProgressiveWin: 'sound/mx_progressive_win',
     mxProgressiveTransImpact: 'sound/mx_progressive_trans_impact',
@@ -131,6 +132,7 @@ export class SoundManager extends Component {
     @property({ type: AudioClip }) mxNormalLoop: AudioClip | null = null;
     @property({ type: AudioClip }) mxBonusIdle: AudioClip | null = null;
     @property({ type: AudioClip }) mxBonusLoop: AudioClip | null = null;
+    @property({ type: AudioClip }) mxPickgameLoop: AudioClip | null = null;
     @property({ type: AudioClip }) mxBonusCongratulation: AudioClip | null = null;
     @property({ type: AudioClip }) mxProgressiveWin: AudioClip | null = null;
     @property({ type: AudioClip }) mxProgressiveTransImpact: AudioClip | null = null;
@@ -452,7 +454,7 @@ export class SoundManager extends Component {
             'sxReelLand1', 'sxReelLand2', 'sxReelLand3', 'sxReelLand4', 'sxReelLand5', 'sxReelLandAll',
             'sxReelSpinQuickTurbo', 'sxSymbolMatchLowValue', 'sxSymbolMatchHighValue',
             'sxSymbolMatchWildLayer', 'sxSymbolPayout',
-            'mxBonusIdle', 'mxBonusLoop', 'mxBonusCongratulation',
+            'mxBonusLoop', 'mxPickgameLoop', 'mxBonusCongratulation',
             'sxBonusTrigger', 'sxTransition', 'sxCounterLoop', 'sxCounterEnd',
             'sxBonusStickyLand', 'sxBonusStickyLand2', 'sxBonusStickyLand3',
             'sxBonusStickyLand4', 'sxBonusStickyLand5', 'sxBonusStickyWin',
@@ -802,7 +804,7 @@ export class SoundManager extends Component {
         });
     }
 
-    /** Play mx_normal_loop / mx_bonus_loop ngay trên bgmSource, không đụng crossfade source. */
+    /** Play mx_normal_loop / mx_bonus_loop / mx_pickgame_loop ngay trên bgmSource. */
     private _startCurrentLoopImmediate(): void {
         if (this._bgmFadeTick) {
             this.unschedule(this._bgmFadeTick);
@@ -810,9 +812,7 @@ export class SoundManager extends Component {
         }
         this._removeBonusLoopCallback();
 
-        const wantBonus = this._inFeatureMusic;
-        const prop = wantBonus ? 'mxBonusLoop' : 'mxNormalLoop';
-        const clip = wantBonus ? this.mxBonusLoop : this.mxNormalLoop;
+        const { prop, clip } = this._resolveLoopBgmTarget();
         if (!this.bgmSource) return;
 
         const start = (c: AudioClip) => {
@@ -891,9 +891,9 @@ export class SoundManager extends Component {
         this.enterPickGameBgm();
     }
 
-    /** Fade BGM hiện tại → mx_bonus_idle → mx_bonus_loop (Pick Game). */
+    /** Fade BGM hiện tại → mx_pickgame_loop (Pick Game). */
     enterPickGameBgm(): void {
-        this._soundLog('REQUEST pick BGM mx_bonus_idle→mx_bonus_loop');
+        this._soundLog('REQUEST pick BGM mx_pickgame_loop');
         if (this._progressiveWinActive || this._progressiveSkipPlaying) {
             this._soundLog('SKIP pick BGM (progressive active)');
             return;
@@ -903,7 +903,7 @@ export class SoundManager extends Component {
             return;
         }
         this._pickGameBgmActive = true;
-        this._inFeatureMusic = true;
+        this._inFeatureMusic = false;
         if (this._pickGameBgmLoading) return;
         this._pickGameBgmLoading = true;
         void this._loadAndPlayPickGameBgm();
@@ -914,17 +914,16 @@ export class SoundManager extends Component {
             const bundleOk = await this._ensureSoundBundleReady();
             if (!bundleOk || !this._pickGameBgmActive) return;
 
-            const idle = await this._ensureClip('mxBonusIdle');
-            const loop = await this._ensureClip('mxBonusLoop');
+            const loop = await this._ensureClip('mxPickgameLoop');
             if (!this._pickGameBgmActive) return;
 
-            if (!idle && !loop) {
-                this._soundLog('FAIL mx_bonus_idle & mx_bonus_loop');
+            if (!loop) {
+                this._soundLog('FAIL mx_pickgame_loop');
                 return;
             }
 
-            if (this._isBonusBgmPlaying()) {
-                this._soundLog('SKIP pick BGM (bonus already playing)');
+            if (this._isPickGameBgmPlaying()) {
+                this._soundLog('SKIP pick BGM (already playing)');
                 return;
             }
 
@@ -933,24 +932,16 @@ export class SoundManager extends Component {
                 this._bgmFadeTick = null;
             }
             this._removeBonusLoopCallback();
-
-            if (idle) {
-                this._playMusic(idle, false, () => {
-                    if (loop && this._pickGameBgmActive) {
-                        this._playMusicProp('mxBonusLoop', true);
-                    }
-                }, 'mx_bonus_idle');
-            } else if (loop) {
-                this._playMusic(loop, true, undefined, 'mx_bonus_loop');
-            }
+            this._playMusic(loop, true, undefined, 'mx_pickgame_loop');
         } finally {
             this._pickGameBgmLoading = false;
         }
     }
 
-    /** Fade BGM hiện tại → mx_bonus_idle → mx_bonus_loop (Matsuri / Free Spin). */
+    /** Fade BGM hiện tại → mx_bonus_loop (Matsuri / Free Spin). */
     private _enterFeatureBgm(): void {
         if (this._progressiveWinActive || this._progressiveSkipPlaying) return;
+        this._pickGameBgmActive = false;
         this._inFeatureMusic = true;
         this._startFeatureMusic();
     }
@@ -976,22 +967,20 @@ export class SoundManager extends Component {
     /** Ngắt BGM hiện tại và play mx_normal_loop ngay (skip nếu đang progressive / đã là normal). */
     private _cutToNormalLoopNow(): void {
         this._inFeatureMusic = false;
+        this._pickGameBgmActive = false;
         if (this._progressiveWinActive) return;
         this._cutToCurrentLoopNow();
     }
 
     /**
      * Ngắt BGM hiện tại (progressive skip / jackpot / …) → loop phù hợp ngay.
-     * Feature còn mở → mx_bonus_loop; không thì mx_normal_loop.
+     * Pick → mx_pickgame_loop; Feature → mx_bonus_loop; không thì mx_normal_loop.
      */
     private _cutToCurrentLoopNow(): void {
         if (this._progressiveWinActive) return;
-        // Skip đang trên BGM chính — để ENDED / _onProgressiveWinEnd (fade) xử lý
         if (this._progressiveSkipPlaying) return;
 
-        const wantBonus = this._inFeatureMusic;
-        const targetProp = wantBonus ? 'mxBonusLoop' : 'mxNormalLoop';
-        const targetClip = wantBonus ? this.mxBonusLoop : this.mxNormalLoop;
+        const { prop, clip: targetClip } = this._resolveLoopBgmTarget();
         if (targetClip && this.bgmSource?.clip === targetClip && this.bgmSource.playing) return;
 
         if (this._bgmFadeTick) {
@@ -1000,7 +989,7 @@ export class SoundManager extends Component {
         }
         this._removeBonusLoopCallback();
         if (this.bgmSource?.playing) this.bgmSource.stop();
-        this._playMusicProp(targetProp, true);
+        this._playMusicProp(prop, true);
     }
 
     private _onPickGameMatchFound(): void {
@@ -1045,33 +1034,45 @@ export class SoundManager extends Component {
         // Yellow/Green coin absorb sound is handled by StickyOverlayController when they appear on overlay.
     }
 
-    private _isBonusBgmPlaying(): boolean {
+    private _resolveLoopBgmTarget(): { prop: string; clip: AudioClip | null } {
+        if (this._pickGameBgmActive) {
+            return { prop: 'mxPickgameLoop', clip: this.mxPickgameLoop };
+        }
+        if (this._inFeatureMusic) {
+            return { prop: 'mxBonusLoop', clip: this.mxBonusLoop };
+        }
+        return { prop: 'mxNormalLoop', clip: this.mxNormalLoop };
+    }
+
+    private _isPickGameBgmPlaying(): boolean {
         const clip = this.bgmSource?.clip;
         if (!clip) return false;
-        if (clip === this.mxBonusIdle || clip === this.mxBonusLoop) return true;
-        const name = clip.name ?? '';
-        return name.includes('mx_bonus_idle') || name.includes('mx_bonus_loop');
+        if (clip === this.mxPickgameLoop) return true;
+        return (clip.name ?? '').includes('mx_pickgame_loop');
+    }
+
+    private _isFeatureBgmPlaying(): boolean {
+        const clip = this.bgmSource?.clip;
+        if (!clip) return false;
+        if (clip === this.mxBonusLoop) return true;
+        return (clip.name ?? '').includes('mx_bonus_loop');
     }
 
     private _startFeatureMusic(force = false): void {
         if (this._progressiveWinActive || this._progressiveSkipPlaying) return;
-        if (!force && this._isBonusBgmPlaying()) return;
+        if (!force && this._isFeatureBgmPlaying()) return;
         if (this._bgmFadeTick) {
             this.unschedule(this._bgmFadeTick);
             this._bgmFadeTick = null;
         }
         this._removeBonusLoopCallback();
-        this._playMusicProp('mxBonusIdle', false, () => this._playMusicProp('mxBonusLoop', true));
+        this._playMusicProp('mxBonusLoop', true);
     }
 
     private _restoreCurrentLoop(): void {
-        // Đừng để listener ENDED cũ / call khác ghi đè nhạc Progressive / skip đang chạy
         if (this._progressiveWinActive || this._progressiveSkipPlaying) return;
-        if (this._inFeatureMusic) {
-            this._playMusicProp('mxBonusLoop', true);
-        } else {
-            this._playMusicProp('mxNormalLoop', true);
-        }
+        const { prop } = this._resolveLoopBgmTarget();
+        this._playMusicProp(prop, true);
     }
 
     private _playMusic(

@@ -20,12 +20,11 @@
  *   GameManager / EventBus gửi JACKPOT_TRIGGER(jackpotType, amount).
  *   1. Activate node; đặt đúng spine theo jackpotType.
  *   2. Spine play "in" → "loop" + bắt đầu count-up 0 → amount trong countUpDuration giây.
- *   3. Sau count-up:
- *      - Auto-Spin đang bật → tự đóng sau autoCloseTimeout giây.
- *      - Không Auto-Spin   → giữ nguyên, chờ player bấm clickOverlay.
- *   4. Bấm vào (hoặc timeout):
- *      - Nếu đang count-up → nhảy thẳng tới tiền max rồi đóng ngay.
- *      - Nếu count-up xong → đóng popup.
+ *   3. Sau count-up (chạy hết hoặc skip): tự đóng sau autoCloseTimeout giây.
+ *   4. Bấm vào:
+ *      - Nếu đang count-up → nhảy thẳng tới tiền max, rồi đợi autoCloseTimeout rồi tự đóng.
+ *        Click lần nữa trong lúc đợi → đóng ngay.
+ *      - Nếu count-up xong (đang đợi auto-close) → đóng popup ngay.
  *   5. Spine play "out" (nếu có) → delay outAnimCloseDelay → deactivate node → callback().
  *      Không có anim "out" → đóng ngay, không treo game.
  */
@@ -124,7 +123,7 @@ export class JackpotPopup extends Component {
     @property({ tooltip: 'Thời gian count-up số tiền (giây)' })
     countUpDuration: number = 3.0;
 
-    @property({ tooltip: 'Timeout tự đóng popup sau khi count-up xong (giây) - chỉ áp dụng khi Auto-Spin bật' })
+    @property({ tooltip: 'Timeout tự đóng popup sau khi count-up xong hoặc sau khi skip (giây)' })
     autoCloseTimeout: number = 3.0;
 
     @property({ tooltip: 'Delay sau khi play "out" animation trước khi đóng popup (giây)' })
@@ -479,12 +478,9 @@ export class JackpotPopup extends Component {
             SoundManager.instance?.stopCoinLoop();
             SoundManager.instance?.playCoinEnd();
 
-            // Auto-Spin → đóng nhanh sau 1 giây; không → đợi click tiếp theo
-            const isAutoSpin = AutoSpinManager.instance.autoSpinCount > 0;
-            if (isAutoSpin) {
-                this._autoCloseCb = () => { this._closePopup(); };
-                this.scheduleOnce(this._autoCloseCb, 1.0);
-            }
+            // Skip xong: đợi vài giây rồi tự đóng (giống count-up chạy hết).
+            // Click lần nữa trong lúc đợi → _onClickClose đóng ngay.
+            this._waitForClose();
             return;
         }
 

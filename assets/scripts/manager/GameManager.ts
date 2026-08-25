@@ -819,6 +819,7 @@ export class GameManager extends Component {
     }
 
     private _shouldRetrySpinRequestAfterSettled(): boolean {
+        if (this._isPickGameInProgress()) return false;
         return AutoSpinManager.instance.isAutoSpinActive || this._isFreeSpin() || this._isTopUp() || this._isMatsuri();
     }
 
@@ -892,6 +893,21 @@ export class GameManager extends Component {
 
         if (this._isSpinning) {
             blocked('GameManager is spinning');
+            return;
+        }
+        // Server CurrentStage/NextStage=PICK(7): chỉ /Pick, không /Spin.
+        // Guard này không phụ thuộc gameState — Space / auto-spin / retry vẫn bị chặn.
+        if (this._isPickGameInProgress()
+            || (this._pendingResume != null && this._isPickGameStage(this._pendingResume.nextStage))) {
+            this._pendingSpinRequestAfterSettled = false;
+            Log.e(
+                `[GameManager] SPIN_REQUEST blocked — Pick Game in progress` +
+                ` stage=${this._currentStage} pickActive=${this._isPickGameActive}` +
+                ` pendingResume=${this._pendingResume?.nextStage ?? 'none'}` +
+                ` gameState=${this._gameState}`,
+            );
+            blocked('Pick Game in progress');
+            EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
             return;
         }
         // Matsuri: chặn spin khi đang chờ Start popup hoặc seed chưa xong
@@ -1090,6 +1106,11 @@ export class GameManager extends Component {
                 wallet.add(BetManager.instance.totalBet);
             }
             this._isSpinning = false;
+            if (this._isPickGameInProgress()) {
+                this._gameState = GameState.POPUP;
+                EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+                return;
+            }
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
             // Nếu NetworkManager đã emit popup (ServerApiError.alreadyHandled), không emit lại
             if (!(err instanceof ServerApiError && err.alreadyHandled)) {
@@ -2838,12 +2859,22 @@ export class GameManager extends Component {
             return;
         }
 
+        // Pick đang chơi dở: JACKPOT_END từ nguồn khác (leftover popup, double-emit, …)
+        // KHÔNG đóng Pick — server vẫn CurrentStage=PICK, đóng sớm sẽ khiến client /Spin nhầm.
+        if (this._isPickGameInProgress() && !this._isPickGameResolved()) {
+            Log.w(
+                `[GameManager] JACKPOT_END ignored — Pick Game still in progress` +
+                ` stage=${this._currentStage} pickActive=${this._isPickGameActive}`,
+            );
+            this._gameState = GameState.POPUP;
+            EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+            return;
+        }
+
         this._gameState = GameState.RESULT;
         const resp = GameData.instance.lastSpinResponse;
 
-        // ★ Pick Game flow: sau JACKPOT_END, emit PICK_GAME_CLOSE để reset state
-        // KHÔNG check progressive win ngay - ProgressiveWin sẽ được check sau khi PICK_GAME_CLOSE
-        // Chỉ đóng Pick khi đang thực sự trong Pick — KHÔNG dùng POT_WIN (burst/entry trước khi mở Pick).
+        // ★ Pick đã match 3 JP: JACKPOT_END → đóng Pick, rồi progressive / IDLE.
         if (
             this._isPickGameActive ||
             this._currentStage === SlotStageType.PICK_END ||
@@ -2851,9 +2882,8 @@ export class GameManager extends Component {
             this._currentStage === SlotStageType.PICK_START ||
             this._currentStage === SlotStageType.PICK_GAME
         ) {
-            Log.e(`[DEBUG-PICK] _onJackpotEnd → Pick Game flow detected (stage=${this._currentStage}, pickActive=${this._isPickGameActive}) → emit PICK_GAME_CLOSE`);
+            Log.e(`[DEBUG-PICK] _onJackpotEnd → Pick Game resolved (stage=${this._currentStage}, pickActive=${this._isPickGameActive}) → emit PICK_GAME_CLOSE`);
             EventBus.instance.emit(GameEvents.PICK_GAME_CLOSE);
-            // Sau PICK_GAME_CLOSE, progressive win sẽ được check trong _onPickGameClose nếu cần
             return;
         }
         Log.e(`[DEBUG-PICK] _onJackpotEnd → NOT Pick Game flow, stage=${this._currentStage}`);
@@ -2903,6 +2933,12 @@ export class GameManager extends Component {
     /** Progressive Win đóng xong → tiếp tục flow */
     private _onProgressiveWinEnd(): void {
         this._logSpinState('PROGRESSIVE_WIN_END received');
+        if (this._isPickGameInProgress() && !this._isPickGameResolved()) {
+            Log.w('[GameManager] PROGRESSIVE_WIN_END during Pick Game — keep pick, skip auto-spin');
+            this._gameState = GameState.POPUP;
+            EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+            return;
+        }
         if (this._isSpinning) {
             // Normal spin path: _afterWinProcessed chưa chạy → để nó hoàn tất cycle
             this._gameState = GameState.RESULT;
@@ -2948,8 +2984,7 @@ export class GameManager extends Component {
 
     private _showJackpotStartPopupThenEnter(pickState: PickGameState): void {
         this._pendingJackpotStartPick = pickState;
-        this._gameState = GameState.POPUP;
-        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+        this._lockSpinForPickGame();
         this.unschedule(this._prefetchFeatureBackground);
         this.scheduleOnce(this._prefetchFeatureBackground, 0.5);
 
@@ -2986,11 +3021,10 @@ export class GameManager extends Component {
     /** Mở PickGamePopup thật sự (resume / bỏ qua Start popup). */
     private _openPickGameNow(pickState: PickGameState): void {
         Log.e('[DEBUG-PICK] _openPickGameNow → PICK_GAME_OPEN');
+        this._lockSpinForPickGame();
         this._isPickGameActive = true;
         this._pickGameBgPending = true;
         this._prefetchPickGameBackground();
-        this._gameState = GameState.POPUP;
-        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
         EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
         EventBus.instance.emit(GameEvents.PICK_GAME_OPEN, pickState);
         // Không còn TransitionPopup — đổi BG Pick ngay khi entry
@@ -3131,6 +3165,7 @@ export class GameManager extends Component {
             this._prefetchFeatureBackground();
             // Giữ BG Pick đến lúc _enterCarnivalMatsuri crossfade → Feature.
             data.pendingCarnivalMatsuri = null;
+            data.pickGameState = null;
             this._pendingFreeSpinEnd = false;
             this._gameState = GameState.POPUP;
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
@@ -3140,6 +3175,15 @@ export class GameManager extends Component {
         }
 
         this._isPickGameActive = false;
+        data.pickGameState = null;
+        if (data.lastSpinResponse && (
+            this._isPickGameStage(Number(data.lastSpinResponse.nextStage))
+            || Number(data.lastSpinResponse.nextStage) === SlotStageType.PICK_END
+            || Number(data.lastSpinResponse.nextStage) === SlotStageType.PICK_GAME_END
+        )) {
+            data.lastSpinResponse.nextStage = SlotStageType.SPIN;
+            data.lastSpinResponse.pickGame = undefined;
+        }
 
         // Legacy Matsuri→Pick: cleanup trì hoãn đến khi Pick đóng
         const stillInMatsuri = data.currentMode === 'matsuri';
@@ -4135,6 +4179,36 @@ export class GameManager extends Component {
             || stage === SlotStageType.PICK;
     }
 
+    /** Client đang trong Pick (kể cả burst/entry) — không được gửi /Spin. */
+    private _isPickGameInProgress(): boolean {
+        if (this._isPickGameActive) return true;
+        if (this._isPickGameStage(this._currentStage as number)) return true;
+        const pick = GameData.instance.pickGameState;
+        return !!pick && !pick.wonTier && !(GameData.instance.pickGameWinAmount > 0);
+    }
+
+    /** Pick đã match 3 JP / PICK_END — được đóng popup và Claim. */
+    private _isPickGameResolved(): boolean {
+        const data = GameData.instance;
+        if (data.pickGameWinAmount > 0) return true;
+        if (data.pickGameState?.wonTier) return true;
+        const ns = Number(data.lastSpinResponse?.nextStage);
+        return ns === SlotStageType.PICK_END
+            || ns === SlotStageType.PICK_GAME_END
+            || this._currentStage === SlotStageType.PICK_END
+            || this._currentStage === SlotStageType.PICK_GAME_END;
+    }
+
+    /** Khóa spin button + hủy auto-spin retry khi vào Pick. */
+    private _lockSpinForPickGame(): void {
+        this._isPickGameActive = true;
+        this._currentStage = SlotStageType.PICK;
+        this._gameState = GameState.POPUP;
+        this._pendingSpinRequestAfterSettled = false;
+        this.unschedule(this._autoSpinCallback);
+        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
+    }
+
     /**
      * Parse PickGame state từ raw LastSpinResponse để resume.
      * Hỗ trợ:
@@ -4358,13 +4432,11 @@ export class GameManager extends Component {
         (data.lastSpinResponse as any).triggerPotWin = true;
         data.pickGameState = pickState;
 
-        this._currentStage = SlotStageType.POT_WIN;
-        this._gameState = GameState.POPUP;
+        this._lockSpinForPickGame();
         this._isPickGameActive = true;
         this._pickGameBgPending = true;
         this._updateDisplayVisibility();
         this._prefetchFeatureBackground();
-        EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
         // Mở thẳng Pick Game (bỏ qua hiệu ứng bat-fly POT_WIN_INTRO vì reel không hiển thị trail khi resume)
         this.scheduleOnce(() => {
             EventBus.instance.emit(GameEvents.PICK_GAME_OPEN, pickState);

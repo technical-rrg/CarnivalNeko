@@ -254,8 +254,22 @@ export class MatsuriStartPopup extends Component {
         }
 
         applyLocalizedSprite(this.note1Sprite, this.prizesAppearFrames, lang);
-        applyLocalizedSprite(this.note2Sprite, this.minorMiniAppearFrames, lang);
+        this._applyNote2Visibility(feature.kind);
+        if (this.note2Sprite?.node?.active) {
+            applyLocalizedSprite(this.note2Sprite, this.minorMiniAppearFrames, lang);
+        }
         applyLocalizedSprite(this.panelBgSprite, this.panelBgFrames, lang);
+    }
+
+    /** Mighty / Mega / Super — ẩn Note2 (MINOR OR MINI); Ultra+ vẫn hiện. */
+    private _applyNote2Visibility(kind: CarnivalFeatureKind): void {
+        const show = kind !== CarnivalFeatureKind.MIGHTY
+            && kind !== CarnivalFeatureKind.MEGA
+            && kind !== CarnivalFeatureKind.SUPER;
+        const node = this.note2Sprite?.node
+            ?? this.popupNode?.getChildByName('Base')?.getChildByName('Note2')
+            ?? null;
+        if (node?.isValid) node.active = show;
     }
 
     private _titleFramesForKind(kind: CarnivalFeatureKind): LocalizedSpriteFrames | null {

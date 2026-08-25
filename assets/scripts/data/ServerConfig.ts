@@ -117,12 +117,12 @@ export const ServerConfig = {
     /**
      * Bật/tắt tải locale từ CDN.
      *  true  → Fetch locale-online.json từ CDN và override local .ts files (mặc định).
-     *  false → Dùng local .ts files đã build sẵn (thường dùng khi test locale từ tool).
+     *  false → Dùng local .ts files đã build sẵn (thường dùng khi test locale từ tool). 
      *
      * ★ Khi chạy localization-tool-update để tạo .ts mới từ Excel,
      *   set USE_CDN_LOCALE = false để game dùng đúng file đó thay vì bị CDN override.
      */
-    USE_CDN_LOCALE: false,
+    USE_CDN_LOCALE: true,
 
     /** Bật/tắt log của Jackpot polling (mỗi 2s sẽ rất nhiều log) */
     LOG_JACKPOT_POLLING: false,
@@ -341,7 +341,7 @@ export const TestLoginConfig = {
     PlatformId: 'testuser01',
     DeviceToken: 'a2b07025fdc0416c8ef8cb68ea39c1ef',
     IsPractice: false,
-    Currency: 'USD',
+    Currency: 'USDT',
     PartnerId: null as number | null,
 };
 

@@ -324,6 +324,7 @@ export class UIController extends Component {
             EventBus.instance.emit(GameEvents.REELS_QUICK_STOP);
             return;
         }
+        if (!this._spinEnabled) return;
         // Log.e('[SPIN-HANG][UI] spin click emits SPIN_REQUEST');
         EventBus.instance.emit(GameEvents.SPIN_REQUEST);
     }

@@ -162,6 +162,15 @@ export class PickGamePopup extends Component {
     @property({ tooltip: 'Thời gian 3 ô match nhún zoom (giây).' })
     matchCelebrateDuration: number = 0.7;
 
+    @property({ tooltip: 'Biên độ lơ lửng Y coin chưa lật (px).' })
+    hiddenCoinFloatHeight: number = 6;
+
+    @property({ tooltip: 'Chu kỳ lơ lửng coin chưa lật (giây).' })
+    hiddenCoinFloatDuration: number = 1.4;
+
+    @property({ tooltip: 'Lệch pha thêm theo hàng (giây/hàng) — kết hợp so le bàn cờ.' })
+    hiddenCoinFloatStagger: number = 0.06;
+
     @property({ tooltip: 'Delay sau Upgrade×3 burst trước khi cho pick tiếp (giây).' })
     upgradeCelebrateDelay: number = 0.35;
 
@@ -221,6 +230,9 @@ export class PickGamePopup extends Component {
     private _upgradeJackpotHitFxPool: NodePool | null = null;
     private readonly _maxUpgradeJackpotHitFxPool = 8;
     private _upgradeJackpotHitFxRecycleCbs = new Map<Node, () => void>();
+    /** Vị trí gốc coin (trước float) — key = coin index. */
+    private _coinBasePos = new Map<number, Vec3>();
+    private _hiddenFloatPlaying = new Set<number>();
 
     onLoad(): void {
         this.node.active = false;
@@ -300,6 +312,7 @@ export class PickGamePopup extends Component {
     }
 
     onDestroy(): void {
+        this._stopAllHiddenCoinFloats(false);
         this._clearUpgradeFlyClones();
         this._clearUpgradeJackpotHitFx();
         EventBus.instance.offTarget(this);
@@ -396,7 +409,10 @@ export class PickGamePopup extends Component {
                         },
                     );
                     this._playUpgradeCelebrate(nextVals, () => {
-                        if (!this._matched) this._setButtonsInteractable(true);
+                        if (!this._matched) {
+                            this._setButtonsInteractable(true);
+                            this._refreshHiddenCoinFloats();
+                        }
                     });
                 }
 
@@ -503,6 +519,8 @@ export class PickGamePopup extends Component {
         }
         this._serverPickWinAmount = 0;
         this._lastRevealedIndex = -1;
+        this._coinBasePos.clear();
+        this._hiddenFloatPlaying.clear();
         GameData.instance.holdJackpotValues = false;
 
         if (this.coinFontDemo?.isValid) this.coinFontDemo.active = false;
@@ -593,6 +611,10 @@ export class PickGamePopup extends Component {
 
     private _onJackpotEnd(): void {
         if (!this.node.isValid) return;
+        if (!this._matched) {
+            Log.w('[PickGamePopup] JACKPOT_END ignored — pick not finished');
+            return;
+        }
         if (!this.node.active && getNodeOpacity(this.node) <= 0) return;
         this._closePopup(true);
     }
@@ -669,6 +691,8 @@ export class PickGamePopup extends Component {
     private _resetCoin(index: number): void {
         const node = this.coinNodes[index];
         if (!node) return;
+        this._stopHiddenCoinFloat(index, true);
+        this._coinBasePos.delete(index);
         Tween.stopAllByTarget(node);
         node.setScale(1, 1, 1);
         this._setCoinInteractable(index, true);
@@ -706,6 +730,86 @@ export class PickGamePopup extends Component {
             this._applySymbolToFront(front, sym, false);
         }
         this._setCoinInteractable(index, false);
+        this._stopHiddenCoinFloat(index, true);
+    }
+
+    private _cacheCoinBasePos(index: number): Vec3 {
+        const node = this.coinNodes[index];
+        if (!node) return new Vec3();
+        let base = this._coinBasePos.get(index);
+        if (!base) {
+            base = node.position.clone();
+            this._coinBasePos.set(index, base);
+        }
+        return base.clone();
+    }
+
+    private _stopHiddenCoinFloat(index: number, restore: boolean): void {
+        const node = this.coinNodes[index];
+        if (!node?.isValid) return;
+        Tween.stopAllByTarget(node);
+        this._hiddenFloatPlaying.delete(index);
+        if (restore) {
+            const base = this._coinBasePos.get(index);
+            if (base) node.setPosition(base);
+        }
+    }
+
+    private _stopAllHiddenCoinFloats(restore: boolean): void {
+        for (const idx of [...this._hiddenFloatPlaying]) {
+            this._stopHiddenCoinFloat(idx, restore);
+        }
+    }
+
+    /** Lưới 5×3 — ô kề nhau so le nửa chu kỳ (bàn cờ) + lệch nhẹ theo hàng. */
+    private _hiddenCoinFloatPhase(index: number): number {
+        const cols = 5;
+        const i = Math.max(0, index);
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const half = Math.max(0.35, this.hiddenCoinFloatDuration * 0.5);
+        const checker = ((row + col) & 1) === 1 ? half : 0;
+        const rowWave = row * Math.max(0, this.hiddenCoinFloatStagger);
+        return checker + rowWave;
+    }
+
+    /** Lơ lửng nhẹ loop — chỉ coin chưa lật, các ô so le nhau. */
+    private _startHiddenCoinFloat(index: number): void {
+        if (this._matched || this._inEntry) return;
+        if (this._revealedSet.has(index)) return;
+        const node = this.coinNodes[index];
+        if (!node?.isValid) return;
+
+        this._stopHiddenCoinFloat(index, true);
+        const base = this._cacheCoinBasePos(index);
+        node.setPosition(base);
+        node.setScale(1, 1, 1);
+
+        const h = Math.max(2, this.hiddenCoinFloatHeight);
+        const half = Math.max(0.35, this.hiddenCoinFloatDuration * 0.5);
+        const up = new Vec3(base.x, base.y + h, base.z);
+        const phase = this._hiddenCoinFloatPhase(index);
+
+        this._hiddenFloatPlaying.add(index);
+        tween(node)
+            .delay(phase)
+            .repeatForever(
+                tween(node)
+                    .to(half, { position: up }, { easing: 'sineInOut' })
+                    .to(half, { position: base.clone() }, { easing: 'sineInOut' }),
+            )
+            .start();
+    }
+
+    private _refreshHiddenCoinFloats(): void {
+        if (this._matched || this._inEntry) return;
+        for (let i = 0; i < this.coinNodes.length; i++) {
+            if (this._revealedSet.has(i)) {
+                this._stopHiddenCoinFloat(i, true);
+            } else {
+                this._startHiddenCoinFloat(i);
+            }
+        }
     }
 
     private _applySymbolToFront(front: Node, symbolId: number, withTransition: boolean): void {
@@ -732,17 +836,21 @@ export class PickGamePopup extends Component {
         const PULSES = 2;
         const half = DURATION / (PULSES * 2);
 
-        for (const node of this.coinNodes) {
-            if (!node) continue;
+        for (let i = 0; i < this.coinNodes.length; i++) {
+            const node = this.coinNodes[i];
+            if (!node || this._revealedSet.has(i)) continue;
             Tween.stopAllByTarget(node);
             const t = tween(node);
-            for (let i = 0; i < PULSES; i++) {
+            for (let p = 0; p < PULSES; p++) {
                 t.to(half, { scale: new Vec3(1.1, 1.1, 1) }, { easing: 'sineInOut' })
                  .to(half, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' });
             }
             t.start();
         }
-        this.scheduleOnce(() => { this._inEntry = false; }, DURATION);
+        this.scheduleOnce(() => {
+            this._inEntry = false;
+            this._refreshHiddenCoinFloats();
+        }, DURATION);
     }
 
     private _revealCoin(index: number, onDone?: () => void): void {
@@ -766,6 +874,8 @@ export class PickGamePopup extends Component {
         if (node.parent) {
             node.setSiblingIndex(node.parent.children.length - 1);
         }
+
+        this._stopHiddenCoinFloat(index, true);
 
         const half = this.flipDuration / 2;
         Tween.stopAllByTarget(node);
@@ -894,6 +1004,7 @@ export class PickGamePopup extends Component {
         for (const idx of upgradeIdx) {
             const node = this.coinNodes[idx];
             if (!node) continue;
+            this._stopHiddenCoinFloat(idx, true);
             Tween.stopAllByTarget(node);
             tween(node)
                 .to(0.12, { scale: new Vec3(1.22, 1.22, 1) }, { easing: 'sineOut' })
@@ -1381,6 +1492,7 @@ export class PickGamePopup extends Component {
 
     private _doPlayWinAnimation(matched: number[], onDone?: () => void): void {
         Log.d(`[PickGamePopup] Match celebrate coins=[${matched.join(',')}]`);
+        this._stopAllHiddenCoinFloats(true);
 
         for (const idx of matched) {
             const node = this.coinNodes[idx];

@@ -1,243 +1,278 @@
 
 Pot_Green.png
-size: 665,523
+size: 1839,300
 format: RGBA8888
 filter: Linear,Linear
 repeat: none
+Gem3
+  rotate: false
+  xy: 517, 2
+  size: 48, 32
+  orig: 48, 41
+  offset: 0, 3
+  index: -1
+Gem4
+  rotate: false
+  xy: 521, 40
+  size: 48, 31
+  orig: 48, 41
+  offset: 0, 4
+  index: -1
+Gem5
+  rotate: false
+  xy: 567, 2
+  size: 44, 36
+  orig: 48, 41
+  offset: 3, 1
+  index: -1
 Layer 33
-  rotate: true
-  xy: 581, 2
-  size: 28, 34
-  orig: 32, 39
-  offset: 3, 2
+  rotate: false
+  xy: 1802, 56
+  size: 35, 42
+  orig: 40, 49
+  offset: 4, 3
   index: -1
 Pot
-  rotate: true
-  xy: 2, 366
-  size: 155, 95
-  orig: 162, 99
-  offset: 4, 0
+  rotate: false
+  xy: 2, 15
+  size: 194, 118
+  orig: 203, 124
+  offset: 5, 0
   index: -1
 PotB
   rotate: false
-  xy: 414, 144
-  size: 125, 21
-  orig: 126, 24
+  xy: 358, 7
+  size: 157, 27
+  orig: 158, 30
   offset: 1, 3
   index: -1
 Potnap
-  rotate: true
-  xy: 514, 12
-  size: 130, 65
-  orig: 130, 78
-  offset: 0, 13
+  rotate: false
+  xy: 932, 10
+  size: 163, 73
+  orig: 163, 98
+  offset: 0, 25
   index: -1
 Potnap8
-  rotate: true
-  xy: 339, 253
-  size: 133, 70
-  orig: 134, 78
-  offset: 0, 1
+  rotate: false
+  xy: 1595, 3
+  size: 157, 93
+  orig: 167, 97
+  offset: 5, 2
   index: -1
 PotnapB
-  rotate: true
-  xy: 491, 391
-  size: 130, 39
-  orig: 130, 63
+  rotate: false
+  xy: 767, 4
+  size: 163, 77
+  orig: 163, 79
   offset: 0, 0
+  index: -1
+gem1
+  rotate: false
+  xy: 1754, 17
+  size: 42, 40
+  orig: 48, 41
+  offset: 4, 0
+  index: -1
+gem2
+  rotate: false
+  xy: 1754, 59
+  size: 46, 39
+  orig: 48, 41
+  offset: 2, 0
   index: -1
 gold_01
   rotate: false
-  xy: 541, 370
-  size: 122, 38
-  orig: 122, 38
+  xy: 613, 24
+  size: 152, 47
+  orig: 153, 48
   offset: 0, 0
   index: -1
 gold_08
   rotate: false
-  xy: 541, 330
-  size: 122, 38
-  orig: 122, 38
+  xy: 1680, 149
+  size: 152, 47
+  orig: 153, 48
   offset: 0, 0
   index: -1
 gold_09
   rotate: false
-  xy: 541, 290
-  size: 122, 38
-  orig: 122, 38
+  xy: 1680, 100
+  size: 152, 47
+  orig: 153, 48
   offset: 0, 0
   index: -1
 gold_18
   rotate: false
-  xy: 617, 9
-  size: 29, 21
-  orig: 29, 22
+  xy: 571, 44
+  size: 36, 27
+  orig: 38, 28
   offset: 0, 1
   index: -1
 potblue/potblue_00000
-  rotate: true
-  xy: 91, 231
-  size: 133, 81
-  orig: 160, 160
-  offset: 14, 45
+  rotate: false
+  xy: 1012, 95
+  size: 165, 100
+  orig: 200, 200
+  offset: 18, 57
   index: -1
 potblue/potblue_00001
-  rotate: true
-  xy: 172, 96
-  size: 133, 81
-  orig: 160, 160
-  offset: 14, 45
+  rotate: false
+  xy: 1150, 198
+  size: 165, 100
+  orig: 200, 200
+  offset: 18, 57
   index: -1
 potblue/potblue_00002
-  rotate: true
-  xy: 99, 388
-  size: 133, 81
-  orig: 160, 160
-  offset: 14, 45
+  rotate: false
+  xy: 1179, 96
+  size: 165, 100
+  orig: 200, 200
+  offset: 18, 57
   index: -1
 potblue/potblue_00003
-  rotate: true
-  xy: 174, 253
-  size: 133, 81
-  orig: 160, 160
-  offset: 14, 45
+  rotate: false
+  xy: 1317, 198
+  size: 165, 100
+  orig: 200, 200
+  offset: 18, 57
   index: -1
 potblue/potblue_00004
-  rotate: true
-  xy: 265, 388
-  size: 133, 79
-  orig: 160, 160
-  offset: 14, 47
+  rotate: false
+  xy: 1513, 98
+  size: 165, 98
+  orig: 200, 200
+  offset: 18, 59
   index: -1
 potblue/potblue_00005
-  rotate: true
-  xy: 338, 118
-  size: 133, 74
-  orig: 160, 160
-  offset: 14, 52
+  rotate: false
+  xy: 1263, 2
+  size: 165, 92
+  orig: 200, 200
+  offset: 18, 65
   index: -1
 potblue/potblue_00006
-  rotate: true
-  xy: 346, 389
-  size: 132, 67
-  orig: 160, 160
-  offset: 14, 60
+  rotate: false
+  xy: 1097, 10
+  size: 164, 83
+  orig: 200, 200
+  offset: 18, 75
   index: -1
 potblue/potblue_00007
-  rotate: true
-  xy: 415, 390
-  size: 131, 74
-  orig: 160, 160
-  offset: 14, 52
+  rotate: false
+  xy: 1430, 2
+  size: 163, 92
+  orig: 200, 200
+  offset: 18, 65
   index: -1
 potblue/potblue_00008
   rotate: false
-  xy: 136, 5
-  size: 131, 89
-  orig: 160, 160
-  offset: 13, 34
+  xy: 521, 73
+  size: 163, 111
+  orig: 200, 200
+  offset: 17, 42
   index: -1
 potblue/potblue_00009
   rotate: false
-  xy: 269, 4
-  size: 132, 112
-  orig: 160, 160
-  offset: 12, 20
+  xy: 163, 159
+  size: 164, 139
+  orig: 200, 200
+  offset: 16, 25
   index: -1
 potblue/potblue_00010
   rotate: true
-  xy: 411, 256
-  size: 131, 128
-  orig: 160, 160
-  offset: 13, 15
+  xy: 2, 135
+  size: 163, 159
+  orig: 200, 200
+  offset: 17, 19
   index: -1
 potblue/potblue_00011
-  rotate: false
-  xy: 541, 160
-  size: 116, 128
-  orig: 160, 160
-  offset: 21, 20
+  rotate: true
+  xy: 198, 13
+  size: 144, 158
+  orig: 200, 200
+  offset: 27, 26
   index: -1
 potblue/potblue_00012
-  rotate: false
-  xy: 581, 32
-  size: 80, 126
-  orig: 160, 160
-  offset: 33, 20
+  rotate: true
+  xy: 1651, 198
+  size: 100, 156
+  orig: 200, 200
+  offset: 42, 26
   index: -1
 potblue/potblue_00013
   rotate: true
-  xy: 414, 167
-  size: 87, 125
-  orig: 160, 160
-  offset: 35, 16
+  xy: 854, 85
+  size: 109, 156
+  orig: 200, 200
+  offset: 44, 20
   index: -1
 potblue/potblue_00014
   rotate: false
-  xy: 541, 410
-  size: 122, 111
-  orig: 160, 160
-  offset: 23, 20
+  xy: 329, 160
+  size: 152, 138
+  orig: 200, 200
+  offset: 29, 25
   index: -1
 potblue/potblue_00015
-  rotate: true
-  xy: 414, 12
-  size: 130, 98
-  orig: 160, 160
-  offset: 18, 26
+  rotate: false
+  xy: 358, 36
+  size: 161, 122
+  orig: 200, 200
+  offset: 23, 33
   index: -1
 potblue/potblue_00016
   rotate: false
-  xy: 2, 4
-  size: 132, 90
-  orig: 160, 160
-  offset: 16, 31
+  xy: 483, 186
+  size: 164, 112
+  orig: 200, 200
+  offset: 20, 39
   index: -1
 potblue/potblue_00017
-  rotate: true
-  xy: 2, 231
-  size: 133, 87
-  orig: 160, 160
-  offset: 15, 36
+  rotate: false
+  xy: 649, 190
+  size: 165, 108
+  orig: 200, 200
+  offset: 19, 46
   index: -1
 potblue/potblue_00018
-  rotate: true
-  xy: 2, 96
-  size: 133, 84
-  orig: 160, 160
-  offset: 14, 40
+  rotate: false
+  xy: 686, 83
+  size: 166, 105
+  orig: 200, 200
+  offset: 18, 50
   index: -1
 potblue/potblue_00019
-  rotate: true
-  xy: 88, 96
-  size: 133, 82
-  orig: 160, 160
-  offset: 14, 42
+  rotate: false
+  xy: 816, 196
+  size: 165, 102
+  orig: 200, 200
+  offset: 18, 53
   index: -1
 potblue/potblue_00020
-  rotate: true
-  xy: 182, 388
-  size: 133, 81
-  orig: 160, 160
-  offset: 14, 44
+  rotate: false
+  xy: 983, 197
+  size: 165, 101
+  orig: 200, 200
+  offset: 18, 55
   index: -1
 potblue/potblue_00021
-  rotate: true
-  xy: 257, 253
-  size: 133, 80
-  orig: 160, 160
-  offset: 14, 45
+  rotate: false
+  xy: 1346, 96
+  size: 165, 100
+  orig: 200, 200
+  offset: 18, 57
   index: -1
 potblue/potblue_00022
-  rotate: true
-  xy: 255, 118
-  size: 133, 81
-  orig: 160, 160
-  offset: 14, 45
+  rotate: false
+  xy: 1484, 198
+  size: 165, 100
+  orig: 200, 200
+  offset: 18, 57
   index: -1
 potblue/potblue_00023
   rotate: false
-  xy: 136, 2
+  xy: 2, 12
   size: 1, 1
   orig: 1, 1
   offset: 0, 0

@@ -26,6 +26,7 @@ import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { Log } from '../core/Logger';
 import { GameData } from '../data/GameData';
+import { SlotStageType } from '../data/SlotTypes';
 
 // Fallback keys (for backward compatibility, will be migrated to session-specific keys)
 const LS_AUTO_COUNT_LEGACY          = 'sn_auto_spin_count';
@@ -246,7 +247,7 @@ export class AutoSpinManager {
                 this._pendingResumeAfterLoad = false;
                 if (this._isAutoSpinActive && this._autoSpinCount > 0 && !this._isFreeSpinMode) {
                     console.log(`[AutoSpinManager] ▶️ FALLBACK → emit SPIN_REQUEST (count=${this._autoSpinCount})`);
-                    EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+                    this._emitSpinRequestIfAllowed();
                 }
             }
         }, 3000);
@@ -261,7 +262,7 @@ export class AutoSpinManager {
         // Tiếp tục normal spin nếu đang active và còn count
         if (this._isAutoSpinActive && this._autoSpinCount > 0) {
             setTimeout(() => {
-                EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+                this._emitSpinRequestIfAllowed();
             }, this.getNextSpinDelayMs());
         }
     }
@@ -270,7 +271,7 @@ export class AutoSpinManager {
         // Tiếp tục normal spin nếu đang active và còn count
         if (this._isAutoSpinActive && this._autoSpinCount > 0) {
             setTimeout(() => {
-                EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+                this._emitSpinRequestIfAllowed();
             }, this.getNextSpinDelayMs());
         }
     }
@@ -295,7 +296,7 @@ export class AutoSpinManager {
             setTimeout(() => {
                 console.log(`[AutoSpinManager] 🟢 emit SPIN_REQUEST (auto spin resume from GAME_READY)`);
                 Log.d(`[AutoSpinManager] 🟢 emit SPIN_REQUEST (auto spin resume from GAME_READY)`);
-                EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+                this._emitSpinRequestIfAllowed();
             }, delayMs);
         } else {
             console.log(`[AutoSpinManager] ⏹️ GAME_READY: không resume — isActive=${this._isAutoSpinActive}, count=${this._autoSpinCount}, isFreeSpinMode=${this._isFreeSpinMode}`);
@@ -320,7 +321,7 @@ export class AutoSpinManager {
             if (this._isAutoSpinActive && this._autoSpinCount > 0 && !this._isFreeSpinMode) {
                 setTimeout(() => {
                     console.log(`[AutoSpinManager] 🟢 emit SPIN_REQUEST (fallback from UI_SPIN_BUTTON_STATE)`);
-                    EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+                    this._emitSpinRequestIfAllowed();
                 }, this.getNextSpinDelayMs());
             }
             return;
@@ -350,9 +351,37 @@ export class AutoSpinManager {
         if (this._autoSpinCount > 0) {
             setTimeout(() => {
                 // Log.e(`[SPIN-HANG][AUTO] emit SPIN_REQUEST after NORMAL_SPIN_DONE | active=${this._isAutoSpinActive} count=${this._autoSpinCount}`);
-                EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+                this._emitSpinRequestIfAllowed();
             }, this.getNextSpinDelayMs());
         }
+    }
+
+    /** Không /Spin khi server/client còn trong Pick Game (CurrentStage=PICK). */
+    private _emitSpinRequestIfAllowed(): void {
+        if (this._isPickGameBlockingSpin()) {
+            Log.w('[AutoSpinManager] skip SPIN_REQUEST — Pick Game in progress');
+            return;
+        }
+        EventBus.instance.emit(GameEvents.SPIN_REQUEST);
+    }
+
+    private _isPickGameBlockingSpin(): boolean {
+        const data = GameData.instance;
+        if (data.pickGameWinAmount > 0 || data.pickGameState?.wonTier) return false;
+        if (data.pickGameState) return true;
+        const liveNs = Number(data.lastSpinResponse?.nextStage);
+        if (Number.isFinite(liveNs)) {
+            return liveNs === SlotStageType.PICK
+                || liveNs === SlotStageType.PICK_START
+                || liveNs === SlotStageType.PICK_GAME
+                || liveNs === SlotStageType.POT_WIN;
+        }
+        const raw = data.rawEnterLastSpinResponse as { NextStage?: number; nextStage?: number } | null;
+        const ns = Number(raw?.NextStage ?? raw?.nextStage ?? NaN);
+        return ns === SlotStageType.PICK
+            || ns === SlotStageType.PICK_START
+            || ns === SlotStageType.PICK_GAME
+            || ns === SlotStageType.POT_WIN;
     }
 
     // ─── PERSIST ───

@@ -3925,6 +3925,12 @@ export class NetworkManager {
     }
 
     sendSpinRequest(isFreeSpin: boolean): Promise<SpinResponse> {
+        const data = GameData.instance;
+        const pick = data.pickGameState;
+        if (pick && !pick.wonTier && !(data.pickGameWinAmount > 0)) {
+            Log.e('[Network] Spin blocked — Pick Game still in progress (use /Pick)');
+            return Promise.reject(new Error('Spin blocked: Pick Game in progress'));
+        }
         return this._adapter.sendSpinRequest(isFreeSpin);
     }
 

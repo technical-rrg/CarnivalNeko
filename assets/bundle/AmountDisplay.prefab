@@ -231,10 +231,11 @@
     "spacing": -30,
     "kmbtSpacing": 0,
     "punctuationSpacingOffset": -5,
-    "currencySpacing": -25,
+    "currencySpacing": -20,
     "currencySpacingRatio": 0,
     "maxWidth": 600,
     "shrinkToFit": true,
+    "fillContainer": false,
     "joltEnabled": true,
     "joltIntervalMin": 0.3,
     "joltIntervalMax": 1,
@@ -256,6 +257,7 @@
       "__id__": 0
     },
     "fileId": "d5nJbttuxPtq88oiKxc0fB",
+    "instance": null,
     "targetOverrides": null
   }
 ]

@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "080d8e84-56b4-486d-81f0-bf32bd674508",
+  "uuid": "d9ab7a18-fe11-4bf7-a7c2-011eecf5d2b9",
   "files": [
     ".json",
     ".png"
@@ -10,7 +10,7 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "080d8e84-56b4-486d-81f0-bf32bd674508@6c48a",
+      "uuid": "d9ab7a18-fe11-4bf7-a7c2-011eecf5d2b9@6c48a",
       "displayName": "trail",
       "id": "6c48a",
       "name": "texture",
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "080d8e84-56b4-486d-81f0-bf32bd674508",
+        "imageUuidOrDatabaseUri": "d9ab7a18-fe11-4bf7-a7c2-011eecf5d2b9",
         "visible": false
       },
       "ver": "1.0.22",
@@ -34,7 +34,7 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "080d8e84-56b4-486d-81f0-bf32bd674508@f9941",
+      "uuid": "d9ab7a18-fe11-4bf7-a7c2-011eecf5d2b9@f9941",
       "displayName": "trail",
       "id": "f9941",
       "name": "spriteFrame",
@@ -113,7 +113,7 @@
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "080d8e84-56b4-486d-81f0-bf32bd674508@6c48a",
+        "imageUuidOrDatabaseUri": "d9ab7a18-fe11-4bf7-a7c2-011eecf5d2b9@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,6 +129,6 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": false,
-    "redirect": "080d8e84-56b4-486d-81f0-bf32bd674508@6c48a"
+    "redirect": "d9ab7a18-fe11-4bf7-a7c2-011eecf5d2b9@6c48a"
   }
 }

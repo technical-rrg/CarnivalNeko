@@ -4,8 +4,9 @@
  * Prefab: assets/bundle/MatsuriStartPopup.prefab
  * Gán hết trong Editor:
  *   - titleSprite / gridSprite / pressButton → kéo node Title, Grid, Press
- *   - mightyTitleFrame … ultimateTitleFrame → sprite tiêu đề từng loại feature
- *   - grid5x3Frame / grid5x4Frame / grid5x5Frame → sprite kích thước lưới
+ *   - mightyTitleFrames … ultimateTitleFrames → tiêu đề feature (LocalizedSpriteFrames)
+ *   - prizesAppearFrames / minorMiniAppearFrames / panelBgFrames → ghi chú & nền (LocalizedSpriteFrames)
+ *   - grid5x3Frame / grid5x4Frame / grid5x5Frame → sprite kích thước lưới (không đổi theo ngôn ngữ)
  *
  * Intro: Title → Grid → Press scale 0→1 lần lượt (stagger 0.06s).
  */
@@ -16,6 +17,8 @@ import {
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
+import { applyLocalizedSprite, LocalizedSpriteFrames } from '../core/LocalizedSpriteFrames';
+import { LocalizationManager } from '../core/LocalizationManager';
 import { Log } from '../core/Logger';
 import { CarnivalFeatureKind, CarnivalFeatureTrigger } from '../data/SlotTypes';
 import { SoundManager } from '../manager/SoundManager';
@@ -48,23 +51,41 @@ export class MatsuriStartPopup extends Component {
     @property({ type: Button, tooltip: 'Panel/Base/Press — nút vào feature' })
     pressButton: Button | null = null;
 
-    @property({ type: SpriteFrame, tooltip: 'Title sprite — Mighty' })
-    mightyTitleFrame: SpriteFrame | null = null;
+    @property({ type: Sprite, tooltip: 'Panel/Base/Note1 — ghi chú PRIZES APPEAR ON' })
+    note1Sprite: Sprite | null = null;
 
-    @property({ type: SpriteFrame, tooltip: 'Title sprite — Mega' })
-    megaTitleFrame: SpriteFrame | null = null;
+    @property({ type: Sprite, tooltip: 'Panel/Base/Note2 — ghi chú MINOR OR MINI APPEAR ON' })
+    note2Sprite: Sprite | null = null;
 
-    @property({ type: SpriteFrame, tooltip: 'Title sprite — Super' })
-    superTitleFrame: SpriteFrame | null = null;
+    @property({ type: Sprite, tooltip: 'Panel/Base — nền Group' })
+    panelBgSprite: Sprite | null = null;
 
-    @property({ type: SpriteFrame, tooltip: 'Title sprite — Ultra' })
-    ultraTitleFrame: SpriteFrame | null = null;
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Title — Mighty (theo ngôn ngữ)' })
+    mightyTitleFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
 
-    @property({ type: SpriteFrame, tooltip: 'Title sprite — Supreme' })
-    supremeTitleFrame: SpriteFrame | null = null;
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Title — Mega (theo ngôn ngữ)' })
+    megaTitleFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
 
-    @property({ type: SpriteFrame, tooltip: 'Title sprite — Ultimate' })
-    ultimateTitleFrame: SpriteFrame | null = null;
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Title — Super (theo ngôn ngữ)' })
+    superTitleFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Title — Ultra (theo ngôn ngữ)' })
+    ultraTitleFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Title — Supreme (theo ngôn ngữ)' })
+    supremeTitleFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Title — Ultimate (theo ngôn ngữ)' })
+    ultimateTitleFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Note1 — PRIZES APPEAR ON (theo ngôn ngữ)' })
+    prizesAppearFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Note2 — MINOR OR MINI APPEAR ON (theo ngôn ngữ)' })
+    minorMiniAppearFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Nền panel Group (theo ngôn ngữ)' })
+    panelBgFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
 
     @property({ type: SpriteFrame, tooltip: 'Grid sprite — 5×3' })
     grid5x3Frame: SpriteFrame | null = null;
@@ -84,8 +105,10 @@ export class MatsuriStartPopup extends Component {
     private _introCompleteCb = (): void => this._onIntroComplete();
 
     onLoad(): void {
+        this._ensureRefs();
         this._resetContentIdle();
         this.pressButton?.node.on(Button.EventType.CLICK, this._boundPress, this);
+        EventBus.instance.on(GameEvents.LANGUAGE_CHANGED, this._onLanguageChanged, this);
     }
 
     onDestroy(): void {
@@ -98,6 +121,7 @@ export class MatsuriStartPopup extends Component {
 
     showPopup(feature: CarnivalFeatureTrigger): void {
         if (this._isOpen) return;
+        this._ensureRefs();
         this._feature = feature;
         this._isOpen = true;
         this._introDone = false;
@@ -170,26 +194,78 @@ export class MatsuriStartPopup extends Component {
         if (op) Tween.stopAllByTarget(op);
     }
 
-    private _applySprites(feature: CarnivalFeatureTrigger): void {
-        const titleFrame = this._resolveTitleFrame(feature.kind);
-        const gridFrame = this._resolveGridFrame(feature.matsuriRows || 3);
-
-        if (this.titleSprite && titleFrame) {
-            this.titleSprite.spriteFrame = titleFrame;
+    private _ensureRefs(): void {
+        if (!this.overlayNode) {
+            this.overlayNode = this.node.getChildByName('Overlay');
         }
+        if (!this.popupNode) {
+            this.popupNode = this.node.getChildByName('Panel');
+        }
+
+        const base = this.popupNode?.getChildByName('Base') ?? this.popupNode;
+        if (base) {
+            if (!this.titleSprite) {
+                this.titleSprite = base.getChildByName('Title')?.getComponent(Sprite) ?? null;
+            }
+            if (!this.gridSprite) {
+                this.gridSprite = base.getChildByName('Grid')?.getComponent(Sprite) ?? null;
+            }
+            if (!this.pressButton) {
+                this.pressButton = base.getChildByName('Press')?.getComponent(Button) ?? null;
+            }
+            if (!this.note1Sprite) {
+                this.note1Sprite = base.getChildByName('Note1')?.getComponent(Sprite) ?? null;
+            }
+            if (!this.note2Sprite) {
+                this.note2Sprite = base.getChildByName('Note2')?.getComponent(Sprite) ?? null;
+            }
+            if (!this.panelBgSprite) {
+                this.panelBgSprite = base.getComponent(Sprite) ?? null;
+            }
+        }
+
+        this._bootstrapLocalizedFrame(this.prizesAppearFrames, this.note1Sprite);
+        this._bootstrapLocalizedFrame(this.minorMiniAppearFrames, this.note2Sprite);
+        this._bootstrapLocalizedFrame(this.panelBgFrames, this.panelBgSprite);
+        this._bootstrapLocalizedFrame(this.mightyTitleFrames, this.titleSprite);
+    }
+
+    private _bootstrapLocalizedFrame(frames: LocalizedSpriteFrames, sprite: Sprite | null): void {
+        if (frames.defaultFrame || !sprite?.spriteFrame) return;
+        frames.defaultFrame = sprite.spriteFrame;
+    }
+
+    private _onLanguageChanged = (): void => {
+        if (!this._isOpen || !this._feature) return;
+        this._applyLocalizedArtwork(this._feature);
+    };
+
+    private _applySprites(feature: CarnivalFeatureTrigger): void {
+        this._applyLocalizedArtwork(feature);
+    }
+
+    private _applyLocalizedArtwork(feature: CarnivalFeatureTrigger): void {
+        const lang = LocalizationManager.instance.currentLanguage;
+        applyLocalizedSprite(this.titleSprite, this._titleFramesForKind(feature.kind), lang);
+
+        const gridFrame = this._resolveGridFrame(feature.matsuriRows || 3);
         if (this.gridSprite && gridFrame) {
             this.gridSprite.spriteFrame = gridFrame;
         }
+
+        applyLocalizedSprite(this.note1Sprite, this.prizesAppearFrames, lang);
+        applyLocalizedSprite(this.note2Sprite, this.minorMiniAppearFrames, lang);
+        applyLocalizedSprite(this.panelBgSprite, this.panelBgFrames, lang);
     }
 
-    private _resolveTitleFrame(kind: CarnivalFeatureKind): SpriteFrame | null {
+    private _titleFramesForKind(kind: CarnivalFeatureKind): LocalizedSpriteFrames | null {
         switch (kind) {
-            case CarnivalFeatureKind.MIGHTY: return this.mightyTitleFrame;
-            case CarnivalFeatureKind.MEGA: return this.megaTitleFrame;
-            case CarnivalFeatureKind.SUPER: return this.superTitleFrame;
-            case CarnivalFeatureKind.ULTRA: return this.ultraTitleFrame;
-            case CarnivalFeatureKind.SUPREME: return this.supremeTitleFrame;
-            case CarnivalFeatureKind.ULTIMATE: return this.ultimateTitleFrame;
+            case CarnivalFeatureKind.MIGHTY: return this.mightyTitleFrames;
+            case CarnivalFeatureKind.MEGA: return this.megaTitleFrames;
+            case CarnivalFeatureKind.SUPER: return this.superTitleFrames;
+            case CarnivalFeatureKind.ULTRA: return this.ultraTitleFrames;
+            case CarnivalFeatureKind.SUPREME: return this.supremeTitleFrames;
+            case CarnivalFeatureKind.ULTIMATE: return this.ultimateTitleFrames;
             default: return null;
         }
     }

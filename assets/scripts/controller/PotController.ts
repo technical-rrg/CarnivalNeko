@@ -22,8 +22,9 @@
  *   - POT_WIN_INTRO        → _onPotWinIntro()→ particle + emit POT_WIN_DONE (level do server)
  *   - Nổ hũ xong (reset)   → level về 0, chạy LV{old}_transition_LV0 → idle_LV0
  *
- * Carnival Neko trail/pot UI dùng CarnivalTrailController + CarnivalPotBoard.
- * jackpotEffectNode = particle khi nổ hũ.
+ * Carnival Neko trail/pot UI dùng CarnivalTrailController + CarnivalPotBoard
+ * (burst final FX + LvFinal nằm ở CarnivalPotBoard, không phải PotController).
+ * jackpotEffectNode = particle legacy khi POT_WIN_INTRO (single pot).
  */
 
 import {

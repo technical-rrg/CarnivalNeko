@@ -25,9 +25,10 @@
  *          ├── spineUltra       ← sp.Skeleton cho ULTRA WIN  (bắt đầu inactive)
  *          ├── spineMonster     ← sp.Skeleton cho MONSTER WIN(bắt đầu inactive)
  *          ├── spineMax         ← sp.Skeleton cho MAX WIN    (bắt đầu inactive)
- *          ├── particleSet1     ← Particle BIG/MEGA/MAJOR    (bắt đầu inactive)
- *          ├── particleSet2     ← Particle SUPER/EPIC/ULTRA  (bắt đầu inactive)
- *          ├── particleSet3     ← Particle MONSTER/MAX       (bắt đầu inactive)
+ *          ├── particleSet1     ← Particle BIG / MEGA           (bắt đầu inactive)
+ *          ├── particleSet2     ← Particle MAJOR / SUPER        (bắt đầu inactive)
+ *          ├── particleSet3     ← Particle EPIC / ULTRA         (bắt đầu inactive)
+ *          ├── particleSet4     ← Particle MONSTER / MAX        (bắt đầu inactive)
  *          ├── tierLabel        ← Label tên tier ("BIG WIN", "MEGA WIN", ...)
  *          ├── amountLabel      ← Label số tiền (count-up từ 0)
  *          └── clickOverlay     ← Node trong suốt bắt click đóng popup
@@ -146,17 +147,21 @@ export class ProgressiveWinPopup extends Component {
     @property({ type: Node, tooltip: 'Node trong suốt bắt click đóng\n→ Tạo Widget fill + kéo vào đây' })
     clickOverlay: Node | null = null;
 
-    /** Node chứa Particle Set 1 (BIG / MEGA / MAJOR) */
-    @property({ type: Node, tooltip: 'Particle Set 1 → BIG, MEGA, MAJOR\n→ Kéo Node gắn ParticleSystem vào đây' })
+    /** Node chứa Particle Set 1 (BIG / MEGA) */
+    @property({ type: Node, tooltip: 'Particle Set 1 → BIG, MEGA\n→ Kéo Node gắn ParticleSystem vào đây' })
     particleSet1: Node | null = null;
 
-    /** Node chứa Particle Set 2 (SUPER / EPIC / ULTRA) */
-    @property({ type: Node, tooltip: 'Particle Set 2 → SUPER, EPIC, ULTRA\n→ Kéo Node gắn ParticleSystem vào đây' })
+    /** Node chứa Particle Set 2 (MAJOR / SUPER) */
+    @property({ type: Node, tooltip: 'Particle Set 2 → MAJOR, SUPER\n→ Kéo Node gắn ParticleSystem vào đây' })
     particleSet2: Node | null = null;
 
-    /** Node chứa Particle Set 3 (MONSTER / MAX) */
-    @property({ type: Node, tooltip: 'Particle Set 3 → MONSTER, MAX\n→ Kéo Node gắn ParticleSystem vào đây' })
+    /** Node chứa Particle Set 3 (EPIC / ULTRA) */
+    @property({ type: Node, tooltip: 'Particle Set 3 → EPIC, ULTRA\n→ Kéo Node gắn ParticleSystem vào đây' })
     particleSet3: Node | null = null;
+
+    /** Node chứa Particle Set 4 (MONSTER / MAX) */
+    @property({ type: Node, tooltip: 'Particle Set 4 → MONSTER, MAX\n→ Kéo Node gắn ParticleSystem vào đây' })
+    particleSet4: Node | null = null;
 
     /** FX burst khi vào / chuyển tier (nested prefab Popup_Fx_In) */
     @property({ type: Node, tooltip: 'Popup_Fx_In — play 1 lần mỗi khi chuyển win level\n→ Kéo node Popup_Fx_In vào đây' })
@@ -761,40 +766,51 @@ export class ProgressiveWinPopup extends Component {
         return results;
     }
 
-    /** Return the particle set node for a given tier. */
-    private _getParticleSetForTier(tier: ProgressiveWinTier): Node | null {
+    /** Particle set index (1–4) for tier — 2 wins share one set. */
+    private _getParticleSetIndexForTier(tier: ProgressiveWinTier): number {
         switch (tier) {
             case ProgressiveWinTier.BIG:
             case ProgressiveWinTier.MEGA:
+                return 1;
             case ProgressiveWinTier.MAJOR:
-                return this.particleSet1;
             case ProgressiveWinTier.SUPER:
+                return 2;
             case ProgressiveWinTier.EPIC:
             case ProgressiveWinTier.ULTRA:
-                return this.particleSet2;
+                return 3;
             case ProgressiveWinTier.MONSTER:
             case ProgressiveWinTier.MAX:
-                return this.particleSet3;
+                return 4;
+            default:
+                return 1;
         }
     }
 
-    /** Switch to the correct particle set for the tier, stopping others. */
+    private _getParticleSetByIndex(index: number): Node | null {
+        switch (index) {
+            case 1: return this.particleSet1;
+            case 2: return this.particleSet2;
+            case 3: return this.particleSet3;
+            case 4: return this.particleSet4;
+            default: return null;
+        }
+    }
+
+    private _allParticleSets(): (Node | null)[] {
+        return [this.particleSet1, this.particleSet2, this.particleSet3, this.particleSet4];
+    }
+
+    /** Bật tích lũy particle set 1..N — set cũ vẫn giữ khi lên tier cao hơn. */
     private _switchParticleSet(tier: ProgressiveWinTier): void {
-        const target = this._getParticleSetForTier(tier);
-        for (const node of [this.particleSet1, this.particleSet2, this.particleSet3]) {
+        const maxIndex = this._getParticleSetIndexForTier(tier);
+        for (let i = 1; i <= maxIndex; i++) {
+            const node = this._getParticleSetByIndex(i);
             if (!node) continue;
-            if (node === target) {
-                if (!node.active) {
-                    node.active = true;
-                    for (const p of this._getParticlesFrom(node)) {
-                        p.stop();
-                        p.play();
-                    }
-                }
-            } else {
-                node.active = false;
+            if (!node.active) {
+                node.active = true;
                 for (const p of this._getParticlesFrom(node)) {
                     p.stop();
+                    p.play();
                 }
             }
         }
@@ -818,13 +834,13 @@ export class ProgressiveWinPopup extends Component {
                 Log.w('[ProgressiveWinPopup] skip broken particle on clear', e);
             }
         }
-        for (const node of [this.particleSet1, this.particleSet2, this.particleSet3, this.popupFxIn]) {
+        for (const node of [...this._allParticleSets(), this.popupFxIn]) {
             if (node) node.active = false;
         }
     }
 
     private _stopParticleEffects(): void {
-        for (const node of [this.particleSet1, this.particleSet2, this.particleSet3]) {
+        for (const node of this._allParticleSets()) {
             if (!node) continue;
             node.active = false;
             for (const p of this._getParticlesFrom(node)) {

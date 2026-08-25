@@ -128,13 +128,23 @@ export const GameEvents = {
     /** @deprecated dùng CARNIVAL_MATSURI_END */
     CARNIVAL_MATSURI_STUB_DONE: 'carnival:matsuri:stub:done',
     /**
-     * Popup Press to Start trước khi vào Pick Game (thay TransitionPopup).
-     * Payload: PickGameState — chờ PICK_GAME_START_POPUP_CLOSED rồi mới PICK_GAME_OPEN.
+     * Popup Press to Start trên Pick Game shell (Pick Game đã hiện sẵn bên dưới).
+     * Payload: PickGameState — chờ PICK_GAME_START_POPUP_CLOSED rồi PICK_GAME_BEGIN_ENTRY.
      */
     PICK_GAME_START_POPUP: 'pick:game:start:popup',
+    /**
+     * Slam-in Title1/Title2/Press xong — an toàn để warm PickGame / TopUpEnd.
+     * No payload.
+     */
+    PICK_GAME_START_POPUP_INTRO_DONE: 'pick:game:start:popup:intro:done',
     /** Người chơi Press to Start — payload: PickGameState */
     PICK_GAME_START_POPUP_CLOSED: 'pick:game:start:popup:closed',
-    /** Mở Pick Game popup. Payload: PickGameState */
+    /**
+     * Sau JackpotStartPopup đóng — chạy entry bounce + bật pick (Pick shell đã mở sẵn).
+     * Payload: PickGameState
+     */
+    PICK_GAME_BEGIN_ENTRY: 'pick:game:begin:entry',
+    /** Mở Pick Game popup (resume / skip Start popup). Payload: PickGameState */
     PICK_GAME_OPEN: 'pick:game:open',
     /** Pick Game popup đóng (người chơi đã pick xong + jackpot hiển thị xong). No payload. */
     PICK_GAME_CLOSE: 'pick:game:close',

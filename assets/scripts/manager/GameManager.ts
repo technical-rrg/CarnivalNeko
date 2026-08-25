@@ -2925,7 +2925,7 @@ export class GameManager extends Component {
     }
 
     /**
-     * POT_WIN_DONE / Carnival Jackpot: JackpotStartPopup (Press to Start) rồi mới vào Pick Game.
+     * POT_WIN_DONE / Carnival Jackpot: Pick Game shell trước, JackpotStartPopup Press to Start.
      */
     private _onPotWinDone(): void {
         Log.e('[DEBUG-PICK] _onPotWinDone ENTER → Pick Game');
@@ -2952,7 +2952,16 @@ export class GameManager extends Component {
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
         this.unschedule(this._prefetchFeatureBackground);
         this.scheduleOnce(this._prefetchFeatureBackground, 0.5);
-        Log.e('[GameManager] JACKPOT_START_POPUP → Press to Start');
+
+        // Vào Pick Game shell trước (BG + grid) — giống Matsuri vào Feature shell trước Start popup
+        this._isPickGameActive = true;
+        this._pickGameBgPending = true;
+        this._prefetchPickGameBackground();
+        this._applyPickGameBackgroundIfPending();
+        GameData.instance.pickGameState = pickState;
+        EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
+
+        Log.e('[GameManager] JACKPOT_START_POPUP → Pick shell + Press to Start');
         EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP, pickState);
         this.unschedule(this._jackpotStartPopupFailsafe);
         this.scheduleOnce(this._jackpotStartPopupFailsafe, 31.0);
@@ -2970,10 +2979,11 @@ export class GameManager extends Component {
             ?? GameData.instance.pickGameState
             ?? MockDataProvider.buildPickGame();
         this._pendingJackpotStartPick = null;
-        this._openPickGameNow(pick);
+        Log.e('[DEBUG-PICK] JackpotStart closed → PICK_GAME_BEGIN_ENTRY');
+        EventBus.instance.emit(GameEvents.PICK_GAME_BEGIN_ENTRY, pick);
     }
 
-    /** Mở PickGamePopup thật sự (sau Press to Start / resume). */
+    /** Mở PickGamePopup thật sự (resume / bỏ qua Start popup). */
     private _openPickGameNow(pickState: PickGameState): void {
         Log.e('[DEBUG-PICK] _openPickGameNow → PICK_GAME_OPEN');
         this._isPickGameActive = true;

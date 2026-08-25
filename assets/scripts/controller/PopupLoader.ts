@@ -11,7 +11,7 @@
  *   2. Không cần kéo gì vào Editor — tên prefab được định nghĩa trong PREFAB_NAMES.
  */
 
-import { _decorator, Component, Prefab, instantiate, Node, assetManager, Label, Sprite, Button } from 'cc';
+import { _decorator, Component, Prefab, instantiate, Node, assetManager, Sprite, Button } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { JackpotType, PickGameState } from '../data/SlotTypes';
@@ -111,6 +111,8 @@ export class PopupLoader extends Component {
         EventBus.instance.on(GameEvents.MATSURI_START_POPUP,     this._onMatsuriStartPopup,     this);
         EventBus.instance.on(GameEvents.MATSURI_START_POPUP_INTRO_DONE, this._onMatsuriStartIntroDone, this);
         EventBus.instance.on(GameEvents.PICK_GAME_START_POPUP,   this._onJackpotStartPopup,     this);
+        EventBus.instance.on(GameEvents.PICK_GAME_START_POPUP_INTRO_DONE, this._onJackpotStartIntroDone, this);
+        EventBus.instance.on(GameEvents.PICK_GAME_BEGIN_ENTRY,   this._onPickGameBeginEntry,    this);
         EventBus.instance.on(GameEvents.CARNIVAL_RED_ENVELOPE,   this._onRedEnvelopePopup,      this);
         EventBus.instance.on(GameEvents.CARNIVAL_POT_BURST,      this._cacheStartPopups,        this);
         EventBus.instance.on(GameEvents.GAME_READY,              this._cacheStartPopups,        this);
@@ -410,6 +412,11 @@ export class PopupLoader extends Component {
     }
 
     private _onPickGameOpen(state: PickGameState): void {
+        const shellUp = this._pickGameNode?.getComponent(PickGamePopup)?.isAwaitingStartPopup();
+        if (shellUp) {
+            Log.d('[PopupLoader] PICK_GAME_OPEN — shell đã mở, skip full open');
+            return;
+        }
         if (this._pickGameNode && this._pickGameNode.isValid) {
             const popup = this._pickGameNode.getComponent(PickGamePopup);
             if (popup) popup.openPickGame(state);
@@ -463,6 +470,16 @@ export class PopupLoader extends Component {
         this._scheduleHeavyWarm();
     }
 
+    /** Slam Title1/Title2/Press xong — Pick shell đã mở, chỉ warm TopUpEnd. */
+    private _onJackpotStartIntroDone(): void {
+        this.unschedule(this._doHeavyWarm);
+        this.scheduleOnce(this._warmTopUpEndOnly, PopupLoader.HEAVY_WARM_DELAY);
+    }
+
+    private _warmTopUpEndOnly = (): void => {
+        this._warmTopUpEnd();
+    };
+
     /** Prefab thiếu script / UUID lệch → addComponent fallback để vẫn vào được TopUp. */
     private _showMatsuriStart(node: Node, feature: CarnivalFeatureTrigger): void {
         let popup = node.getComponent(MatsuriStartPopup);
@@ -475,19 +492,53 @@ export class PopupLoader extends Component {
     }
 
     private _onJackpotStartPopup(state: PickGameState): void {
-        if (this._jackpotStartNode?.isValid) {
-            this._jackpotStartNode.setSiblingIndex(this.node.children.length - 1);
-            this._showJackpotStart(this._jackpotStartNode, state);
-            this._scheduleHeavyWarm();
+        this._openPickGameShellThenJackpotStart(state);
+    }
+
+    /** Pick Game shell bên dưới → JackpotStartPopup trên cùng (giống Feature + MatsuriStartPopup). */
+    private _openPickGameShellThenJackpotStart(state: PickGameState): void {
+        const showJackpot = (): void => {
+            if (this._jackpotStartNode?.isValid) {
+                this._jackpotStartNode.setSiblingIndex(this.node.children.length - 1);
+                this._showJackpotStart(this._jackpotStartNode, state);
+                return;
+            }
+            this._loadPrefab(PREFAB_NAMES.jackpotStart, (node) => {
+                this._jackpotStartNode = node;
+                this._showJackpotStart(node, state);
+            });
+        };
+
+        const mountShell = (node: Node): void => {
+            if (this._pickGameNode?.isValid && this._pickGameNode !== node) {
+                node.destroy();
+                showJackpot();
+                return;
+            }
+            this._pickGameNode = node;
+            node.active = true;
+            const popup = node.getComponent(PickGamePopup);
+            if (popup) popup.openPickGameShell(state);
+            EventBus.instance.emit(GameEvents.PICK_GAME_OPEN, state);
+            showJackpot();
+        };
+
+        if (this._pickGameNode?.isValid) {
+            mountShell(this._pickGameNode);
             return;
         }
-        this._loadPrefab(PREFAB_NAMES.jackpotStart, (node) => {
-            this._jackpotStartNode = node;
-            node.setSiblingIndex(this.node.children.length - 1);
-            this._showJackpotStart(node, state);
-            this._scheduleHeavyWarm();
-        });
+        this._loadPrefab(PREFAB_NAMES.pickGame, mountShell);
     }
+
+    private _onPickGameBeginEntry = (state: PickGameState): void => {
+        const popup = this._pickGameNode?.getComponent(PickGamePopup);
+        if (popup) {
+            popup.beginPickGameEntry();
+            return;
+        }
+        Log.w('[PopupLoader] PICK_GAME_BEGIN_ENTRY — shell missing, fallback PICK_GAME_OPEN');
+        this._onPickGameOpen(state);
+    };
 
     /** Instantiate PickGame / TopUpEnd sau khi Start popup đã scale-in. */
     private _scheduleHeavyWarm(): void {
@@ -590,32 +641,30 @@ export class PopupLoader extends Component {
             if (!popup.pressButton) {
                 popup.pressButton = base?.getChildByName('Press')?.getComponent(Button) ?? null;
             }
+            if (!popup.note1Sprite) {
+                popup.note1Sprite = base?.getChildByName('Note1')?.getComponent(Sprite) ?? null;
+            }
+            if (!popup.note2Sprite) {
+                popup.note2Sprite = base?.getChildByName('Note2')?.getComponent(Sprite) ?? null;
+            }
+            if (!popup.panelBgSprite) {
+                popup.panelBgSprite = base?.getComponent(Sprite) ?? null;
+            }
             return;
         }
 
-        const title = panel?.getChildByName('TitleLabel')?.getComponent(Label)
-            ?? panel?.getChildByName('Title')?.getComponent(Label);
-        const feature = panel?.getChildByName('FeatureLabel')?.getComponent(Label)
-            ?? panel?.getChildByName('Feature')?.getComponent(Label);
-        const reel = panel?.getChildByName('ReelLabel')?.getComponent(Label)
-            ?? panel?.getChildByName('Reel')?.getComponent(Label)
-            ?? panel?.getChildByName('Desc')?.getComponent(Label);
-        const hint = panel?.getChildByName('HintLabel')?.getComponent(Label)
-            ?? panel?.getChildByName('Hint')?.getComponent(Label);
         const jp = popup as JackpotStartPopup;
-        if (overlay) jp.clickOverlay = overlay;
-        if (title) jp.titleLabel = title;
-        if (feature) jp.featureLabel = feature;
-        if (reel) jp.reelLabel = reel;
-        if (hint) jp.hintLabel = hint;
-        const pressBtn = panel?.getChildByName('Press')?.getComponent(Button);
-        if (pressBtn) jp.startButton = pressBtn;
-        if (!jp.titleLabel || !jp.hintLabel) {
-            const labels = panel?.getComponentsInChildren(Label) ?? [];
-            if (!jp.titleLabel && labels[0]) jp.titleLabel = labels[0];
-            if (!jp.featureLabel && labels[1]) jp.featureLabel = labels[1];
-            if (!jp.reelLabel && labels[2]) jp.reelLabel = labels[2];
-            if (!jp.hintLabel && labels[3]) jp.hintLabel = labels[3];
+        if (!jp.title1Sprite) {
+            jp.title1Sprite = panel?.getChildByName('Title1')?.getComponent(Sprite) ?? null;
+        }
+        if (!jp.title2Sprite) {
+            jp.title2Sprite = panel?.getChildByName('Title2')?.getComponent(Sprite) ?? null;
+        }
+        if (!jp.pressButton) {
+            jp.pressButton = panel?.getChildByName('Press')?.getComponent(Button) ?? null;
+        }
+        if (!jp.panelBgSprite) {
+            jp.panelBgSprite = panel?.getComponent(Sprite) ?? null;
         }
     }
 

@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "c47a85d8-2e3c-41b0-b88b-d7af0d087296",
+  "uuid": "9ddfd570-290b-44d3-ba75-add0482b3b01",
   "files": [
     ".json",
     ".png"
@@ -10,7 +10,7 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "c47a85d8-2e3c-41b0-b88b-d7af0d087296@6c48a",
+      "uuid": "9ddfd570-290b-44d3-ba75-add0482b3b01@6c48a",
       "displayName": "Flare03",
       "id": "6c48a",
       "name": "texture",
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "c47a85d8-2e3c-41b0-b88b-d7af0d087296",
+        "imageUuidOrDatabaseUri": "9ddfd570-290b-44d3-ba75-add0482b3b01",
         "visible": false
       },
       "ver": "1.0.22",
@@ -34,7 +34,7 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "c47a85d8-2e3c-41b0-b88b-d7af0d087296@f9941",
+      "uuid": "9ddfd570-290b-44d3-ba75-add0482b3b01@f9941",
       "displayName": "Flare03",
       "id": "f9941",
       "name": "spriteFrame",
@@ -113,7 +113,7 @@
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "c47a85d8-2e3c-41b0-b88b-d7af0d087296@6c48a",
+        "imageUuidOrDatabaseUri": "9ddfd570-290b-44d3-ba75-add0482b3b01@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,6 +129,6 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "c47a85d8-2e3c-41b0-b88b-d7af0d087296@6c48a"
+    "redirect": "9ddfd570-290b-44d3-ba75-add0482b3b01@6c48a"
   }
 }

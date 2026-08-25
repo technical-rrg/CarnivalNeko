@@ -207,6 +207,12 @@ export class PickGamePopup extends Component {
     private _upgradeArmed: boolean = false;
     private _inEntry: boolean = false;
     private _pickBlocked: boolean = false;
+    /** Pick shell hiện sẵn — chờ JackpotStartPopup đóng mới entry / pick. */
+    private _awaitingStartPopup = false;
+
+    public isAwaitingStartPopup(): boolean {
+        return this._awaitingStartPopup;
+    }
     private _serverPickWinAmount: number = 0;
     private _lastRevealedIndex: number = -1;
     private _frameIdle: SpriteFrame | null = null;
@@ -445,25 +451,44 @@ export class PickGamePopup extends Component {
     }
 
     public openPickGame(state: PickGameState): void {
+        this._awaitingStartPopup = false;
+        this._startPickGameSession(state, () => this._continueOpenPickGame(state, false));
+    }
+
+    /** Hiện Pick Game sẵn (coin grid) — chưa entry / chưa pick. Dùng với JackpotStartPopup overlay. */
+    public openPickGameShell(state: PickGameState): void {
+        this._awaitingStartPopup = true;
+        this._startPickGameSession(state, () => this._continueOpenPickGame(state, true));
+    }
+
+    /** Sau Press to Start — bounce coin + bật pick. */
+    public beginPickGameEntry(): void {
+        if (!this._awaitingStartPopup) {
+            Log.w('[PickGamePopup] beginPickGameEntry — không ở shell mode');
+            return;
+        }
+        this._awaitingStartPopup = false;
+        this._inEntry = true;
+        Log.d('[PickGamePopup] beginPickGameEntry — coin bounce');
+        this._playCoinIntroBounce();
+        this._setButtonsInteractable(true);
+        for (let i = 0; i < this.coinNodes.length; i++) {
+            if (!this._revealedSet.has(i)) {
+                this._setCoinInteractable(i, true);
+            }
+        }
+        EventBus.instance.emit(GameEvents.PICK_GAME_ENTRY_DONE);
+    }
+
+    private _startPickGameSession(state: PickGameState, onReady: () => void): void {
         this.unscheduleAllCallbacks();
         this._clearInstructionAutoLayout();
         GameData.instance.pickGameWinAmount = 0;
 
-        const raw = state as any;
-        if (!state.grid && raw.Grid) state = { ...state, grid: raw.Grid };
-        if (!state.revealed && raw.Revealed) state = { ...state, revealed: raw.Revealed };
-        if (!state.grid) {
-            Log.e('[PickGamePopup] openPickGame: state.grid missing — abort');
-            return;
-        }
+        const normalized = this._normalizePickState(state);
+        if (!normalized) return;
 
-        // Pad grid lên 15 nếu mock/legacy còn 12
-        if (state.grid.length < PICK_GAME_CELL_COUNT) {
-            const pad = state.grid.slice();
-            while (pad.length < PICK_GAME_CELL_COUNT) pad.push(SymbolId.JP_MINI);
-            state = { ...state, grid: pad };
-        }
-
+        state = normalized;
         this._pickState = state;
         GameData.instance.pickGameState = state;
         this._revealedSet = new Set(state.revealed ?? []);
@@ -476,20 +501,34 @@ export class PickGamePopup extends Component {
             state.upgradeArmed = true;
             state.upgradeCount = resumeResolved.upgradeCount;
         }
-        this._inEntry = true;
-        this._pickBlocked = false;
         this._serverPickWinAmount = 0;
         this._lastRevealedIndex = -1;
         GameData.instance.holdJackpotValues = false;
 
         if (this.coinFontDemo?.isValid) this.coinFontDemo.active = false;
 
-        // Refresh frames theo PS map hiện tại (Enter named fields), không cache ID cứng.
-        this._initSymbolPackFrames(() => this._continueOpenPickGame(state));
+        this._initSymbolPackFrames(onReady);
         SoundManager.instance?.enterPickGameBgm();
     }
 
-    private _continueOpenPickGame(state: PickGameState): void {
+    private _normalizePickState(state: PickGameState): PickGameState | null {
+        const raw = state as PickGameState & { Grid?: number[]; Revealed?: number[] };
+        let s = state;
+        if (!s.grid && raw.Grid) s = { ...s, grid: raw.Grid };
+        if (!s.revealed && raw.Revealed) s = { ...s, revealed: raw.Revealed };
+        if (!s.grid) {
+            Log.e('[PickGamePopup] pick state grid missing — abort');
+            return null;
+        }
+        if (s.grid.length < PICK_GAME_CELL_COUNT) {
+            const pad = s.grid.slice();
+            while (pad.length < PICK_GAME_CELL_COUNT) pad.push(SymbolId.JP_MINI);
+            s = { ...s, grid: pad };
+        }
+        return s;
+    }
+
+    private _continueOpenPickGame(state: PickGameState, shellOnly: boolean): void {
         this._ensureCoinGridLayout();
         this._wireCoinButtons();
 
@@ -510,6 +549,29 @@ export class PickGamePopup extends Component {
         if (this.themeTextLabel) {
             this.themeTextLabel.string = this.themeText;
         }
+
+        if (shellOnly) {
+            this._awaitingStartPopup = true;
+            this._inEntry = true;
+            this._pickBlocked = true;
+            this.node.active = true;
+            setNodeOpacity(this.node, 255);
+            if (this.gameContentNode) {
+                this.gameContentNode.active = true;
+                this.gameContentNode.setScale(1, 1, 1);
+                setNodeOpacity(this.gameContentNode, 255);
+            }
+            for (let i = 0; i < this.coinNodes.length; i++) {
+                this._setCoinInteractable(i, false);
+            }
+            if (this.bottomUINode) this.bottomUINode.active = false;
+            EventBus.instance.emit(GameEvents.HIDE_BOTTOM_UI);
+            Log.d(`[PickGamePopup] Shell ready — cells=${state.grid.length} awaiting Start popup`);
+            return;
+        }
+
+        this._inEntry = true;
+        this._pickBlocked = false;
 
         // Mặc định opacity 0 → fade lên 255 (không cắt active cứng)
         this.node.active = true;

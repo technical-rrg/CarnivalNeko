@@ -2,18 +2,22 @@
  * JackpotStartPopup — thông báo trước khi vào Pick Game (Jackpot Feature).
  *
  * Prefab: assets/bundle/JackpotStartPopup.prefab (load qua PopupLoader).
- * Chỉ dùng UI từ prefab — không tạo Graphics/Label bằng code.
+ * Gán hết trong Editor (hoặc addComponent fallback qua PopupLoader):
+ *   - title1Sprite / title2Sprite / pressButton → kéo node Title1, Title2, Press
+ *   - congratulationsFrames / jackpotFeatureFrames / panelBgFrames → LocalizedSpriteFrames
+ *
+ * Intro: Title1 → Title2 → Press scale 0→1 lần lượt (stagger 0.06s).
  * Press / tap → PICK_GAME_START_POPUP_CLOSED → GameManager mở PickGamePopup.
  */
 
 import {
-    _decorator, Component, Node, Label, Button, Canvas,
-    UITransform, UIOpacity, BlockInputEvents, Widget, tween, Tween, Vec3,
-    EventTouch, input, Input, EventMouse, view,
+    _decorator, Component, Node, Button, Sprite, Canvas,
+    UITransform, UIOpacity, Widget, tween, Tween, Vec3, view,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
-import { L } from '../core/LocalizationManager';
+import { applyLocalizedSprite, LocalizedSpriteFrames } from '../core/LocalizedSpriteFrames';
+import { LocalizationManager } from '../core/LocalizationManager';
 import { Log } from '../core/Logger';
 import { PickGameState } from '../data/SlotTypes';
 import { SoundManager } from '../manager/SoundManager';
@@ -21,9 +25,12 @@ import { SoundManager } from '../manager/SoundManager';
 const { ccclass, property } = _decorator;
 
 const AUTO_CLOSE_SECONDS = 30;
-/** Scale panel từ nhỏ → 1 khi mở. */
-const SCALE_IN_FROM = 0.2;
-const SCALE_IN_DURATION = 0.28;
+/** Thời gian scale 0→1 mỗi node (giây). */
+const SCALE_IN_DURATION = 0.18;
+/** Delay giữa lần lượt Title1 → Title2 → Press (giây). */
+const SCALE_STAGGER = 0.06;
+/** Chờ layout settle trước intro (frame). */
+const SETTLE_FRAMES = 2;
 
 @ccclass('JackpotStartPopup')
 export class JackpotStartPopup extends Component {
@@ -34,38 +41,48 @@ export class JackpotStartPopup extends Component {
     @property({ type: Node, tooltip: 'Panel content' })
     popupNode: Node | null = null;
 
-    @property({ type: Label, tooltip: 'TitleLabel (optional — prefab có sẵn text)' })
-    titleLabel: Label | null = null;
+    @property({ type: Sprite, tooltip: 'Panel/Title1 — Sprite tiêu đề trên' })
+    title1Sprite: Sprite | null = null;
 
-    @property({ type: Label, tooltip: 'FeatureLabel (optional)' })
-    featureLabel: Label | null = null;
+    @property({ type: Sprite, tooltip: 'Panel/Title2 — Sprite tiêu đề dưới' })
+    title2Sprite: Sprite | null = null;
 
-    @property({ type: Label, tooltip: 'ReelLabel / mô tả (optional)' })
-    reelLabel: Label | null = null;
+    @property({ type: Button, tooltip: 'Panel/Press — nút vào Pick Game' })
+    pressButton: Button | null = null;
 
-    @property({ type: Label, tooltip: 'HintLabel — PRESS TO START (optional)' })
-    hintLabel: Label | null = null;
+    @property({ type: Sprite, tooltip: 'Panel — nền PopupPickGame' })
+    panelBgSprite: Sprite | null = null;
 
-    @property({ type: Button, tooltip: 'Nút Start / Press (optional)' })
-    startButton: Button | null = null;
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Title1 — CONGRATULATIONS (theo ngôn ngữ)' })
+    congratulationsFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
 
-    @property({ type: Node, tooltip: 'Layer bắt tap full-screen (mặc định = Overlay)' })
-    clickOverlay: Node | null = null;
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Title2 — JACKPOT FEATURE (theo ngôn ngữ)' })
+    jackpotFeatureFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Nền panel (theo ngôn ngữ)' })
+    panelBgFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
 
     private _isOpen = false;
+    private _introDone = false;
     private _pickState: PickGameState | null = null;
     private _refsReady = false;
     private _boundPress = () => this._closeAndEnter(true);
     private _autoCloseCb = () => this._closeAndEnter(false);
+    private _settleLeft = 0;
+    private _introCompleteCb = (): void => this._onIntroComplete();
 
     onLoad(): void {
         this._ensureRefs();
-        this.startButton?.node.on(Button.EventType.CLICK, this._boundPress, this);
+        this._resetContentIdle();
+        this.pressButton?.node.on(Button.EventType.CLICK, this._boundPress, this);
+        EventBus.instance.on(GameEvents.LANGUAGE_CHANGED, this._onLanguageChanged, this);
     }
 
     onDestroy(): void {
         this._cancelAutoClose();
-        this._unbindInput();
+        this.unschedule(this._onSettleTick);
+        this.unschedule(this._introCompleteCb);
+        this._unbindPressButton();
         EventBus.instance.offTarget(this);
     }
 
@@ -74,81 +91,47 @@ export class JackpotStartPopup extends Component {
         this._ensureRefs();
         this._pickState = pickState;
         this._isOpen = true;
-        SoundManager.instance?.enterPickGameBgm();
+        this._introDone = false;
 
-        this._applyLabels();
+        this._setPressInteractable(false);
+        this._applyLocalizedArtwork();
 
         this.node.setScale(1, 1, 1);
         if (this.overlayNode) {
             this.overlayNode.setScale(1, 1, 1);
             this.overlayNode.active = true;
-            const ovOp = this.overlayNode.getComponent(UIOpacity) ?? this.overlayNode.addComponent(UIOpacity);
-            Tween.stopAllByTarget(ovOp);
-            ovOp.opacity = 0;
-            tween(ovOp).to(SCALE_IN_DURATION, { opacity: 255 }, { easing: 'sineOut' }).start();
-        }
-        if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
-            this.clickOverlay.setScale(1, 1, 1);
-            this.clickOverlay.active = true;
         }
         this.node.active = true;
         this._fitOverlayFullscreen();
         EventBus.instance.emit(GameEvents.POPUP_OPENED);
 
-        const panel = this.popupNode ?? this.node;
-        Tween.stopAllByTarget(panel);
-        panel.setScale(SCALE_IN_FROM, SCALE_IN_FROM, 1);
-        const op = panel.getComponent(UIOpacity) ?? panel.addComponent(UIOpacity);
-        Tween.stopAllByTarget(op);
-        op.opacity = 255;
-        tween(panel)
-            .to(SCALE_IN_DURATION, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
-            .start();
-
-        if (this.hintLabel) {
-            const hn = this.hintLabel.node;
-            Tween.stopAllByTarget(hn);
-            tween(hn)
-                .repeatForever(
-                    tween(hn)
-                        .to(0.55, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'sineInOut' })
-                        .to(0.55, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' }),
-                )
-                .start();
+        if (this.popupNode) {
+            this.popupNode.setScale(1, 1, 1);
+            Tween.stopAllByTarget(this.popupNode);
         }
 
-        this.scheduleOnce(() => this._bindInput(), SCALE_IN_DURATION + 0.05);
+        this._prepareContentHidden();
+
+        this.unschedule(this._onSettleTick);
+        this._settleLeft = SETTLE_FRAMES;
+        this.schedule(this._onSettleTick, 0);
+
         this._scheduleAutoClose();
 
         Log.d(`[JackpotStartPopup] show — PRESS TO START → Pick Game (auto-close ${AUTO_CLOSE_SECONDS}s)`);
     }
 
-    private _applyLabels(): void {
-        if (this.titleLabel) {
-            const award = L('jackpot_feature_award');
-            this.titleLabel.string = award.includes('[jackpot_feature_award]')
-                ? 'JACKPOT FEATURE AWARD'
-                : award;
+    private _onSettleTick = (): void => {
+        if (!this._isOpen) {
+            this.unschedule(this._onSettleTick);
+            return;
         }
-        if (this.featureLabel) {
-            const feat = L('jackpot_feature_type');
-            this.featureLabel.string = feat.includes('[jackpot_feature_type]')
-                ? 'Jackpot Feature'
-                : feat;
-        }
-        if (this.reelLabel) {
-            const desc = L('jackpot_feature_desc');
-            this.reelLabel.string = desc.includes('[jackpot_feature_desc]')
-                ? 'Match 3 Lucky Symbols'
-                : desc;
-        }
-        if (this.hintLabel) {
-            const hint = L('press_to_start');
-            this.hintLabel.string = hint.includes('[press_to_start]')
-                ? 'PRESS TO START'
-                : hint;
-        }
-    }
+        this._settleLeft -= 1;
+        if (this._settleLeft > 0) return;
+        this.unschedule(this._onSettleTick);
+        this._fitOverlayFullscreen();
+        this._playContentScaleInSequence();
+    };
 
     private _ensureRefs(): void {
         if (this._refsReady) return;
@@ -160,47 +143,70 @@ export class JackpotStartPopup extends Component {
         if (!this.popupNode) {
             this.popupNode = this.node.getChildByName('Panel');
         }
-        if (!this.clickOverlay) {
-            this.clickOverlay = this.overlayNode;
-        }
 
         const panel = this.popupNode;
         if (panel) {
-            if (!this.titleLabel) {
-                this.titleLabel = panel.getChildByName('TitleLabel')?.getComponent(Label)
-                    ?? panel.getChildByName('Title')?.getComponent(Label)
-                    ?? null;
+            if (!this.title1Sprite) {
+                this.title1Sprite = panel.getChildByName('Title1')?.getComponent(Sprite) ?? null;
             }
-            if (!this.featureLabel) {
-                this.featureLabel = panel.getChildByName('FeatureLabel')?.getComponent(Label)
-                    ?? panel.getChildByName('Feature')?.getComponent(Label)
-                    ?? null;
+            if (!this.title2Sprite) {
+                this.title2Sprite = panel.getChildByName('Title2')?.getComponent(Sprite) ?? null;
             }
-            if (!this.reelLabel) {
-                this.reelLabel = panel.getChildByName('ReelLabel')?.getComponent(Label)
-                    ?? panel.getChildByName('Reel')?.getComponent(Label)
-                    ?? panel.getChildByName('Desc')?.getComponent(Label)
-                    ?? null;
+            if (!this.pressButton) {
+                this.pressButton = panel.getChildByName('Press')?.getComponent(Button) ?? null;
             }
-            if (!this.hintLabel) {
-                this.hintLabel = panel.getChildByName('HintLabel')?.getComponent(Label)
-                    ?? panel.getChildByName('Hint')?.getComponent(Label)
-                    ?? panel.getChildByName('Press')?.getComponent(Label)
-                    ?? null;
-            }
-            if (!this.startButton) {
-                this.startButton = panel.getChildByName('Press')?.getComponent(Button)
-                    ?? panel.getChildByName('Start')?.getComponent(Button)
-                    ?? null;
+            if (!this.panelBgSprite) {
+                this.panelBgSprite = panel.getComponent(Sprite) ?? null;
             }
         }
 
-        if (this.overlayNode && !this.overlayNode.getComponent(BlockInputEvents)) {
-            this.overlayNode.addComponent(BlockInputEvents);
+        this._bootstrapLocalizedFrame(this.congratulationsFrames, this.title1Sprite);
+        this._bootstrapLocalizedFrame(this.jackpotFeatureFrames, this.title2Sprite);
+        this._bootstrapLocalizedFrame(this.panelBgFrames, this.panelBgSprite);
+    }
+
+    private _bootstrapLocalizedFrame(frames: LocalizedSpriteFrames, sprite: Sprite | null): void {
+        if (frames.defaultFrame || !sprite?.spriteFrame) return;
+        frames.defaultFrame = sprite.spriteFrame;
+    }
+
+    private _onLanguageChanged = (): void => {
+        if (!this._isOpen) return;
+        this._applyLocalizedArtwork();
+    };
+
+    private _applyLocalizedArtwork(): void {
+        const lang = LocalizationManager.instance.currentLanguage;
+        applyLocalizedSprite(this.title1Sprite, this.congratulationsFrames, lang);
+        applyLocalizedSprite(this.title2Sprite, this.jackpotFeatureFrames, lang);
+        applyLocalizedSprite(this.panelBgSprite, this.panelBgFrames, lang);
+    }
+
+    private _introNodes(): Node[] {
+        return [this.title1Sprite?.node, this.title2Sprite?.node, this.pressButton?.node]
+            .filter((n): n is Node => !!n?.isValid);
+    }
+
+    private _ensureOpacity(node: Node): UIOpacity {
+        return node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
+    }
+
+    private _resetContentIdle(): void {
+        for (const n of this._introNodes()) {
+            this._stopNodeTweens(n);
+            n.setScale(0, 0, 1);
+            this._ensureOpacity(n).opacity = 0;
         }
-        if (this.overlayNode && !this.overlayNode.getComponent(UITransform)) {
-            this.overlayNode.addComponent(UITransform);
-        }
+    }
+
+    private _prepareContentHidden(): void {
+        this._resetContentIdle();
+    }
+
+    private _stopNodeTweens(node: Node): void {
+        Tween.stopAllByTarget(node);
+        const op = node.getComponent(UIOpacity);
+        if (op) Tween.stopAllByTarget(op);
     }
 
     private _scheduleAutoClose(): void {
@@ -212,60 +218,88 @@ export class JackpotStartPopup extends Component {
         this.unschedule(this._autoCloseCb);
     }
 
-    private _bindInput(): void {
+    /** Title1 → Title2 → Press: scale 0→1, node sau bắt đầu sớm hơn (stagger ngắn). */
+    private _playContentScaleInSequence(): void {
         if (!this._isOpen) return;
 
-        if (this.startButton?.node?.isValid) {
-            this.startButton.node.off(Button.EventType.CLICK, this._boundPress, this);
-            this.startButton.node.on(Button.EventType.CLICK, this._boundPress, this);
+        const nodes = this._introNodes();
+        if (!nodes.length) {
+            this._onIntroComplete();
+            return;
         }
 
-        const targets = [
-            this.clickOverlay,
-            this.overlayNode,
-        ].filter((n): n is Node => !!n?.isValid);
+        this.unschedule(this._introCompleteCb);
 
-        for (const n of targets) {
-            n.off(Node.EventType.TOUCH_END, this._boundPress, this);
-            n.off(Node.EventType.MOUSE_UP, this._boundPress, this);
-            n.on(Node.EventType.TOUCH_END, this._boundPress, this);
-            n.on(Node.EventType.MOUSE_UP, this._boundPress, this);
-        }
-        input.off(Input.EventType.TOUCH_END, this._onGlobalTouch, this);
-        input.off(Input.EventType.MOUSE_UP, this._onGlobalMouse, this);
-        input.on(Input.EventType.TOUCH_END, this._onGlobalTouch, this);
-        input.on(Input.EventType.MOUSE_UP, this._onGlobalMouse, this);
+        let introEnd = 0;
+        nodes.forEach((node, index) => {
+            const delay = index * SCALE_STAGGER;
+            introEnd = Math.max(introEnd, delay + SCALE_IN_DURATION);
+
+            this._stopNodeTweens(node);
+            node.setScale(0, 0, 1);
+            const op = this._ensureOpacity(node);
+            op.opacity = 0;
+
+            tween(node)
+                .delay(delay)
+                .to(SCALE_IN_DURATION, { scale: new Vec3(1, 1, 1) }, { easing: 'sineOut' })
+                .start();
+
+            tween(op)
+                .delay(delay)
+                .to(SCALE_IN_DURATION, { opacity: 255 }, { easing: 'sineOut' })
+                .start();
+        });
+
+        this.scheduleOnce(this._introCompleteCb, introEnd);
     }
 
-    private _unbindInput(): void {
-        const targets = [
-            this.clickOverlay,
-            this.overlayNode,
-        ].filter((n): n is Node => !!n?.isValid);
-        for (const n of targets) {
-            n.off(Node.EventType.TOUCH_END, this._boundPress, this);
-            n.off(Node.EventType.MOUSE_UP, this._boundPress, this);
-        }
-        input.off(Input.EventType.TOUCH_END, this._onGlobalTouch, this);
-        input.off(Input.EventType.MOUSE_UP, this._onGlobalMouse, this);
-        if (this.startButton?.node?.isValid) {
-            this.startButton.node.off(Button.EventType.CLICK, this._boundPress, this);
+    private _onIntroComplete(): void {
+        if (!this._isOpen || this._introDone) return;
+        this._introDone = true;
+        this._setPressInteractable(true);
+        this._playPressPulse();
+        EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP_INTRO_DONE);
+        Log.d('[JackpotStartPopup] intro done');
+    }
+
+    private _playPressPulse(): void {
+        if (!this._isOpen) return;
+        const pressNode = this.pressButton?.node;
+        if (!pressNode?.isValid) return;
+        Tween.stopAllByTarget(pressNode);
+        pressNode.setScale(1, 1, 1);
+        tween(pressNode)
+            .repeatForever(
+                tween(pressNode)
+                    .to(0.55, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'sineInOut' })
+                    .to(0.55, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' }),
+            )
+            .start();
+    }
+
+    private _setPressInteractable(on: boolean): void {
+        if (this.pressButton) this.pressButton.interactable = on;
+    }
+
+    private _stopContentTweens(): void {
+        for (const n of this._introNodes()) {
+            this._stopNodeTweens(n);
         }
     }
 
-    private _onGlobalTouch = (_e: EventTouch): void => {
-        this._closeAndEnter(true);
-    };
-
-    private _onGlobalMouse = (_e: EventMouse): void => {
-        this._closeAndEnter(true);
-    };
+    private _unbindPressButton(): void {
+        this.pressButton?.node?.off(Button.EventType.CLICK, this._boundPress, this);
+    }
 
     private _closeAndEnter(fromUserInput: boolean): void {
         if (!this._isOpen) return;
+        if (fromUserInput && !this._introDone) return;
+
         this._isOpen = false;
         this._cancelAutoClose();
-        this._unbindInput();
+        this.unschedule(this._onSettleTick);
+        this.unschedule(this._introCompleteCb);
 
         const pickState = this._pickState;
         this._pickState = null;
@@ -274,7 +308,9 @@ export class JackpotStartPopup extends Component {
             SoundManager.instance?.playButtonClick();
         }
         EventBus.instance.emit(GameEvents.POPUP_CLOSED);
-        if (this.hintLabel) Tween.stopAllByTarget(this.hintLabel.node);
+
+        this._stopContentTweens();
+        this._setPressInteractable(false);
 
         if (pickState) {
             Log.e(`[JackpotStartPopup] ${fromUserInput ? 'PRESS' : 'AUTO'} → enter Pick Game`);
@@ -284,13 +320,8 @@ export class JackpotStartPopup extends Component {
             EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP_CLOSED, null);
         }
 
+        this._resetContentIdle();
         if (this.overlayNode) this.overlayNode.active = false;
-        if (this.clickOverlay && this.clickOverlay !== this.overlayNode) {
-            this.clickOverlay.active = false;
-        }
-        const panel = this.popupNode ?? this.node;
-        Tween.stopAllByTarget(panel);
-        panel.setScale(1, 1, 1);
         this.node.active = false;
     }
 
@@ -324,6 +355,7 @@ export class JackpotStartPopup extends Component {
             }
         };
 
+        apply(this.node);
         apply(this.overlayNode);
     }
 }

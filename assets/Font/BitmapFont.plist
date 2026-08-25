@@ -206,11 +206,11 @@
                 <key>spriteOffset</key>
                 <string>{0,0}</string>
                 <key>spriteSize</key>
-                <string>{93,76}</string>
+                <string>{128,76}</string>
                 <key>spriteSourceSize</key>
-                <string>{93,76}</string>
+                <string>{128,76}</string>
                 <key>textureRect</key>
-                <string>{{0,152},{93,76}}</string>
+                <string>{{0,152},{128,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -225,7 +225,7 @@
                 <key>spriteSourceSize</key>
                 <string>{146,76}</string>
                 <key>textureRect</key>
-                <string>{{233,152},{146,76}}</string>
+                <string>{{268,152},{146,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -240,7 +240,7 @@
                 <key>spriteSourceSize</key>
                 <string>{70,76}</string>
                 <key>textureRect</key>
-                <string>{{379,152},{70,76}}</string>
+                <string>{{414,152},{70,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -341,11 +341,11 @@
                 <key>spriteOffset</key>
                 <string>{0,0}</string>
                 <key>spriteSize</key>
-                <string>{180,76}</string>
+                <string>{171,76}</string>
                 <key>spriteSourceSize</key>
-                <string>{180,76}</string>
+                <string>{171,76}</string>
                 <key>textureRect</key>
-                <string>{{70,304},{180,76}}</string>
+                <string>{{70,304},{171,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -360,7 +360,7 @@
                 <key>spriteSourceSize</key>
                 <string>{102,76}</string>
                 <key>textureRect</key>
-                <string>{{250,304},{102,76}}</string>
+                <string>{{241,304},{102,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -375,7 +375,7 @@
                 <key>spriteSourceSize</key>
                 <string>{72,76}</string>
                 <key>textureRect</key>
-                <string>{{352,304},{72,76}}</string>
+                <string>{{343,304},{72,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -390,7 +390,7 @@
                 <key>spriteSourceSize</key>
                 <string>{70,76}</string>
                 <key>textureRect</key>
-                <string>{{93,152},{70,76}}</string>
+                <string>{{128,152},{70,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -405,7 +405,7 @@
                 <key>spriteSourceSize</key>
                 <string>{70,76}</string>
                 <key>textureRect</key>
-                <string>{{163,152},{70,76}}</string>
+                <string>{{198,152},{70,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -420,7 +420,7 @@
                 <key>spriteSourceSize</key>
                 <string>{67,76}</string>
                 <key>textureRect</key>
-                <string>{{424,304},{67,76}}</string>
+                <string>{{415,304},{67,76}}</string>
                 <key>textureRotated</key>
                 <false/>
             </dict>
@@ -438,7 +438,7 @@
             <key>size</key>
             <string>{506,380}</string>
             <key>smartupdate</key>
-            <string>$TexturePacker:SmartUpdate:79944464332d5c6154d31374233fd6d2:fd45f9a640c0ab4cbd855518d102a063:96c0678ab00ec3d17bf666122b3fed9c$</string>
+            <string>$TexturePacker:SmartUpdate:9b45bd32251f0d0189149692c872f731:78ae105de2c7563bd8e21642e5ddc3d4:96c0678ab00ec3d17bf666122b3fed9c$</string>
             <key>textureFileName</key>
             <string>BitmapFont.png</string>
         </dict>

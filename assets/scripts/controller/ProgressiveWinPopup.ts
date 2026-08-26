@@ -1,15 +1,16 @@
 /**
  * ProgressiveWinPopup - Popup BIG WIN / MEGA WIN / MAJOR WIN / SUPER WIN / EPIC WIN / ULTRA WIN / MONSTER WIN / MAX WIN.
  *
- * ── ĐIỀU KIỆN HIỆN ──
- *   BIG WIN    : totalWin ≥ totalBet × 25
- *   MEGA WIN   : totalWin ≥ totalBet × 50
- *   MAJOR WIN  : totalWin ≥ totalBet × 100
- *   SUPER WIN  : totalWin ≥ totalBet × 200
- *   EPIC WIN   : totalWin ≥ totalBet × 400
- *   ULTRA WIN  : totalWin ≥ totalBet × 800
- *   MONSTER WIN: totalWin ≥ totalBet × 1500
- *   MAX WIN    : totalWin ≥ totalBet × 3000
+ * ── ĐIỀU KIỆN HIỆN (PS.WinPopup từ API Enter; fallback dưới) ──
+ *   BIG WIN    : totalWin ≥ totalBet × 10
+ *   MEGA WIN   : totalWin ≥ totalBet × 30
+ *   MAJOR WIN  : totalWin ≥ totalBet × 50
+ *   SUPER WIN  : totalWin ≥ totalBet × 70
+ *   EPIC WIN   : totalWin ≥ totalBet × 100
+ *   ULTRA WIN  : totalWin ≥ totalBet × 150
+ *   MONSTER WIN: totalWin ≥ totalBet × 200
+ *   MAX WIN    : totalWin ≥ totalBet × 300
+ *   Normal     : 0× — không hiện popup
  *
  * ── SETUP TRONG EDITOR ──
  *   1. Tạo Node "ProgressiveWinPopup" (bắt đầu inactive).
@@ -72,16 +73,16 @@ export const enum ProgressiveWinTier {
     MAX     = 'max_win',
 }
 
-/** Ngưỡng multiplier (từ cao → thấp để check) */
+/** Ngưỡng multiplier fallback (từ cao → thấp). Khớp PS.WinPopup Carnival Neko API V1.0.2. */
 export const PROGRESSIVE_WIN_THRESHOLDS = [
-    { tier: ProgressiveWinTier.MAX,     multiplier: 3000 },
-    { tier: ProgressiveWinTier.MONSTER, multiplier: 1500 },
-    { tier: ProgressiveWinTier.ULTRA,   multiplier: 800  },
-    { tier: ProgressiveWinTier.EPIC,   multiplier: 400  },
-    { tier: ProgressiveWinTier.SUPER,  multiplier: 200  },
-    { tier: ProgressiveWinTier.MAJOR,  multiplier: 100  },
-    { tier: ProgressiveWinTier.MEGA,    multiplier: 50   },
-    { tier: ProgressiveWinTier.BIG,    multiplier: 25   },
+    { tier: ProgressiveWinTier.MAX,     multiplier: 300 },
+    { tier: ProgressiveWinTier.MONSTER, multiplier: 200 },
+    { tier: ProgressiveWinTier.ULTRA,   multiplier: 150 },
+    { tier: ProgressiveWinTier.EPIC,    multiplier: 100 },
+    { tier: ProgressiveWinTier.SUPER,   multiplier: 70  },
+    { tier: ProgressiveWinTier.MAJOR,   multiplier: 50  },
+    { tier: ProgressiveWinTier.MEGA,    multiplier: 30  },
+    { tier: ProgressiveWinTier.BIG,     multiplier: 10  },
 ];
 
 @ccclass('ProgressiveWinPopup')
@@ -346,16 +347,16 @@ export class ProgressiveWinPopup extends Component {
             ProgressiveWinTier.MONSTER,
             ProgressiveWinTier.MAX,
         ];
-        // Multiplier at which we switch TO the next tier — hardcoded per 8-tier spec.
-        // (Server config may still have old 4-tier values, so we ignore it for progressive thresholds.)
+        // Ngưỡng chuyển sang tier kế — lấy PS.WinPopup (GameData.config) sau Enter.
+        const cfg = GameData.instance.config;
         const nextThresholdMuls = [
-            50,    // BIG    → MEGA
-            100,   // MEGA   → MAJOR
-            200,   // MAJOR  → SUPER
-            400,   // SUPER  → EPIC
-            800,   // EPIC   → ULTRA
-            1500,  // ULTRA  → MONSTER
-            3000,  // MONSTER → MAX
+            cfg.megaWinThreshold    || 30,   // BIG    → MEGA
+            cfg.majorWinThreshold   || 50,   // MEGA   → MAJOR
+            cfg.superWinThreshold   || 70,   // MAJOR  → SUPER
+            cfg.epicWinThreshold    || 100,  // SUPER  → EPIC
+            cfg.ultraWinThreshold   || 150,  // EPIC   → ULTRA
+            cfg.monsterWinThreshold || 200,  // ULTRA  → MONSTER
+            cfg.maxWinThreshold     || 300,  // MONSTER → MAX
         ];
         const finalIndex = tierOrder.indexOf(finalTier);
 

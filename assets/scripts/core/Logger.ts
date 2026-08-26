@@ -62,5 +62,5 @@ export const Log = {
     clearWhitelist: (): void => { _white.clear(); },
 };
 
-// Chỉ bật log âm thanh — tag "sound" khớp prefix [SOUND] trong SoundManager.
-Log.setWhitelist(['sound']);
+// Chỉ bật log WinPopup (PS.WinPopup lúc Enter). Mọi tag khác (sound, …) bị rào.
+Log.setWhitelist(['winpopup']);

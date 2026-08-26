@@ -3433,8 +3433,20 @@ export class GameManager extends Component {
      */
     private _getProgressiveTierFromRatio(win: number, totalBet: number): ProgressiveWinTier | null {
         const ratio = totalBet > 0 ? win / totalBet : 0;
-        for (const t of PROGRESSIVE_WIN_THRESHOLDS) {
-            if (ratio >= t.multiplier) return t.tier;
+        const cfg = GameData.instance.config;
+        const fromApi = [
+            { tier: ProgressiveWinTier.MAX,     multiplier: cfg.maxWinThreshold },
+            { tier: ProgressiveWinTier.MONSTER, multiplier: cfg.monsterWinThreshold },
+            { tier: ProgressiveWinTier.ULTRA,   multiplier: cfg.ultraWinThreshold },
+            { tier: ProgressiveWinTier.EPIC,    multiplier: cfg.epicWinThreshold },
+            { tier: ProgressiveWinTier.SUPER,   multiplier: cfg.superWinThreshold },
+            { tier: ProgressiveWinTier.MAJOR,   multiplier: cfg.majorWinThreshold },
+            { tier: ProgressiveWinTier.MEGA,    multiplier: cfg.megaWinThreshold },
+            { tier: ProgressiveWinTier.BIG,     multiplier: cfg.bigWinThreshold },
+        ];
+        const table = fromApi.some(t => t.multiplier > 0) ? fromApi : PROGRESSIVE_WIN_THRESHOLDS;
+        for (const t of table) {
+            if (t.multiplier > 0 && ratio >= t.multiplier) return t.tier;
         }
         return null;
     }

@@ -3,9 +3,9 @@
  *
  * Prefab: assets/bundle/MatsuriStartPopup.prefab
  * Gán hết trong Editor:
- *   - titleSprite / gridSprite / pressButton → kéo node Title, Grid, Press
+ *   - titleSprite / gridSprite / pressButton / pressInfoSprite → Title, Grid, Press, Press/Info
  *   - mightyTitleFrames … ultimateTitleFrames → tiêu đề feature (LocalizedSpriteFrames)
- *   - prizesAppearFrames / minorMiniAppearFrames / panelBgFrames → ghi chú & nền (LocalizedSpriteFrames)
+ *   - prizesAppearFrames / minorMiniAppearFrames / panelBgFrames / pressInfoFrames → ghi chú, nền, chữ Press
  *   - grid5x3Frame / grid5x4Frame / grid5x5Frame → sprite kích thước lưới (không đổi theo ngôn ngữ)
  *
  * Intro: Title → Grid → Press scale 0→1 lần lượt (stagger 0.06s).
@@ -17,7 +17,7 @@ import {
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
-import { applyLocalizedSprite, LocalizedSpriteFrames } from '../core/LocalizedSpriteFrames';
+import { applyLocalizedSprite, applySpriteFrameTrimmed, LocalizedSpriteFrames } from '../core/LocalizedSpriteFrames';
 import { LocalizationManager } from '../core/LocalizationManager';
 import { Log } from '../core/Logger';
 import { CarnivalFeatureKind, CarnivalFeatureTrigger } from '../data/SlotTypes';
@@ -50,6 +50,9 @@ export class MatsuriStartPopup extends Component {
 
     @property({ type: Button, tooltip: 'Panel/Base/Press — nút vào feature' })
     pressButton: Button | null = null;
+
+    @property({ type: Sprite, tooltip: 'Panel/Base/Press/Info — chữ PRESS (theo ngôn ngữ)' })
+    pressInfoSprite: Sprite | null = null;
 
     @property({ type: Sprite, tooltip: 'Panel/Base/Note1 — ghi chú PRIZES APPEAR ON' })
     note1Sprite: Sprite | null = null;
@@ -86,6 +89,9 @@ export class MatsuriStartPopup extends Component {
 
     @property({ type: LocalizedSpriteFrames, tooltip: 'Nền panel Group (theo ngôn ngữ)' })
     panelBgFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Press/Info — PRESS (theo ngôn ngữ)' })
+    pressInfoFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
 
     @property({ type: SpriteFrame, tooltip: 'Grid sprite — 5×3' })
     grid5x3Frame: SpriteFrame | null = null;
@@ -213,6 +219,10 @@ export class MatsuriStartPopup extends Component {
             if (!this.pressButton) {
                 this.pressButton = base.getChildByName('Press')?.getComponent(Button) ?? null;
             }
+            if (!this.pressInfoSprite) {
+                const pressNode = this.pressButton?.node ?? base.getChildByName('Press');
+                this.pressInfoSprite = pressNode?.getChildByName('Info')?.getComponent(Sprite) ?? null;
+            }
             if (!this.note1Sprite) {
                 this.note1Sprite = base.getChildByName('Note1')?.getComponent(Sprite) ?? null;
             }
@@ -228,6 +238,7 @@ export class MatsuriStartPopup extends Component {
         this._bootstrapLocalizedFrame(this.minorMiniAppearFrames, this.note2Sprite);
         this._bootstrapLocalizedFrame(this.panelBgFrames, this.panelBgSprite);
         this._bootstrapLocalizedFrame(this.mightyTitleFrames, this.titleSprite);
+        this._bootstrapLocalizedFrame(this.pressInfoFrames, this.pressInfoSprite);
     }
 
     private _bootstrapLocalizedFrame(frames: LocalizedSpriteFrames, sprite: Sprite | null): void {
@@ -249,9 +260,7 @@ export class MatsuriStartPopup extends Component {
         applyLocalizedSprite(this.titleSprite, this._titleFramesForKind(feature.kind), lang);
 
         const gridFrame = this._resolveGridFrame(feature.matsuriRows || 3);
-        if (this.gridSprite && gridFrame) {
-            this.gridSprite.spriteFrame = gridFrame;
-        }
+        applySpriteFrameTrimmed(this.gridSprite, gridFrame);
 
         applyLocalizedSprite(this.note1Sprite, this.prizesAppearFrames, lang);
         this._applyNote2Visibility(feature.kind);
@@ -259,6 +268,7 @@ export class MatsuriStartPopup extends Component {
             applyLocalizedSprite(this.note2Sprite, this.minorMiniAppearFrames, lang);
         }
         applyLocalizedSprite(this.panelBgSprite, this.panelBgFrames, lang);
+        applyLocalizedSprite(this.pressInfoSprite, this.pressInfoFrames, lang);
     }
 
     /** Mighty / Mega / Super — ẩn Note2 (MINOR OR MINI); Ultra+ vẫn hiện. */

@@ -15,7 +15,7 @@
 
 import { _decorator, input, Input, EventKeyboard, KeyCode } from 'cc';
 import { isDebugToolsEnabled } from '../core/DebugEnv';
-import { DEBUG_RANDS_PRESET } from '../data/ServerConfig';
+import { DEBUG_RANDS_PRESET, DEBUG_SHORTCUT_JACKPOT_1234, DEBUG_SHORTCUT_LANG_F1_F6 } from '../data/ServerConfig';
 import { LocalizationManager, LanguageCode } from '../core/LocalizationManager';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -71,6 +71,10 @@ const { ccclass } = _decorator;
  *   Y → TopUpEndPopup (CONGRATS)
  *
  */
+
+const LANG_F1_F6_KEYS = new Set<KeyCode>([
+    KeyCode.F1, KeyCode.F2, KeyCode.F3, KeyCode.F4, KeyCode.F5, KeyCode.F6,
+]);
 
 const LANG_SHORTCUTS: { key: KeyCode; lang: LanguageCode; label: string }[] = [
     { key: KeyCode.F1, lang: 'en',    label: 'English' }, 
@@ -167,9 +171,14 @@ export class DebugManager {
 
             Log.d(
                 '[DebugManager] 🔧 DEBUG SHORTCUTS ENABLED:' +
-                ' 1=MINI_JACKPOT | 2=MINOR_JACKPOT | 3=MAJOR_JACKPOT | 4=GRAND_JACKPOT' +
+                (DEBUG_SHORTCUT_JACKPOT_1234
+                    ? ' 1=MINI_JACKPOT | 2=MINOR_JACKPOT | 3=MAJOR_JACKPOT | 4=GRAND_JACKPOT'
+                    : ' (1–4 jackpot OFF)') +
                 ' | 7=SCENARIO:RANDOM | 8=SCENARIO:TOP3 | 9=SCENARIO:NEARBY' +
-                ' | F1=en | F2=ko | F3=zh-cn | F4=zh-tw | F5=fil | F6=ja | F7=th' +
+                (DEBUG_SHORTCUT_LANG_F1_F6
+                    ? ' | F1=en | F2=ko | F3=zh-cn | F4=zh-tw | F5=fil | F6=ja'
+                    : ' (F1–F6 lang OFF)') +
+                ' | F7=th' +
                 ' | P=DISCONNECTED | Q=RELOGIN | W=INSUFFICIENT_BALANCE | E=EXPIRED | R=WRONG_PARSHEET | I=INVALID_REQUEST' +
                 ' | (T=legacy wild trail mouse-follow removed)' +
                 ' | B=BIG_WIN | M=MEGA_WIN | J=MAJOR_WIN | S=SUPER_WIN | E=EPIC_WIN | U=ULTRA_WIN | O=MONSTER_WIN | X=MAX_WIN' +
@@ -188,21 +197,25 @@ export class DebugManager {
         if (this._openPopupCount > 0) return;
 
         switch (event.keyCode) {
-            // ─── Jackpot test ───
+            // ─── Jackpot test (tạm chặn: DEBUG_SHORTCUT_JACKPOT_1234) ───
             case KeyCode.DIGIT_1:
             case KeyCode.NUM_1:
+                if (!DEBUG_SHORTCUT_JACKPOT_1234) break;
                 this._triggerJackpotTest(JackpotType.MINI, 'MINI JACKPOT');
                 break;
             case KeyCode.DIGIT_2:
             case KeyCode.NUM_2:
+                if (!DEBUG_SHORTCUT_JACKPOT_1234) break;
                 this._triggerJackpotTest(JackpotType.MINOR, 'MINOR JACKPOT');
                 break;
             case KeyCode.DIGIT_3:
             case KeyCode.NUM_3:
+                if (!DEBUG_SHORTCUT_JACKPOT_1234) break;
                 this._triggerJackpotTest(JackpotType.MAJOR, 'MAJOR JACKPOT');
                 break;
             case KeyCode.DIGIT_4:
             case KeyCode.NUM_4:
+                if (!DEBUG_SHORTCUT_JACKPOT_1234) break;
                 this._triggerJackpotTest(JackpotType.GRAND, 'GRAND JACKPOT');
                 break;
 
@@ -220,10 +233,11 @@ export class DebugManager {
                 this._setCashRaceScenario('NEARBY');
                 break;
 
-            // ─── Language / font test ───
+            // ─── Language / font test (F1–F6 tạm chặn: DEBUG_SHORTCUT_LANG_F1_F6) ───
             default: {
                 const shortcut = LANG_SHORTCUTS.find(s => s.key === event.keyCode);
                 if (shortcut) {
+                    if (!DEBUG_SHORTCUT_LANG_F1_F6 && LANG_F1_F6_KEYS.has(shortcut.key)) break;
                     this._switchLanguage(shortcut.lang, shortcut.label);
                     break;
                 }

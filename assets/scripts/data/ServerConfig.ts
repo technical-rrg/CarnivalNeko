@@ -24,6 +24,12 @@ export const FORCE_NORMAL_SPIN_ONLY: boolean = false;
 /** Bật OpenDebug panel + DebugManager shortcuts (mọi build). Tắt trước release production. */
 export const ENABLE_DEBUG_TOOLS: boolean = true;
 
+/** false = tạm chặn phím 1–4 (Jackpot test) trong DebugManager. */
+export const DEBUG_SHORTCUT_JACKPOT_1234: boolean = false;
+
+/** false = tạm chặn phím F1–F6 (đổi ngôn ngữ). F7 vẫn hoạt động. */
+export const DEBUG_SHORTCUT_LANG_F1_F6: boolean = false;
+
 /**
  * ★ Carnival Neko mock: mỗi Normal Spin luôn land ≥1 Trail (Normal → flip màu → bay Pot).
  * Tắt khi muốn mock feature cũ (Wild Trail GoF).
@@ -122,7 +128,7 @@ export const ServerConfig = {
      * ★ Khi chạy localization-tool-update để tạo .ts mới từ Excel,
      *   set USE_CDN_LOCALE = false để game dùng đúng file đó thay vì bị CDN override.
      */
-    USE_CDN_LOCALE: true,
+    USE_CDN_LOCALE: false,
 
     /** Bật/tắt log của Jackpot polling (mỗi 2s sẽ rất nhiều log) */
     LOG_JACKPOT_POLLING: false,

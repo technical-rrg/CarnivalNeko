@@ -10,10 +10,15 @@ import { LanguageCode, LocalizationManager } from './LocalizationManager';
 
 const { ccclass, property } = _decorator;
 
+/** Chuẩn hóa mã ngôn ngữ Inspector ↔ LocalizationManager (zh_cn → zh-cn). */
+function normalizeSpriteLocaleKey(code: string): string {
+    return code.toLowerCase().trim().replace(/_/g, '-');
+}
+
 @ccclass('LocaleSpriteOverride')
 export class LocaleSpriteOverride {
 
-    @property({ tooltip: 'Mã ngôn ngữ: en, ko, zh-cn, vi, ...' })
+    @property({ tooltip: 'Mã ngôn ngữ: en, ko, zh-cn, zh-tw, vi, ... (zh_cn cũng được)' })
     language = 'en';
 
     @property({ type: SpriteFrame, tooltip: 'Sprite cho ngôn ngữ này' })
@@ -30,10 +35,21 @@ export class LocalizedSpriteFrames {
     overrides: LocaleSpriteOverride[] = [];
 
     resolve(lang?: LanguageCode): SpriteFrame | null {
-        const code = lang ?? LocalizationManager.instance.currentLanguage;
-        const hit = this.overrides.find(o => o.language === code)?.frame;
+        const code = normalizeSpriteLocaleKey(lang ?? LocalizationManager.instance.currentLanguage);
+        const hit = this.overrides.find(
+            o => normalizeSpriteLocaleKey(o.language) === code,
+        )?.frame;
         return hit ?? this.defaultFrame;
     }
+}
+
+export function applySpriteFrameTrimmed(
+    sprite: Sprite | null | undefined,
+    frame: SpriteFrame | null | undefined,
+): void {
+    if (!sprite?.isValid || !frame) return;
+    sprite.spriteFrame = frame;
+    sprite.sizeMode = Sprite.SizeMode.TRIMMED;
 }
 
 export function applyLocalizedSprite(
@@ -42,6 +58,5 @@ export function applyLocalizedSprite(
     lang?: LanguageCode,
 ): void {
     if (!sprite?.isValid || !frames) return;
-    const frame = frames.resolve(lang);
-    if (frame) sprite.spriteFrame = frame;
+    applySpriteFrameTrimmed(sprite, frames.resolve(lang));
 }

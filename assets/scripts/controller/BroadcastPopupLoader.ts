@@ -2,7 +2,7 @@
  * BroadcastPopupLoader — Lazy-load BroadcastPopup prefab từ MainBundle.
  *
  * ── MỤC ĐÍCH ──
- *   BroadcastPopup tách khỏi Base.prefab — load khi boot, gắn sibling index cuối.
+ *   BroadcastPopup tách khỏi Base.prefab — load khi boot, gắn dưới Transition.
  *   Wire PosFrom/PosTo từ Base root (marker layout vẫn trên Base).
  *
  * ── FLOW ──
@@ -15,7 +15,7 @@ import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { Log } from '../core/Logger';
 import { ServerWinBroadcast } from '../data/SlotTypes';
-import { BroadcastManager } from './BroadcastPopup';
+import { BroadcastManager, placeBroadcastBelowTransition } from './BroadcastPopup';
 
 const { ccclass, property } = _decorator;
 
@@ -69,7 +69,7 @@ export class BroadcastPopupLoader extends Component {
 
     ensureLoaded(): Promise<BroadcastManager | null> {
         if (this._manager?.isValid && this._instance?.isValid) {
-            this._ensureLastSibling();
+            this._ensureBelowTransition();
             return Promise.resolve(this._manager);
         }
         if (this._loading) return this._loading;
@@ -114,7 +114,6 @@ export class BroadcastPopupLoader extends Component {
                 instance.name = 'BroadcastPopup';
                 instance.active = true;
                 parent.addChild(instance);
-                this._ensureLastSibling();
 
                 const mgr = instance.getComponent(BroadcastManager)
                     ?? instance.getComponentInChildren(BroadcastManager);
@@ -127,9 +126,10 @@ export class BroadcastPopupLoader extends Component {
 
                 this._instance = instance;
                 this._manager = mgr;
+                this._ensureBelowTransition();
                 this._finishSetup(mgr);
 
-                Log.d('[BroadcastPopupLoader] instantiated BroadcastPopup (active, last sibling)');
+                Log.d('[BroadcastPopupLoader] instantiated BroadcastPopup (active, below Transition)');
                 resolve(mgr);
             };
 
@@ -193,12 +193,10 @@ export class BroadcastPopupLoader extends Component {
         return null;
     }
 
-    /** BroadcastPopup luôn ở sibling index cuối trên shell parent. */
-    private _ensureLastSibling(): void {
+    /** BroadcastPopup trên GameRoot, ngay dưới Transition nếu cùng parent. */
+    private _ensureBelowTransition(): void {
         const node = this._instance;
-        const parent = this.shellParent ?? this.node;
-        if (!node?.isValid || !parent?.isValid) return;
-        if (node.parent !== parent) return;
-        node.setSiblingIndex(parent.children.length - 1);
+        if (!node?.isValid) return;
+        placeBroadcastBelowTransition(node);
     }
 }

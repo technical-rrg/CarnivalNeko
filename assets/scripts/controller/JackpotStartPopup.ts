@@ -3,8 +3,8 @@
  *
  * Prefab: assets/bundle/JackpotStartPopup.prefab (load qua PopupLoader).
  * Gán hết trong Editor (hoặc addComponent fallback qua PopupLoader):
- *   - title1Sprite / title2Sprite / pressButton → kéo node Title1, Title2, Press
- *   - congratulationsFrames / jackpotFeatureFrames / panelBgFrames → LocalizedSpriteFrames
+ *   - title1Sprite / title2Sprite / pressButton / pressInfoSprite → Title1, Title2, Press, Press/Info
+ *   - congratulationsFrames / jackpotFeatureFrames / panelBgFrames / pressInfoFrames → LocalizedSpriteFrames
  *
  * Intro: Title1 → Title2 → Press scale 0→1 lần lượt (stagger 0.06s).
  * Press / tap → PICK_GAME_START_POPUP_CLOSED → GameManager mở PickGamePopup.
@@ -50,6 +50,9 @@ export class JackpotStartPopup extends Component {
     @property({ type: Button, tooltip: 'Panel/Press — nút vào Pick Game' })
     pressButton: Button | null = null;
 
+    @property({ type: Sprite, tooltip: 'Panel/Press/Info — chữ PRESS (theo ngôn ngữ)' })
+    pressInfoSprite: Sprite | null = null;
+
     @property({ type: Sprite, tooltip: 'Panel — nền PopupPickGame' })
     panelBgSprite: Sprite | null = null;
 
@@ -61,6 +64,9 @@ export class JackpotStartPopup extends Component {
 
     @property({ type: LocalizedSpriteFrames, tooltip: 'Nền panel (theo ngôn ngữ)' })
     panelBgFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
+
+    @property({ type: LocalizedSpriteFrames, tooltip: 'Press/Info — PRESS (theo ngôn ngữ)' })
+    pressInfoFrames: LocalizedSpriteFrames = new LocalizedSpriteFrames();
 
     private _isOpen = false;
     private _introDone = false;
@@ -155,6 +161,10 @@ export class JackpotStartPopup extends Component {
             if (!this.pressButton) {
                 this.pressButton = panel.getChildByName('Press')?.getComponent(Button) ?? null;
             }
+            if (!this.pressInfoSprite) {
+                const pressNode = this.pressButton?.node ?? panel.getChildByName('Press');
+                this.pressInfoSprite = pressNode?.getChildByName('Info')?.getComponent(Sprite) ?? null;
+            }
             if (!this.panelBgSprite) {
                 this.panelBgSprite = panel.getComponent(Sprite) ?? null;
             }
@@ -163,6 +173,7 @@ export class JackpotStartPopup extends Component {
         this._bootstrapLocalizedFrame(this.congratulationsFrames, this.title1Sprite);
         this._bootstrapLocalizedFrame(this.jackpotFeatureFrames, this.title2Sprite);
         this._bootstrapLocalizedFrame(this.panelBgFrames, this.panelBgSprite);
+        this._bootstrapLocalizedFrame(this.pressInfoFrames, this.pressInfoSprite);
     }
 
     private _bootstrapLocalizedFrame(frames: LocalizedSpriteFrames, sprite: Sprite | null): void {
@@ -180,6 +191,7 @@ export class JackpotStartPopup extends Component {
         applyLocalizedSprite(this.title1Sprite, this.congratulationsFrames, lang);
         applyLocalizedSprite(this.title2Sprite, this.jackpotFeatureFrames, lang);
         applyLocalizedSprite(this.panelBgSprite, this.panelBgFrames, lang);
+        applyLocalizedSprite(this.pressInfoSprite, this.pressInfoFrames, lang);
     }
 
     private _introNodes(): Node[] {

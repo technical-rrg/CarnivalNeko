@@ -641,6 +641,10 @@ export class PopupLoader extends Component {
             if (!popup.pressButton) {
                 popup.pressButton = base?.getChildByName('Press')?.getComponent(Button) ?? null;
             }
+            if (!popup.pressInfoSprite) {
+                const pressNode = popup.pressButton?.node ?? base?.getChildByName('Press');
+                popup.pressInfoSprite = pressNode?.getChildByName('Info')?.getComponent(Sprite) ?? null;
+            }
             if (!popup.note1Sprite) {
                 popup.note1Sprite = base?.getChildByName('Note1')?.getComponent(Sprite) ?? null;
             }
@@ -662,6 +666,10 @@ export class PopupLoader extends Component {
         }
         if (!jp.pressButton) {
             jp.pressButton = panel?.getChildByName('Press')?.getComponent(Button) ?? null;
+        }
+        if (!jp.pressInfoSprite) {
+            const pressNode = jp.pressButton?.node ?? panel?.getChildByName('Press');
+            jp.pressInfoSprite = pressNode?.getChildByName('Info')?.getComponent(Sprite) ?? null;
         }
         if (!jp.panelBgSprite) {
             jp.panelBgSprite = panel?.getComponent(Sprite) ?? null;

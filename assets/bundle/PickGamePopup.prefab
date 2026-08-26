@@ -1760,7 +1760,7 @@
     "showDuration": 0.35,
     "hideDuration": 0.25,
     "flipDuration": 0.3,
-    "jackpotTriggerDelay": 2,
+    "jackpotTriggerDelay": 1,
     "matchCelebrateDuration": 0.7,
     "hiddenCoinFloatHeight": 4,
     "hiddenCoinFloatDuration": 2,
@@ -4695,8 +4695,6 @@
       "__id__": 0
     },
     "fileId": "7eK0se3tZJArU+6afKQwq7",
-    "instance": null,
-    "targetOverrides": null,
     "nestedPrefabInstanceRoots": null
   },
   {

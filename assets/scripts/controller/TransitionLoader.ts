@@ -22,6 +22,7 @@ import { SKIP_GUIDE_TRANSITION } from '../data/ServerConfig';
 import { GuideShellLoader } from '../core/GuideShellLoader';
 import { TransitionController } from './TransitionController';
 import { PotController } from './PotController';
+import { placeBroadcastBelowTransition } from './BroadcastPopup';
 
 const { ccclass, property } = _decorator;
 
@@ -200,8 +201,9 @@ export class TransitionLoader extends Component {
                 this._controller = ctrl;
                 this._wireTarget();
                 instance.active = false;
+                this._keepBroadcastBelow(parent);
 
-                Log.d('[TransitionLoader] instantiated Transition (above GameRoot, hidden until play)');
+                Log.d('[TransitionLoader] instantiated Transition (above GameRoot + Broadcast, hidden until play)');
                 resolve(ctrl);
             };
 
@@ -243,6 +245,14 @@ export class TransitionLoader extends Component {
             Log.w('[TransitionLoader] Không tìm thấy Pot/Animation target trong GameRoot');
         }
         ctrl.setGameRootRef(root);
+    }
+
+    /** BroadcastPopup cùng parent thì luôn ngay dưới Transition. */
+    private _keepBroadcastBelow(parent: Node): void {
+        const broadcast = parent.getChildByName('BroadcastPopup');
+        if (broadcast?.isValid) {
+            placeBroadcastBelowTransition(broadcast);
+        }
     }
 
     /**

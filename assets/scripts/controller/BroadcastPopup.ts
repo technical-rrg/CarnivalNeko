@@ -24,6 +24,26 @@ import { SoundManager } from '../manager/SoundManager';
 const { ccclass, property } = _decorator;
 
 const LS_BROADCAST_ON = 'setting_broadcast_on';
+const TRANSITION_NODE_NAME = 'Transition';
+
+/**
+ * Broadcast trên GameRoot, nhưng luôn ngay dưới Transition nếu cùng parent.
+ * setSiblingIndex splice-remove trước khi insert — cần chỉnh index theo vị trí cũ.
+ */
+export function placeBroadcastBelowTransition(node: Node): void {
+    const parent = node.parent;
+    if (!parent?.isValid) return;
+
+    const transition = parent.getChildByName(TRANSITION_NODE_NAME);
+    if (transition?.isValid && transition !== node) {
+        const tIdx = transition.getSiblingIndex();
+        const myIdx = node.getSiblingIndex();
+        node.setSiblingIndex(myIdx < tIdx ? tIdx - 1 : tIdx);
+        return;
+    }
+
+    node.setSiblingIndex(parent.children.length - 1);
+}
 
 // ─── Timeline (total 3.0s per popup) ───────────────────────────────────────
 // 0.0 → 0.5s  SLIDE_DURATION   : UI trượt vào, form nền hiển thị (nội dung ẩn)
@@ -235,7 +255,7 @@ export class BroadcastManager extends Component {
         this._jackpotActive = false;
         this._spinActive = false;
         // Restore vị trí đúng sau jackpot
-        this._ensureOnTopOfProgressiveWin();
+        this._ensureLayerBelowTransition();
         this._tryShowPending();
     }
 
@@ -277,8 +297,8 @@ export class BroadcastManager extends Component {
         this.node.setPosition(fromPos);
         if (this._opacity) this._opacity.opacity = 255;
 
-        // Đảm bảo broadcast popup nằm trên progressiveWinPopup
-        this._ensureOnTopOfProgressiveWin();
+        // Trên GameRoot / progressiveWin, nhưng luôn dưới Transition
+        this._ensureLayerBelowTransition();
 
         // SpeedLine active + frame 1 từ ngay khi slide-in bắt đầu
         if (this.speedLineSprite && this.speedLineFrame1) {
@@ -323,11 +343,9 @@ export class BroadcastManager extends Component {
         return local;
     }
 
-    /** Giữ BroadcastPopup ở sibling index cuối trên shell parent (Base root). */
-    private _ensureOnTopOfProgressiveWin(): void {
-        const parent = this.node.parent;
-        if (!parent) return;
-        this.node.setSiblingIndex(parent.children.length - 1);
+    /** Trên GameRoot, ngay dưới Transition nếu cùng parent. */
+    private _ensureLayerBelowTransition(): void {
+        placeBroadcastBelowTransition(this.node);
     }
 
     private _beginRest(): void {

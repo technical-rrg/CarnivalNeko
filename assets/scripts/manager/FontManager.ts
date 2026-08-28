@@ -28,9 +28,9 @@
  *   ms    → malayFont (Latin-based, dùng chung font English)
  *   vi    → vietnameseFont (Noto Sans / Latin + Vietnamese diacritics)
  *
- * ★ CACHE MODE TỐI ƯU:
- *   CHAR   — en, fil, ko, sg, ms, vi, au, hk (alphabet nhỏ / Hangul syllables giới hạn trong game)
- *   BITMAP — zh-cn, zh-tw, ja, th (nhiều unique glyphs / combining marks phức tạp)
+ * ★ CACHE MODE:
+ *   BITMAP — mọi ngôn ngữ. Không dùng CHAR: atlas CHAR hash không gồm canvas/fontScale,
+ *            nên window → fullscreen mix glyph cũ/mới (số 5 to hơn 0).
  */
 
 import { _decorator, Component, Label, TTFFont } from 'cc';
@@ -49,20 +49,23 @@ const enum CacheMode {
     CHAR   = 2,
 }
 
-/** Cache mode tối ưu cho từng nhóm ngôn ngữ */
+/**
+ * Không dùng CHAR. Atlas CHAR tái sử dụng glyph theo fontSize+family+color,
+ * không theo canvas scale — fullscreen rasterize chữ mới (vd. "5") to hơn chữ cũ.
+ */
 const CACHE_MODE_MAP: Record<LanguageCode, number> = {
-    'en':    CacheMode.CHAR,
-    'fil':   CacheMode.CHAR,
-    'ko':    CacheMode.CHAR,
+    'en':    CacheMode.BITMAP,
+    'fil':   CacheMode.BITMAP,
+    'ko':    CacheMode.BITMAP,
     'zh-cn': CacheMode.BITMAP,
     'zh-tw': CacheMode.BITMAP,
     'ja':    CacheMode.BITMAP,
     'th':    CacheMode.BITMAP,
-    'sg':    CacheMode.CHAR,
-    'ms':    CacheMode.CHAR,
-    'vi':    CacheMode.CHAR,
-    'au':    CacheMode.CHAR,  // Latin — dùng chung defaultFont
-    'hk':    CacheMode.CHAR,  // Latin — dùng chung defaultFont
+    'sg':    CacheMode.BITMAP,
+    'ms':    CacheMode.BITMAP,
+    'vi':    CacheMode.BITMAP,
+    'au':    CacheMode.BITMAP,
+    'hk':    CacheMode.BITMAP,
 };
 
 @ccclass('FontManager')
@@ -158,14 +161,32 @@ export class FontManager extends Component {
     }
 
     /**
-     * Lấy cache mode tối ưu cho ngôn ngữ.
-     *
-     * - CHAR:   Dùng shared atlas, phù hợp cho bộ ký tự nhỏ (Latin, Hangul trong game).
-     * - BITMAP: Render riêng cho mỗi label, phù hợp cho CJK (nhiều unique glyphs)
-     *           và Thai (combining marks phức tạp).
+     * Cache mode theo ngôn ngữ — luôn BITMAP (không CHAR).
      */
     getCacheModeForLanguage(lang: LanguageCode): number {
-        return CACHE_MODE_MAP[lang] ?? CacheMode.CHAR;
+        return CACHE_MODE_MAP[lang] ?? CacheMode.BITMAP;
+    }
+
+    /**
+     * Cache mode an toàn cho 1 Label.
+     * CHAR bị hạ: SHRINK → NONE (Cocos không hỗ trợ CHAR+SHRINK), còn lại → BITMAP.
+     */
+    resolveCacheModeForLabel(lang: LanguageCode, overflow: number, requested?: number): number {
+        const mode = requested ?? this.getCacheModeForLanguage(lang);
+        if (mode === CacheMode.CHAR) {
+            return overflow === Label.Overflow.SHRINK ? CacheMode.NONE : CacheMode.BITMAP;
+        }
+        return mode;
+    }
+
+    /**
+     * Hạ CHAR trên mọi Label trong scene (kể cả prefab/popup chưa qua LanguageChange).
+     */
+    static sanitizeLabelCacheMode(label: Label): void {
+        if ((label.cacheMode as number) !== CacheMode.CHAR) return;
+        label.cacheMode = (label.overflow === Label.Overflow.SHRINK
+            ? CacheMode.NONE
+            : CacheMode.BITMAP) as never;
     }
 
     /**

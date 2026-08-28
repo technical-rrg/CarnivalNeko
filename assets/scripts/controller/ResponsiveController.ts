@@ -1,4 +1,5 @@
-import { _decorator, Component, Node, view, ResolutionPolicy, screen, Camera, Rect } from 'cc';
+import { _decorator, Component, Node, view, ResolutionPolicy, screen, Camera, Rect, director, Label } from 'cc';
+import { FontManager } from '../manager/FontManager';
 import { Log } from '../core/Logger';
 
 const { ccclass, property, executionOrder } = _decorator;
@@ -50,6 +51,7 @@ export class ResponsiveController extends Component {
         screen.off('orientation-change', this._onScreenChange, this);
         this.unschedule(this._applyOrientation);
         this.unschedule(this._applyCameraViewport);
+        this.unschedule(this._rebuildLabelsAfterResize);
     }
 
     private _onScreenChange(): void {
@@ -93,9 +95,26 @@ export class ResponsiveController extends Component {
         if (applyKey !== this._lastApplyKey) {
             this._lastApplyKey = applyKey;
             view.setDesignResolutionSize(designW, designH, policy);
+            this.unschedule(this._rebuildLabelsAfterResize);
+            this.scheduleOnce(this._rebuildLabelsAfterResize, 0);
         }
 
         this._updateCameraViewport(usedShowAll, designW, designH);
+    }
+
+    /**
+     * Hạ mọi Label CHAR (bet / balance / Guide / popup…) rồi redraw.
+     * CHAR atlas không theo canvas scale → window→fullscreen mix size glyph.
+     */
+    private _rebuildLabelsAfterResize(): void {
+        const scene = director.getScene();
+        if (!scene) return;
+        const labels = scene.getComponentsInChildren(Label);
+        for (const lb of labels) {
+            if (!lb.isValid) continue;
+            FontManager.sanitizeLabelCacheMode(lb);
+            lb.updateRenderData(true);
+        }
     }
 
     private _updateCameraViewport(isLetterbox: boolean, designW: number, designH: number): void {

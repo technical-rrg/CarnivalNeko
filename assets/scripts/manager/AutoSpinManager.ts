@@ -18,14 +18,16 @@
  *   Turbo: gần như dừng ngay khi có kết quả từ server.
  *
  * ── PERSIST ──
- *   Lưu vào localStorage: count còn lại + speed mode.
- *   Tải lại khi khởi động → tiếp tục auto spin nếu còn count.
+ *   Lưu vào localStorage: count còn lại + speed mode, key theo SLOT_ID + memberId
+ *   để không leak Auto Spin giữa các game (cùng origin / cùng player).
+ *   Tải lại khi khởi động → tiếp tục auto spin nếu còn count (cùng game).
  */
 
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { Log } from '../core/Logger';
 import { GameData } from '../data/GameData';
+import { ServerConfig } from '../data/ServerConfig';
 import { SlotStageType } from '../data/SlotTypes';
 
 // Fallback keys (for backward compatibility, will be migrated to session-specific keys)
@@ -93,24 +95,15 @@ export class AutoSpinManager {
     }
 
     /**
-     * Tạo unique storage key cho player hiện tại.
-     * Nếu có memberIdx → dùng key theo player (mỗi player riêng biệt).
-     * Nếu chưa login → dùng key legacy (backward compatibility).
-     * 
-     * ★ TEST MODE: hardcode memberID = 999 để test save/load (hãy comment lại khi không cần)
+     * Tạo unique storage key theo game + player.
+     * Format: {baseKey}_{slotId}_{memberId}  (hoặc {baseKey}_{slotId} nếu chưa login).
      */
     private _getStorageKey(baseKey: string): string {
-        // ★ HARDCODED FOR TESTING — comment out khi không cần test
-      //  const HARDCODED_MEMBER_ID = 999;
-    //    const memberId = HARDCODED_MEMBER_ID;  // Lấy cố định memberID = 999 để test
-        
-        const memberId = this._getMemberId();  // Production: lấy từ session
-        
-        if (memberId !== null) {
-            Log.d(`[AutoSpinManager] _getStorageKey("${baseKey}") → ${baseKey}_${memberId}`);
-            return `${baseKey}_${memberId}`;
-        }
-        return baseKey;
+        const slotId = ServerConfig.SLOT_ID;
+        const memberId = this._getMemberId();
+        const key = memberId !== null ? `${baseKey}_${slotId}_${memberId}` : `${baseKey}_${slotId}`;
+        Log.d(`[AutoSpinManager] _getStorageKey("${baseKey}") → ${key}`);
+        return key;
     }
 
     /**

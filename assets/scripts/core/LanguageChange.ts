@@ -112,14 +112,16 @@ export class LanguageChange extends Component {
         // Component sẽ được gọi lại qua LANGUAGE_CHANGED khi FontManager sẵn sàng.
         if (!font) return;
 
-        const cacheMode: number = this.useOverrideCacheMode
+        const requested: number = this.useOverrideCacheMode
             ? this.overrideCacheMode
             : (fontMgr ? fontMgr.getCacheModeForLanguage(lang) : 2);
 
         if (this._label) {
             this._label.font = font;
             this._label.useSystemFont = false;
-            this._label.cacheMode = cacheMode;
+            this._label.cacheMode = fontMgr
+                ? fontMgr.resolveCacheModeForLabel(lang, this._label.overflow, requested)
+                : (this._label.overflow === Label.Overflow.SHRINK ? 0 : (requested === 2 ? 1 : requested));
         }
         if (this._richText) {
             this._richText.font = font;

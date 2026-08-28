@@ -116,7 +116,7 @@ export const ServerConfig = {
     // ─── CDN ───────────────────────────────────────────────
     /** Base URL của CDN assets (locale-online.json, fonts).
      *  Để null → bỏ qua CDN, dùng local bundled assets.
-     *  Để test: set CDN_BASE = null, xoá localStorage 'sn_cdn_*' để clear cache.
+     *  Để test: set CDN_BASE = null, xoá localStorage 'sn_cdn_{SLOT_ID}_*' để clear cache.
      */
     CDN_BASE: 'https://downloads.realreelsgaming.com/slotlanguage/carnivalneko' as string | null,
 
@@ -128,7 +128,7 @@ export const ServerConfig = {
      * ★ Khi chạy localization-tool-update để tạo .ts mới từ Excel,
      *   set USE_CDN_LOCALE = false để game dùng đúng file đó thay vì bị CDN override.
      */
-    USE_CDN_LOCALE: false,
+    USE_CDN_LOCALE: true,
 
     /** Bật/tắt log của Jackpot polling (mỗi 2s sẽ rất nhiều log) */
     LOG_JACKPOT_POLLING: false,

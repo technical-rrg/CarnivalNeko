@@ -3548,7 +3548,7 @@
       "b": 255,
       "a": 255
     },
-    "_string": "",
+    "_string": "0",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
     "_actualFontSize": 41,
@@ -3557,11 +3557,8 @@
     "_lineHeight": 40,
     "_overflow": 2,
     "_enableWrapText": true,
-    "_font": {
-      "__uuid__": "a2cc7d7d-0672-4197-ad4f-735bd204840f",
-      "__expectedType__": "cc.TTFFont"
-    },
-    "_isSystemFontUsed": false,
+    "_font": null,
+    "_isSystemFontUsed": true,
     "_spacingX": 0,
     "_isItalic": false,
     "_isBold": false,

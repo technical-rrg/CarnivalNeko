@@ -19,7 +19,7 @@
 
 import {
     _decorator, Component, Node, Label, UIOpacity, Canvas, UITransform, Widget,
-    tween, Tween, Vec3, EventTouch, input, Input, EventMouse, view, sp,
+    tween, Tween, Vec3, EventTouch, input, Input, EventMouse, view, sp, ParticleSystem,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
@@ -58,6 +58,16 @@ export class RedEnvelopePopup extends Component {
     @property({ type: Node })
     clickOverlay: Node | null = null;
 
+    /** Particle FX — ẩn lúc mở, hiện khi spine In xong */
+    @property({ type: Node, tooltip: 'Fx1 — particle FX\n→ Kéo node Fx1 vào đây' })
+    fx1: Node | null = null;
+
+    @property({ type: Node, tooltip: 'Fx2 — particle FX\n→ Kéo node Fx2 vào đây' })
+    fx2: Node | null = null;
+
+    @property({ type: Node, tooltip: 'Fx3 — particle FX\n→ Kéo node Fx3 vào đây' })
+    fx3: Node | null = null;
+
     @property({ tooltip: 'Timeout tự đóng (giây)' })
     autoCloseTimeout: number = AUTO_CLOSE_SEC;
 
@@ -79,6 +89,9 @@ export class RedEnvelopePopup extends Component {
             const base = this.popupNode.getChildByName('Base');
             if (base) this.baseSpine = base.getComponent(sp.Skeleton);
         }
+        if (!this.fx1) this.fx1 = this.node.getChildByName('Fx1');
+        if (!this.fx2) this.fx2 = this.node.getChildByName('Fx2');
+        if (!this.fx3) this.fx3 = this.node.getChildByName('Fx3');
     }
 
     onDestroy(): void {
@@ -136,6 +149,7 @@ export class RedEnvelopePopup extends Component {
         this._fitOverlayFullscreen();
         this.scheduleOnce(() => this._fitOverlayFullscreen(), 0);
         EventBus.instance.emit(GameEvents.POPUP_OPENED);
+        SoundManager.instance?.playRedMysteryEnv();
 
         this._playSpineIn(pay);
 
@@ -148,6 +162,7 @@ export class RedEnvelopePopup extends Component {
     private _playSpineIn(pay: number): void {
         const spine = this.baseSpine;
         if (!spine?.isValid) {
+            this._playFxNodes();
             this._startAmountCountUp(pay);
             return;
         }
@@ -159,8 +174,53 @@ export class RedEnvelopePopup extends Component {
             spine.setCompleteListener(null);
             if (!this._isOpen) return;
             spine.setAnimation(0, 'Loop', true);
+            this._playFxNodes();
             this._startAmountCountUp(pay);
         });
+    }
+
+    private _playFxNodes(): void {
+        this._playFxNode(this.fx1);
+        this._playFxNode(this.fx2);
+        this._playFxNode(this.fx3);
+    }
+
+    private _playFxNode(node: Node | null): void {
+        if (!node?.isValid) return;
+        node.active = true;
+        for (const child of node.children) {
+            if (!child?.isValid) continue;
+            child.active = true;
+            for (const ps of child.getComponents(ParticleSystem)) {
+                ps.stop();
+                ps.clear();
+                ps.play();
+            }
+        }
+        for (const ps of node.getComponents(ParticleSystem)) {
+            ps.stop();
+            ps.clear();
+            ps.play();
+        }
+    }
+
+    private _hideFxNodes(): void {
+        for (const node of [this.fx1, this.fx2, this.fx3]) {
+            if (!node?.isValid) continue;
+            for (const child of node.children) {
+                if (!child?.isValid) continue;
+                for (const ps of child.getComponents(ParticleSystem)) {
+                    ps.stop();
+                    ps.clear();
+                }
+                child.active = false;
+            }
+            for (const ps of node.getComponents(ParticleSystem)) {
+                ps.stop();
+                ps.clear();
+            }
+            node.active = false;
+        }
     }
 
     private _resolveOutAnimName(): string | null {
@@ -244,6 +304,7 @@ export class RedEnvelopePopup extends Component {
             this.unschedule(this._outHideCb);
             this._outHideCb = null;
         }
+        this._hideFxNodes();
         this._stopCountUp();
         if (this.baseSpine?.isValid) {
             this.baseSpine.setCompleteListener(null);

@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "9bddb4d9-1a19-403c-83b6-72bfecad1640",
+  "uuid": "54063b1d-716a-4f98-918b-39e55564e17d",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "9bddb4d9-1a19-403c-83b6-72bfecad1640@6c48a",
+      "uuid": "54063b1d-716a-4f98-918b-39e55564e17d@6c48a",
       "displayName": "Pot_Blue",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "9bddb4d9-1a19-403c-83b6-72bfecad1640",
+        "imageUuidOrDatabaseUri": "54063b1d-716a-4f98-918b-39e55564e17d",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,7 +34,7 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "9bddb4d9-1a19-403c-83b6-72bfecad1640@f9941",
+      "uuid": "54063b1d-716a-4f98-918b-39e55564e17d@f9941",
       "displayName": "Pot_Blue",
       "id": "f9941",
       "name": "spriteFrame",
@@ -113,7 +113,7 @@
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "9bddb4d9-1a19-403c-83b6-72bfecad1640@6c48a",
+        "imageUuidOrDatabaseUri": "54063b1d-716a-4f98-918b-39e55564e17d@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,6 +129,6 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "9bddb4d9-1a19-403c-83b6-72bfecad1640@6c48a"
+    "redirect": "54063b1d-716a-4f98-918b-39e55564e17d@6c48a"
   }
 }

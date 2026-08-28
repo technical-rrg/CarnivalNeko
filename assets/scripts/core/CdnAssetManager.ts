@@ -55,6 +55,7 @@
 
 import { assetManager, TTFFont } from 'cc';
 import { LocaleData } from '../data/locales/LocaleTypes';
+import { ServerConfig } from '../data/ServerConfig';
 import { LanguageCode } from './LocalizationManager';
 import { Log } from './Logger';
 
@@ -72,7 +73,8 @@ export interface CdnManifest {
 
 // ─── localStorage helpers (safe wrappers) ────────────────────────────────────
 
-const LS_PREFIX = 'sn_cdn_';
+/** Prefix theo SLOT_ID để locale/font cache không đụng giữa các game cùng origin. */
+const LS_PREFIX = `sn_cdn_${ServerConfig.SLOT_ID}_`;
 
 function lsGet(key: string): string | null {
     try { return localStorage.getItem(key); } catch { return null; }

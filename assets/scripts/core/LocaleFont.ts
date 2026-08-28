@@ -92,7 +92,10 @@ export class LocaleFont extends Component {
                 label.font = font;
                 label.useSystemFont = false;
             }
-            label.cacheMode = cacheMode;
+            // CHAR + Overflow.SHRINK không được Cocos hỗ trợ — mix glyph size sau fullscreen.
+            label.cacheMode = fontMgr
+                ? fontMgr.resolveCacheModeForLabel(lang, label.overflow, cacheMode)
+                : (label.overflow === Label.Overflow.SHRINK ? 0 : (cacheMode === 2 ? 1 : cacheMode));
         }
 
         // Apply to RichText (no cacheMode support)

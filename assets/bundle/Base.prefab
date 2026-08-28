@@ -11629,7 +11629,7 @@
       "a": 255
     },
     "_skeletonData": {
-      "__uuid__": "d4af4f57-186b-4117-9da9-4cb79bf9514d",
+      "__uuid__": "ce77222c-0481-4fef-bc61-6b497ce48802",
       "__expectedType__": "sp.SkeletonData"
     },
     "defaultSkin": "default",
@@ -11928,7 +11928,7 @@
       "a": 255
     },
     "_skeletonData": {
-      "__uuid__": "6207af88-7d9c-4b47-b83d-448c357b0791",
+      "__uuid__": "a2d29f3f-214b-47b7-aaf1-10b377335c6d",
       "__expectedType__": "sp.SkeletonData"
     },
     "defaultSkin": "default",
@@ -12227,7 +12227,7 @@
       "a": 255
     },
     "_skeletonData": {
-      "__uuid__": "9ac9951f-b313-4fdc-95a5-204a0fcc3999",
+      "__uuid__": "f92f0a42-69d7-4d0d-a26b-b75ae0ed58b0",
       "__expectedType__": "sp.SkeletonData"
     },
     "defaultSkin": "default",
@@ -58577,7 +58577,8 @@
     "sxGlobalWin": null,
     "sxPickGame": null,
     "sxLuchHas": null,
-    "sxPotFinal": null,
+    "sxPotFinal1": null,
+    "sxPotFinal2": null,
     "sxCatAppear": null,
     "sxYellowGreenAppear": null,
     "sxYellowcoinHit": null,

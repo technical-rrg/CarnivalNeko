@@ -121,6 +121,8 @@ export class TopUpEndPopup extends Component {
     private _countUpSoundEnded: boolean = false;
     private _showCount: number = 0;
     private _amountOpacity: UIOpacity | null = null;
+    /** true khi totalWin = 0 → spine In2 / Loop2 / Out_2 */
+    private _useZeroWinAnims = false;
 
     // ── LIFECYCLE ────────────────────────────────────────────────────────────
 
@@ -160,6 +162,7 @@ export class TopUpEndPopup extends Component {
         Log.d(`[coinloop][TopUpEndPopup.showPopup] showCount=${this._showCount} totalWin=${totalWin} _isOpen=${this._isOpen} isNewShow=${isNewShow}`);
         if (this._isOpen) return;
         this._isOpen = true;
+        this._useZeroWinAnims = this._isZeroWin(totalWin);
 
         // Cập nhật text
         if (this.titleLabel) {
@@ -179,19 +182,38 @@ export class TopUpEndPopup extends Component {
         this.node.active = true;
 
         this._hideDelayedRevealElements();
-        this._scheduleDelayedReveal(totalWin);
+        if (!this._useZeroWinAnims) {
+            this._scheduleDelayedReveal(totalWin);
+        }
 
         if (this.spine) {
             this.spine.node.active = true;
-            this.spine.setAnimation(0, 'In', false);
+            const inAnim = this._resolveInAnimName();
+            const loopAnim = this._resolveLoopAnimName();
+            this.spine.setCompleteListener(null);
+            this.spine.setAnimation(0, inAnim, false);
             this.spine.setCompleteListener(() => {
                 this.spine!.setCompleteListener(null);
-                this.spine!.setAnimation(0, 'Loop', true);
+                this.spine!.setAnimation(0, loopAnim, true);
                 this._waitForClose();
             });
         } else {
             this._waitForClose();
         }
+    }
+
+    private _isZeroWin(totalWin: number): boolean {
+        return (Number(totalWin) || 0) <= 0;
+    }
+
+    private _resolveInAnimName(): string {
+        if (this._useZeroWinAnims && this.spine?.findAnimation('In2')) return 'In2';
+        return 'In';
+    }
+
+    private _resolveLoopAnimName(): string {
+        if (this._useZeroWinAnims && this.spine?.findAnimation('Loop2')) return 'Loop2';
+        return 'Loop';
     }
 
     /** Ẩn amount + Fx lúc mở popup → delay rồi mới hiện */
@@ -397,9 +419,13 @@ export class TopUpEndPopup extends Component {
         this.scheduleOnce(this._autoCloseCb, this.autoCloseTimeout);
     }
 
-    /** Spine JSON dùng 'Out' (Anim_Congratulation) — fallback 'out' nếu asset khác. */
+    /** Spine: >0 → Out; =0 → Out_2 (fallback Out2). */
     private _resolveOutAnimName(): string | null {
         if (!this.spine) return null;
+        if (this._useZeroWinAnims) {
+            if (this.spine.findAnimation('Out_2')) return 'Out_2';
+            if (this.spine.findAnimation('Out2')) return 'Out2';
+        }
         if (this.spine.findAnimation('Out')) return 'Out';
         if (this.spine.findAnimation('out')) return 'out';
         return null;

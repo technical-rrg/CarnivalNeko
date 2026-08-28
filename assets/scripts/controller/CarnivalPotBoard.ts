@@ -144,7 +144,7 @@ export class CarnivalPotBoard extends Component {
     @property({ tooltip: 'Thời gian giữ burst final FX trước khi destroy (giây)' })
     burstFinalFxRecycleDelay: number = 1.2;
 
-    @property({ tooltip: 'Chờ tối đa sau khi FX final bắt đầu → BURST_DONE (giây). Feature: FX fade tự nhiên; Pick Game: remove khi PICK_GAME_OPEN.' })
+    @property({ tooltip: 'Chờ tối đa sau khi FX final bắt đầu → BURST_DONE (giây).\nPick/Feature: remove Pot_Impact + Pot_Full_Fx khi vào shell.' })
     burstFinalFxMaxWait: number = 1;
 
     @property({ tooltip: 'Khoảng cách tối thiểu giữa 2 lần rung idle (giây)' })
@@ -186,9 +186,12 @@ export class CarnivalPotBoard extends Component {
     private _baseAngleByNode = new Map<Node, number>();
     private _hitFxPool: NodePool | null = null;
     private readonly _maxHitFxPoolSize = 8;
+    /** Pot_Impact đang play (chờ recycle pool). */
+    private _activeHitFx = new Set<Node>();
+    private _hitFxRecycleCbs = new Map<Node, () => void>();
     /** scheduleOnce chờ play burst final FX theo từng pot. */
     private _burstFinalFxScheduleCbs = new Map<Node, () => void>();
-    /** FX burst final đang chạy (chờ recycle) — BURST_DONE chờ hết FX rồi mới emit. */
+    /** Pot_Full_Fx đang chạy (chờ destroy) — BURST_DONE chờ hết FX rồi mới emit. */
     private _activeBurstFinalFx = new Set<Node>();
     private _burstFinalFxRecycleCbs = new Map<Node, () => void>();
     /** LvFinal xong — chờ burst final FX (hoặc timeout) rồi mới emit BURST_DONE. */
@@ -237,8 +240,7 @@ export class CarnivalPotBoard extends Component {
         this._stopAllIdleWobble(true);
         this.unschedule(this._finishBurst);
         this.unschedule(this._burstDoneMaxWaitCb);
-        this._cancelAllBurstFinalFxSchedules();
-        this._forceStopAllBurstFinalFx();
+        this._clearAllPotFx('destroy');
         this._pendingBurstFeature = null;
         this._burstDoneDeferred = false;
         this._restoreBurstPots();
@@ -273,17 +275,19 @@ export class CarnivalPotBoard extends Component {
         this._restartIdleWobbleAll();
     }
 
-    /** Feature / pick — tạm dừng rung idle. */
+    /**
+     * Feature / Pick vào shell — dừng wobble + remove hẳn Pot FX
+     * (Pot_Impact / Pot_Full_Fx_Lv2). Trước đây Feature chỉ pause wobble → FX dư âm về Normal.
+     */
     private _onFeaturePauseWobble(): void {
         this._stopAllIdleWobble(true);
+        this._clearAllPotFx('feature enter');
     }
 
-    /** Pick Game shell mở — remove hẳn burst final FX (Feature vẫn giữ FX khi fade). */
+    /** Pick Game shell mở — cùng cleanup FX như Feature. */
     private _onPickGameOpen(): void {
         this._onFeaturePauseWobble();
-        this._cancelAllBurstFinalFxSchedules();
-        this._forceStopAllBurstFinalFx();
-        Log.d('[CarnivalPot] Pick Game open — removed burst final FX');
+        Log.d('[CarnivalPot] Pick Game open — cleared pot FX');
     }
 
     private _onLevelsChanged(levels: CarnivalPotLevels): void {
@@ -337,6 +341,8 @@ export class CarnivalPotBoard extends Component {
         this.unschedule(this._burstDoneMaxWaitCb);
         this._burstDoneDeferred = false;
         this._firstBurstFinalFxAt = -1;
+        void SoundManager.instance?.ensureClip('sxPotFinal1');
+        void SoundManager.instance?.ensureClip('sxPotFinal2');
         this._bursting = true;
         this._trailsFlying = false;
         const hopColors = this._hopColorsFor(feature);
@@ -447,7 +453,7 @@ export class CarnivalPotBoard extends Component {
             this._playOneShot(node, spine, BURST_ANIM, () => {
                 this._onBurstAnimDone(node);
             }, 1, () => {
-                SoundManager.instance?.playSfxByName('sxPotFinal');
+                SoundManager.instance?.playSfxByName('sxPotFinal1');
             });
             return;
         }
@@ -521,18 +527,27 @@ export class CarnivalPotBoard extends Component {
 
     /** Feature xong (về normal) → idle lại các pot đang giữ LvFinal. */
     private _onFeatureReturnToBase(): void {
-        if (this._frozenBurstNodes.size === 0) return;
+        this._clearAllPotFx('feature end');
+        if (this._frozenBurstNodes.size === 0) {
+            this._restartIdleWobbleAll();
+            return;
+        }
         if (GameData.instance.currentMode !== 'normal') return;
         this._restoreIdleAfterFeature();
     }
 
     /** Pick đóng = hết feature (kể cả Ultra sau Matsuri). */
     private _onPickGameClose(): void {
-        if (this._frozenBurstNodes.size === 0) return;
+        this._clearAllPotFx('pick close');
+        if (this._frozenBurstNodes.size === 0) {
+            this._restartIdleWobbleAll();
+            return;
+        }
         this._restoreIdleAfterFeature();
     }
 
     private _restoreIdleAfterFeature(): void {
+        // FX đã clear ở caller — chỉ restore pose pot.
         const nodes = [...this._frozenBurstNodes];
         this._frozenBurstNodes.clear();
         this._targetLevels = this._clampLevels(GameData.instance.potLevels);
@@ -575,7 +590,7 @@ export class CarnivalPotBoard extends Component {
         return Math.max(0, game.totalTime - this._firstBurstFinalFxAt);
     }
 
-    /** Emit BURST_DONE — không clear FX ở đây (Feature fade tự nhiên; Pick remove tại PICK_GAME_OPEN). */
+    /** Emit BURST_DONE — FX còn chạy sẽ bị remove khi vào Pick/Feature shell. */
     private _tryCompleteBurst(force: boolean): void {
         if (!this._burstDoneDeferred) return;
         if (!force && this._activeBurstFinalFx.size > 0) return;
@@ -594,9 +609,9 @@ export class CarnivalPotBoard extends Component {
         Log.e(`[CarnivalPot] BURST_DONE (hold LvFinal${force ? ', max wait' : ', burst FX finished'})`);
     }
 
-    /** Popup Matsuri — không clear FX đang chạy. */
+    /** Popup Matsuri — dọn FX còn sót (belt-and-suspenders với CARNIVAL_MATSURI_START). */
     private _onMatsuriStartPopup(): void {
-        this._cancelAllBurstFinalFxSchedules();
+        this._clearAllPotFx('matsuri start popup');
     }
 
     // ─── Spine attach ───────────────────────────────────────────────────────
@@ -941,10 +956,15 @@ export class CarnivalPotBoard extends Component {
         fx.active = true;
         this._playAllChildParticles(fx);
 
+        this._activeHitFx.add(fx);
         const delay = Math.max(0.5, recycleDelay);
-        this.scheduleOnce(() => {
+        const recycleCb = () => {
+            this._hitFxRecycleCbs.delete(fx);
+            this._activeHitFx.delete(fx);
             this._recyclePotFx(fx, pool, maxPoolSize);
-        }, delay);
+        };
+        this._hitFxRecycleCbs.set(fx, recycleCb);
+        this.scheduleOnce(recycleCb, delay);
     }
 
     private _recyclePotFx(fx: Node, pool: NodePool, maxPoolSize: number): void {
@@ -983,6 +1003,56 @@ export class CarnivalPotBoard extends Component {
         root.active = false;
     }
 
+    /** Remove toàn bộ Pot FX (Impact + Full) — Pick/Feature enter và về Normal. */
+    private _clearAllPotFx(reason: string): void {
+        this._cancelAllBurstFinalFxSchedules();
+        this._forceStopAllBurstFinalFx();
+        this._forceStopAllHitFx();
+        this._sweepOrphanPotFx();
+        Log.d(`[CarnivalPot] cleared pot FX (${reason})`);
+    }
+
+    private _forceStopAllHitFx(): void {
+        for (const cb of this._hitFxRecycleCbs.values()) {
+            this.unschedule(cb);
+        }
+        this._hitFxRecycleCbs.clear();
+        const pool = this._hitFxPool;
+        for (const fx of [...this._activeHitFx]) {
+            this._activeHitFx.delete(fx);
+            if (!fx?.isValid) continue;
+            if (pool) {
+                this._recyclePotFx(fx, pool, this._maxHitFxPoolSize);
+            } else {
+                this._stopPotFxTree(fx);
+                fx.removeFromParent();
+                fx.destroy();
+            }
+        }
+        this._activeHitFx.clear();
+    }
+
+    /**
+     * Quét child particle còn sót dưới board (không phải pot / template).
+     * Phòng trường hợp FX spawn mà không vào Set (pool race / schedule cũ).
+     */
+    private _sweepOrphanPotFx(): void {
+        const keep = new Set<Node | null>([
+            this.bluePot,
+            this.redPot,
+            this.greenPot,
+            this.hitFxTemplate,
+            this.burstFinalFxTemplate,
+        ]);
+        for (const child of [...this.node.children]) {
+            if (!child?.isValid || keep.has(child)) continue;
+            if (child.getComponentsInChildren(ParticleSystem).length === 0) continue;
+            this._stopPotFxTree(child);
+            child.removeFromParent();
+            child.destroy();
+        }
+    }
+
     private _forceStopAllBurstFinalFx(): void {
         for (const cb of this._burstFinalFxRecycleCbs.values()) {
             this.unschedule(cb);
@@ -1002,6 +1072,7 @@ export class CarnivalPotBoard extends Component {
         this._placeFxAtPot(fx, potNode);
         fx.active = true;
         this._playAllChildParticles(fx);
+        SoundManager.instance?.playSfxByName('sxPotFinal2');
 
         this._activeBurstFinalFx.add(fx);
         const delay = Math.max(0.5, this.burstFinalFxRecycleDelay);

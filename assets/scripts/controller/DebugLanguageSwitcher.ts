@@ -204,7 +204,7 @@ export class DebugLanguageSwitcher extends Component {
         lab.verticalAlign = Label.VerticalAlign.CENTER;
         lab.overflow = Label.Overflow.SHRINK;
         lab.enableWrapText = false;
-        lab.cacheMode = 2; // CHAR — tránh Label.CacheMode namespace issue trên CC3
+        lab.cacheMode = 1; // BITMAP — CHAR mix glyph size khi window→fullscreen
         return lab;
     }
 

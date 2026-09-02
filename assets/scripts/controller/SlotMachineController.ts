@@ -596,7 +596,7 @@ export class SlotMachineController extends Component {
                     : safeFallback;
                 this.setInitialSymbols(indices);
             },
-            (err) => Log.e('[SlotMachine] load SymbolPack failed', err),
+            (err) => Log.err('[SlotMachine] load SymbolPack failed', err),
         );
     }
 

@@ -110,12 +110,11 @@ export class PaylineIndicatorManager extends Component {
         const indicatorIndex = PaylineIndicatorManager.INDICATOR_REMAP[lineIndex] ?? lineIndex;
         const left  = this.leftIndicators[indicatorIndex];
         const right = this.rightIndicators[indicatorIndex];
-        console.log(
-            `%c[PaylineIndicator] server payLineIndex=${lineIndex} (Line ${lineIndex+1})` +
+        Log.d(
+            `[PaylineIndicator] server payLineIndex=${lineIndex} (Line ${lineIndex + 1})` +
             ` → REMAP[${lineIndex}]=${indicatorIndex}` +
             ` → indicator[${indicatorIndex}]` +
             ` left=${!!left} right=${!!right}`,
-            'color:#f8c;font-weight:bold'
         );
         if (!left && !right) {
             Log.e(`[PaylineIndicatorManager] _highlightLine(${lineIndex}→indicator[${indicatorIndex}]): không có indicator nào để highlight!`);

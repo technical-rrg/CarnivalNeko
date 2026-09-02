@@ -16834,10 +16834,10 @@
     "popupFxTransitionDelay": 0.2,
     "tierDurationBig": 6.4,
     "tierDurationMega": 6,
-    "tierDurationMajor": 6,
-    "tierDurationSuper": 6,
+    "tierDurationMajor": 5.8,
+    "tierDurationSuper": 5.8,
     "tierDurationEpic": 6,
-    "tierDurationUltra": 6,
+    "tierDurationUltra": 5.8,
     "tierDurationMonster": 6,
     "tierDurationMax": 7,
     "autoCloseTimeout": 3,
@@ -17000,7 +17000,7 @@
     "portrait": {
       "__id__": 1223
     },
-    "_id": "f1tfDg/MpKH57i79Bz1eq7"
+    "_id": "986xqweMpL5bRffXreFPYa"
   },
   {
     "__type__": "cc.CompPrefabInfo",
@@ -17098,7 +17098,7 @@
     "portrait": {
       "__id__": 1229
     },
-    "_id": "056fhBPK1HWKY3jGXKkKI0"
+    "_id": "b8Rn+mOeJKWbe0AxyHi8Vp"
   },
   {
     "__type__": "cc.CompPrefabInfo",

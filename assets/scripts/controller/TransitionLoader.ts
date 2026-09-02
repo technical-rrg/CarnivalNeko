@@ -191,7 +191,7 @@ export class TransitionLoader extends Component {
                 const ctrl = instance.getComponent(TransitionController)
                     ?? instance.getComponentInChildren(TransitionController);
                 if (!ctrl) {
-                    Log.e('[TransitionLoader] Prefab thiếu TransitionController');
+                    Log.err('[TransitionLoader] Prefab thiếu TransitionController');
                     instance.destroy();
                     resolve(null);
                     return;
@@ -222,7 +222,7 @@ export class TransitionLoader extends Component {
             const path = (this.prefabPath || DEFAULT_PREFAB_PATH).trim();
             bundle.load(path, Prefab, (err: Error | null, prefab: Prefab) => {
                 if (err || !prefab) {
-                    Log.e(`[TransitionLoader] Load failed: ${path}`, err);
+                    Log.err(`[TransitionLoader] Load failed: ${path}`, err);
                     resolve(null);
                     return;
                 }

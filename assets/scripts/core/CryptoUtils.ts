@@ -223,9 +223,9 @@ function _unwrapPSPayload(value: any, label: string): any | null {
     try {
         const parsed = JSON.parse(text);
         if (_isPSObject(parsed)) return parsed;
-        Log.e(`[SV-ERR] decryptPS: ${label} JSON is not PS object: ${Object.prototype.toString.call(parsed)}`);
+        Log.err(`[SV-ERR] decryptPS: ${label} JSON is not PS object: ${Object.prototype.toString.call(parsed)}`);
     } catch (jsonErr: any) {
-        Log.e(`[SV-ERR] decryptPS: ${label} JSON parse failed: ${jsonErr.message}`);
+        Log.err(`[SV-ERR] decryptPS: ${label} JSON parse failed: ${jsonErr.message}`);
     }
     return null;
 }
@@ -252,7 +252,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
     try {
         rawBytes = base64ToUint8Array(psBase64);
     } catch (e: any) {
-        Log.e(`[SV-ERR] decryptPS: base64 decode failed: ${e.message}`);
+        Log.err(`[SV-ERR] decryptPS: base64 decode failed: ${e.message}`);
         return {};
     }
     const rawHex8 = Array.from(rawBytes.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ');
@@ -289,7 +289,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
             }
             throw new Error(`unsupported PS wrapper: extType=${extType}, next=0x${(rawBytes[pos] ?? 0).toString(16)}`);
         } catch (lz4Err: any) {
-            Log.e(`[SV-ERR] decryptPS: LZ4-array failed: ${lz4Err.message}`);
+            Log.err(`[SV-ERR] decryptPS: LZ4-array failed: ${lz4Err.message}`);
             return {};
         }
     }
@@ -303,7 +303,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
             return found;
         }
     } catch (e: any) {
-        Log.e(`[SV-ERR] decryptPS: RAW multi failed: ${e.message}`);
+        Log.err(`[SV-ERR] decryptPS: RAW multi failed: ${e.message}`);
     }
 
     // 0c: single unpack
@@ -315,7 +315,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
             return ps;
         }
     } catch (e: any) {
-        Log.e(`[SV-ERR] decryptPS: RAW single failed: ${e.message}`);
+        Log.err(`[SV-ERR] decryptPS: RAW single failed: ${e.message}`);
     }
 
     // ─── Strategy 1: AES decrypt → msgpack / JSON ───
@@ -336,7 +336,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
             decryptedBytes[i] = (decrypted.words[i >> 2] >>> (24 - (i % 4) * 8)) & 0xFF;
         }
     } catch (e: any) {
-        Log.e(`[SV-ERR] decryptPS: AES decrypt failed: ${e.message}`);
+        Log.err(`[SV-ERR] decryptPS: AES decrypt failed: ${e.message}`);
         return {};
     }
 
@@ -350,7 +350,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
             Log.e(`[SV-ERR] decryptPS: AES+JSON OK | keys: [${Object.keys(ps || {}).join(', ')}]`);
             return ps;
         } catch (e: any) {
-            Log.e(`[SV-ERR] decryptPS: AES+JSON failed: ${e.message}`);
+            Log.err(`[SV-ERR] decryptPS: AES+JSON failed: ${e.message}`);
             return {};
         }
     }
@@ -364,7 +364,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
             return found;
         }
     } catch (e: any) {
-        Log.e(`[SV-ERR] decryptPS: AES+multi failed: ${e.message}`);
+        Log.err(`[SV-ERR] decryptPS: AES+multi failed: ${e.message}`);
     }
 
     // 1c: single unpack
@@ -375,7 +375,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
             return ps;
         }
     } catch (e: any) {
-        Log.e(`[SV-ERR] decryptPS: AES+single failed: ${e.message}`);
+        Log.err(`[SV-ERR] decryptPS: AES+single failed: ${e.message}`);
     }
 
     // 1d: skip header bytes (1,2,4,5,8,16) — AES output có thể có header trước msgpack
@@ -399,7 +399,7 @@ export function decryptPS(psBase64: string, aky: string = ''): any {
         } catch (_) {}
     }
 
-    Log.e(`[SV-ERR] decryptPS: ALL FORMATS FAILED. rawLen=${rawBytes.length} aesLen=${decryptedBytes.length}`);
+    Log.err(`[SV-ERR] decryptPS: ALL FORMATS FAILED. rawLen=${rawBytes.length} aesLen=${decryptedBytes.length}`);
     return {};
 }
 

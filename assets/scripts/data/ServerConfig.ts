@@ -22,7 +22,10 @@ export const USE_REAL_API: boolean = true; // true = gọi API thật, false = d
 export const FORCE_NORMAL_SPIN_ONLY: boolean = false;
 
 /** Bật OpenDebug panel + DebugManager shortcuts (mọi build). Tắt trước release production. */
-export const ENABLE_DEBUG_TOOLS: boolean = true;
+export const ENABLE_DEBUG_TOOLS: boolean = false;
+
+/** true = tắt mọi console/Log output (production). false = bật log khi dev. */
+export const SILENCE_LOGS: boolean = true;
 
 /** false = tạm chặn phím 1–4 (Jackpot test) trong DebugManager. */
 export const DEBUG_SHORTCUT_JACKPOT_1234: boolean = false;
@@ -352,17 +355,18 @@ export const TestLoginConfig = {
 };
 
 // ═══════════════════════════════════════════════════════════
-//  Tắt toàn bộ console.log/warn/info/debug trong game.
-//  Chỉ giữ lại console.error cho các debug log quan trọng.
-//  Xoá / comment block này để bật lại log đầy đủ.
+//  Tắt toàn bộ console output khi SILENCE_LOGS=true (production).
+//  Đặt SILENCE_LOGS=false ở trên để bật lại log khi dev.
 // ═══════════════════════════════════════════════════════════
 /* eslint-disable no-console */
-// (function _silenceGameLogs() {
-//     const noop = (..._a: any[]) => {};
-//     console.log   = noop;
-//     console.warn  = noop;
-//     console.info  = noop;
-//     console.debug = noop;
-// })();
-// ↑ Tạm tắt để debug — bỏ comment để re-enable khi production
+(function _silenceGameLogs() {
+    if (!SILENCE_LOGS) return;
+    const noop = (..._a: any[]) => {};
+    console.log   = noop;
+    console.warn  = noop;
+    console.info  = noop;
+    console.debug = noop;
+    console.trace = noop;
+    console.error = noop;
+})();
 

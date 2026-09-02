@@ -289,7 +289,7 @@ export class UIController extends Component {
             bus.on(GameEvents.POPUP_OPENED, () => { this._openPopupCount++; }, this);
             bus.on(GameEvents.POPUP_CLOSED, () => { this._openPopupCount = Math.max(0, this._openPopupCount - 1); }, this);
         } catch (err) {
-            console.warn('[UIController] Failed to setup keyboard input:', err);
+            Log.w('[UIController] Failed to setup keyboard input:', err);
         }
     }
 

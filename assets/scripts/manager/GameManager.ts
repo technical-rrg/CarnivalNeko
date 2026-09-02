@@ -1097,7 +1097,7 @@ export class GameManager extends Component {
             this.scheduleOnce(this._reelsStoppedTimeout, 2.0);
         } catch (err: any) {
             // ★ Log nguyên nhân thực sự — bao gồm cả lỗi client-side xảy ra SAU khi server trả OK
-            Log.e(
+            Log.err(
                 `[CarnivalMatsuri] SPIN FAILED mode=${GameData.instance.currentMode}` +
                 ` isMatsuri=${isMatsuri} msg=${err?.message ?? err}`,
                 err,
@@ -1207,7 +1207,7 @@ export class GameManager extends Component {
     private _showMatsuriStartPopup(feature: CarnivalFeatureTrigger): void {
         this._gameState = GameState.POPUP;
         EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, false);
-        Log.e(`[GameManager] MATSURI_START_POPUP (in feature) → "${feature.featureName}" 5x${feature.matsuriRows}`);
+        Log.err(`[GameManager] MATSURI_START_POPUP (in feature) → "${feature.featureName}" 5x${feature.matsuriRows}`);
         EventBus.instance.emit(GameEvents.MATSURI_START_POPUP, feature);
         this.unschedule(this._matsuriStartPopupFailsafe);
         this.scheduleOnce(this._matsuriStartPopupFailsafe, 31.0);
@@ -1386,7 +1386,7 @@ export class GameManager extends Component {
         this._matsuriAwaitingSeed = true;
         const placed = this._pendingMatsuriSeedCells;
         this._gameState = GameState.IDLE;
-        Log.e(`[CarnivalMatsuri] seed start — ${placed.length} cells`);
+        Log.err(`[CarnivalMatsuri] seed start — ${placed.length} cells`);
         EventBus.instance.emit(GameEvents.MATSURI_SEED_START, { cells: placed });
         this.unschedule(this._matsuriSeedFailsafe);
         this.scheduleOnce(this._matsuriSeedFailsafe, 20.0);
@@ -2176,13 +2176,13 @@ export class GameManager extends Component {
                 }
             }
         } catch (err) {
-            Log.e('[Matsuri] failsafe credit error', err);
+            Log.err('[Matsuri] failsafe credit error', err);
         }
         this._pendingMatsuriGoldForFailsafe = [];
         try {
             EventBus.instance.emit(GameEvents.MATSURI_COLLECT_DONE);
         } catch (err) {
-            Log.e('[Matsuri] failsafe collect-done error', err);
+            Log.err('[Matsuri] failsafe collect-done error', err);
         }
         this.unschedule(this._matsuriFlipFailsafe);
         this.scheduleOnce(this._matsuriFlipFailsafe, 0.8);
@@ -2996,7 +2996,7 @@ export class GameManager extends Component {
         GameData.instance.pickGameState = pickState;
         EventBus.instance.emit(GameEvents.WIN_HIGHLIGHT_CLEAR);
 
-        Log.e('[GameManager] JACKPOT_START_POPUP → Pick shell + Press to Start');
+        Log.err('[GameManager] JACKPOT_START_POPUP → Pick shell + Press to Start');
         EventBus.instance.emit(GameEvents.PICK_GAME_START_POPUP, pickState);
         this.unschedule(this._jackpotStartPopupFailsafe);
         this.scheduleOnce(this._jackpotStartPopupFailsafe, 31.0);
@@ -3054,7 +3054,7 @@ export class GameManager extends Component {
                 ` type=${result.currentFeatureType ?? 'n/a'}`,
             );
         } catch (err) {
-            Log.e('[GameManager] PICK_END Claim failed:', err);
+            Log.err('[GameManager] PICK_END Claim failed:', err);
         }
     }
 
@@ -3365,7 +3365,7 @@ export class GameManager extends Component {
      * Dùng winGrade từ ClaimResponse nếu có; fallback tính từ ratio.
      */
     private _checkProgressiveWinForFeatureEnd(totalWin: number): void {
-        Log.e(`[DEBUG-PICK] _checkProgressiveWinForFeatureEnd ENTER — totalWin=${totalWin}, stage=${this._currentStage}, caller=${new Error().stack?.split('\n')[2]?.trim() ?? 'unknown'}`);
+        Log.err(`[DEBUG-PICK] _checkProgressiveWinForFeatureEnd ENTER — totalWin=${totalWin}, stage=${this._currentStage}, caller=${new Error().stack?.split('\n')[2]?.trim() ?? 'unknown'}`);
         if (totalWin <= 0) {
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
             return;
@@ -3713,7 +3713,7 @@ export class GameManager extends Component {
                 const carnival = GameData.instance.lastSpinResponse?.carnivalFeature
                     ?? GameData.instance.pendingCarnivalMatsuri;
                 if (!carnival) {
-                    Log.e('[GameManager] CARNIVAL_MATSURI_START nhưng thiếu carnivalFeature → IDLE');
+                    Log.err('[GameManager] CARNIVAL_MATSURI_START nhưng thiếu carnivalFeature → IDLE');
                     this._gameState = GameState.IDLE;
                     EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
                     EventBus.instance.emit(GameEvents.NORMAL_SPIN_DONE);
@@ -4528,7 +4528,7 @@ export class GameManager extends Component {
         }
         const overlay = await loader.ensureLoaded();
         if (!overlay) {
-            Log.e('[GameManager] StickyOverlayLoader.ensureLoaded() failed — TopUp overlay sẽ không hiện');
+            Log.err('[GameManager] StickyOverlayLoader.ensureLoaded() failed — TopUp overlay sẽ không hiện');
         }
     }
 
@@ -4635,7 +4635,7 @@ export class GameManager extends Component {
             Log.d(`[BuyBonus] Tải xong ${items.length} gói — emit BUY_BONUS_ITEMS_LOADED`);
             EventBus.instance.emit(GameEvents.BUY_BONUS_ITEMS_LOADED, items);
         } catch (err: any) {
-            Log.e('[BuyBonus] FeatureItemGet failed:', err.message || err);
+            Log.err('[BuyBonus] FeatureItemGet failed:', err.message || err);
             EventBus.instance.emit(GameEvents.BUY_BONUS_FAILED, err.message || 'Failed to load items');
         }
     }
@@ -4715,7 +4715,7 @@ export class GameManager extends Component {
             this._enterFreeSpin(freeSpinCount);
 
         } catch (err: any) {
-            Log.e('[BuyBonus] FeatureItemBuy failed:', err.message || err);
+            Log.err('[BuyBonus] FeatureItemBuy failed:', err.message || err);
             this._gameState = GameState.IDLE;
             EventBus.instance.emit(GameEvents.UI_SPIN_BUTTON_STATE, true);
             EventBus.instance.emit(GameEvents.BUY_BONUS_FAILED, err.message || 'Purchase failed');
@@ -4761,7 +4761,7 @@ export class GameManager extends Component {
             const adjustedBet = BetManager.instance.totalBet * item.priceRatio;
             EventBus.instance.emit(GameEvents.BUY_BONUS_TOTAL_BET_CHANGED, { displayBet: adjustedBet, isActive: true });
         } catch (err: any) {
-            Log.e('[BuyBonus] Activate failed:', err.message || err);
+            Log.err('[BuyBonus] Activate failed:', err.message || err);
             EventBus.instance.emit(GameEvents.BUY_BONUS_FAILED, err.message || 'Activate failed');
         }
     }
@@ -4790,7 +4790,7 @@ export class GameManager extends Component {
             // Khôi phục Total Bet display về bình thường
             EventBus.instance.emit(GameEvents.BUY_BONUS_TOTAL_BET_CHANGED, { displayBet: BetManager.instance.totalBet, isActive: false });
         } catch (err: any) {
-            Log.e('[BuyBonus] Deactivate failed:', err.message || err);
+            Log.err('[BuyBonus] Deactivate failed:', err.message || err);
             EventBus.instance.emit(GameEvents.BUY_BONUS_FAILED, err.message || 'Deactivate failed');
         }
     }
@@ -5086,7 +5086,7 @@ export class GameManager extends Component {
             // Fallback: nếu TopUpAbsorbEffect không có trong scene (chưa setup), tiếp tục sau 30s
             // (absorb nhiều coin có thể kéo dài 10-20s)
             const absorbTimeout = () => {
-                Log.e('[TopUp] TOPUP_ABSORB_DONE timeout — TopUpAbsorbEffect chưa được gắn vào scene!');
+                Log.err('[TopUp] TOPUP_ABSORB_DONE timeout — TopUpAbsorbEffect chưa được gắn vào scene!');
                 onAbsorbDone();
             };
             this.scheduleOnce(absorbTimeout, 30);
@@ -5307,7 +5307,7 @@ export class GameManager extends Component {
             }
         } catch (err) {
             const code = PopUpMessage.extractServerCode(err as Error);
-            Log.e(`[TopUp-CLAIM] ❌ Claim failed code=${code}:`, err);
+            Log.err(`[TopUp-CLAIM] ❌ Claim failed code=${code}:`, err);
             this._pendingPickAfterMatsuriClaim = null;
             // 30034 ERR_NO_NEED_CLAIM — không phải mất kết nối; popup vẫn lấy số spin cuối từ server.
             if (code === 30034) {
@@ -5443,7 +5443,7 @@ export class GameManager extends Component {
                     data.respinTotalWin = 0;
                 }
             } catch (err) {
-                Log.e('[TopUp-CLAIM] ❌ resume Claim failed — hiện 0:', err);
+                Log.err('[TopUp-CLAIM] ❌ resume Claim failed — hiện 0:', err);
                 data.respinTotalWin = 0;
                 const popupCase = PopUpMessage.popupCaseFromError(err);
                 EventBus.instance.emit(GameEvents.SHOW_SYSTEM_POPUP, { popupCase });

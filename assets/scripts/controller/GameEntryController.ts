@@ -366,7 +366,7 @@ export class GameEntryController extends Component {
      */
     revealPreparedSkipIntro(): boolean {
         if (!this._skipIntroPrepared || !this.gameRoot?.isValid) {
-            Log.e('[GameEntryController] Refuse reveal — SkipIntro GameRoot is not fully prepared');
+            Log.err('[GameEntryController] Refuse reveal — SkipIntro GameRoot is not fully prepared');
             return false;
         }
         this._setGameRootOpacity(255);

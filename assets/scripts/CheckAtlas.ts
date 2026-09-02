@@ -10,7 +10,7 @@ export class CheckAtlas extends Component {
 
     start() {
         if (!this.myAtlas) {
-            Log.e("❌ Bạn chưa gắn file Atlas vào script này!");
+            Log.err("❌ Bạn chưa gắn file Atlas vào script này!");
             return;
         }
 

@@ -123,7 +123,7 @@ export class StickyOverlayLoader extends Component {
             bundle.load(path, Prefab, (err: Error | null, prefab: Prefab) => {
                 this._prefabLoading = null;
                 if (err || !prefab) {
-                    Log.e(`[StickyOverlayLoader] Load failed: ${path}`, err);
+                    Log.err(`[StickyOverlayLoader] Load failed: ${path}`, err);
                     resolve(null);
                     return;
                 }
@@ -195,7 +195,7 @@ export class StickyOverlayLoader extends Component {
             ?? instance.getComponentInChildren(TopUpManager);
 
         if (!overlay) {
-            Log.e('[StickyOverlayLoader] Prefab thiếu StickyOverlayController');
+            Log.err('[StickyOverlayLoader] Prefab thiếu StickyOverlayController');
             instance.destroy();
             return null;
         }

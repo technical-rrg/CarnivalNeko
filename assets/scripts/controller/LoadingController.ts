@@ -213,7 +213,7 @@ export class LoadingController extends Component {
         if (this.gameBundleName) {
             this._bundlePromise = this._loadBundleAsync()
                 .catch((err) => {
-                    Log.e('[Loading] Early bundle load failed:', err);
+                    Log.err('[Loading] Early bundle load failed:', err);
                     return null;
                 })
                 .then((bundle) => {
@@ -419,7 +419,7 @@ export class LoadingController extends Component {
                 this._syncHtmlLoadingOverlay();
             },
             (err) => {
-                if (err) Log.e('[LoadingController] Preload scene error:', err);
+                if (err) Log.err('[LoadingController] Preload scene error:', err);
                 this._onPreloadComplete();
             }
         );
@@ -484,7 +484,7 @@ export class LoadingController extends Component {
                 data.isEntered  = true;
             }
         } catch (err) {
-            Log.e('[LoadingController] Server error during login:', err);
+            Log.err('[LoadingController] Server error during login:', err);
         }
 
         this._serverReady = true;
@@ -660,7 +660,7 @@ export class LoadingController extends Component {
                 },
                 (err, prefab) => {
                     if (err) {
-                        Log.e(`[LoadingController] Prefab load failed: ${this.gameBundleName}/${this.gamePrefabPath}`, err);
+                        Log.err(`[LoadingController] Prefab load failed: ${this.gameBundleName}/${this.gamePrefabPath}`, err);
                     } else {
                         this._loadedPrefab = prefab;
                         // active=true NGAY ĐỂ LIFECYCLE CHẠY (onLoad/start của SMC, SymbolView...).
@@ -688,7 +688,7 @@ export class LoadingController extends Component {
         } else {
             assetManager.loadBundle(this.gameBundleName, (err, bundle) => {
                 if (err) {
-                    Log.e(`[LoadingController] Bundle load failed: ${this.gameBundleName}`, err);
+                    Log.err(`[LoadingController] Bundle load failed: ${this.gameBundleName}`, err);
                     this._heavyInitDone = true;
                     this._prefabReady = true;
                     this._barDone = true;
@@ -732,7 +732,7 @@ export class LoadingController extends Component {
         if (!this._bundlePromise) {
             this._bundlePromise = this._loadBundleAsync()
                 .catch((err) => {
-                    Log.e('[LoadingController] Bundle load failed:', err);
+                    Log.err('[LoadingController] Bundle load failed:', err);
                     return null;
                 })
                 .then((bundle) => {
@@ -774,7 +774,7 @@ export class LoadingController extends Component {
         try {
             const bundle = await this._bundlePromise;
             if (!bundle) {
-                Log.e('[LoadingController] No bundle — cannot load GuideView');
+                Log.err('[LoadingController] No bundle — cannot load GuideView');
                 return;
             }
             const [frames, prefab] = await Promise.all([
@@ -783,7 +783,7 @@ export class LoadingController extends Component {
             ]);
             if (!frames) Log.w('[LoadingController] Guide frames preload returned null');
             if (!prefab) {
-                Log.e('[LoadingController] GuideView.prefab missing in MainBundle');
+                Log.err('[LoadingController] GuideView.prefab missing in MainBundle');
                 return;
             }
             const parent = this.gameContainer ?? director.getScene();
@@ -794,7 +794,7 @@ export class LoadingController extends Component {
             const node = await GuideShellLoader.attach(parent);
             Log.d(`[LoadingController] GuideView.prefab ready (inactive)=${!!node}`);
         } catch (err) {
-            Log.e('[LoadingController] GuideView load error:', err);
+            Log.err('[LoadingController] GuideView load error:', err);
         }
     }
 
@@ -826,7 +826,7 @@ export class LoadingController extends Component {
                     }
                 }
             } catch (err) {
-                Log.e('[LoadingController] Base background load error:', err);
+                Log.err('[LoadingController] Base background load error:', err);
                 this._prefabReady = true;
                 GameData.instance.isBaseReady = true;
             }
@@ -862,14 +862,14 @@ export class LoadingController extends Component {
                 resolve(value);
             };
             const timer = setTimeout(() => {
-                Log.e('[LoadingController] Base asset load timeout 45s');
+                Log.err('[LoadingController] Base asset load timeout 45s');
                 settle(null);
             }, 45_000);
 
             bundle.load(this.gamePrefabPath, Prefab, (err: Error | null, prefab: Prefab) => {
                 clearTimeout(timer);
                 if (err || !prefab) {
-                    Log.e(`[LoadingController] Prefab load failed: ${this.gamePrefabPath}`, err);
+                    Log.err(`[LoadingController] Prefab load failed: ${this.gamePrefabPath}`, err);
                     settle(null);
                     return;
                 }
@@ -901,7 +901,7 @@ export class LoadingController extends Component {
                 const gameNode = instantiate(prefab);
                 this._attachGamePrefab(gameNode);
             } catch (err) {
-                Log.e('[LoadingController] Base instantiate failed:', err);
+                Log.err('[LoadingController] Base instantiate failed:', err);
             }
             this._prefabReady = true;
             this._applySymbolsIfReady();
@@ -917,7 +917,7 @@ export class LoadingController extends Component {
     private _phaseWithCrawl(from: number, to: number, operation: () => Promise<void>): Promise<void> {
         if (this.phaseCrawlSecs <= 0 || !this.loadingBar) {
             return operation().catch((err) => {
-                Log.e('[PhaseWithCrawl] Operation error:', err);
+                Log.err('[PhaseWithCrawl] Operation error:', err);
             });
         }
         this._syncHtmlLoadingOverlay();
@@ -951,7 +951,7 @@ export class LoadingController extends Component {
                 .start();
 
             operation().then(finish).catch((err) => {
-                Log.e('[PhaseWithCrawl] Operation error:', err);
+                Log.err('[PhaseWithCrawl] Operation error:', err);
                 finish();
             });
         });
@@ -967,7 +967,7 @@ export class LoadingController extends Component {
             }
             assetManager.loadBundle(this.gameBundleName, (err, bundle) => {
                 if (err || !bundle) {
-                    Log.e(`[LoadingController] Bundle load failed: ${this.gameBundleName}`, err);
+                    Log.err(`[LoadingController] Bundle load failed: ${this.gameBundleName}`, err);
                     reject(err ?? new Error('Bundle is null'));
                 } else {
                     Log.d(`[LoadingController] Bundle loaded: ${this.gameBundleName}`);
@@ -1000,7 +1000,7 @@ export class LoadingController extends Component {
         return new Promise<void>((resolve) => {
             bundle.load(this.gamePrefabPath, Prefab, (err: Error | null, prefab: Prefab) => {
                 if (err || !prefab) {
-                    Log.e(`[LoadingController] Prefab load failed: ${this.gamePrefabPath}`, err);
+                    Log.err(`[LoadingController] Prefab load failed: ${this.gamePrefabPath}`, err);
                 } else {
                     const gameNode = instantiate(prefab);
                     this._attachGamePrefab(gameNode);
@@ -1071,7 +1071,7 @@ export class LoadingController extends Component {
                 try {
                     await gec.waitSkipIntroEnter();
                 } catch (err) {
-                    Log.e('[LoadingController] Keep Loading visible — GameRoot preparation failed', err);
+                    Log.err('[LoadingController] Keep Loading visible — GameRoot preparation failed', err);
                     return;
                 }
                 // Reveal và tắt Loading chạy liên tục, không await ở giữa:
@@ -1080,7 +1080,7 @@ export class LoadingController extends Component {
                 Log.d(`[LoadingController] skipIntro — atomic reveal ready=${canDismissLoading}`);
             } else {
                 canDismissLoading = false;
-                Log.e('[LoadingController] Keep Loading visible — GameEntryController missing');
+                Log.err('[LoadingController] Keep Loading visible — GameEntryController missing');
             }
         }
 
@@ -1200,7 +1200,7 @@ export class LoadingController extends Component {
                     }
                 }
             } else {
-                Log.e('[LoadingController] Base missing after await — cannot enter game');
+                Log.err('[LoadingController] Base missing after await — cannot enter game');
             }
             EventBus.instance.emit(GameEvents.LOADING_COMPLETE);
             return;
@@ -1208,7 +1208,7 @@ export class LoadingController extends Component {
 
         // ★ Loading → màn đen → FadeIn Guide xong → mới kick Base
         if (!GuideShellLoader.instance) {
-            Log.e('[LoadingController] GuideView.prefab missing — fallback await Base');
+            Log.err('[LoadingController] GuideView.prefab missing — fallback await Base');
             await this._startBaseBackgroundLoad();
             GameData.instance.guideFirstBoot = false;
             if (this._instantiatedGameNode) this._instantiatedGameNode.active = true;
@@ -1268,7 +1268,7 @@ export class LoadingController extends Component {
 
         const base = this._instantiatedGameNode;
         if (!base?.isValid) {
-            Log.e('[LoadingController] Base missing after Guide — cannot enter');
+            Log.err('[LoadingController] Base missing after Guide — cannot enter');
             this._holdingBlackForBase = false;
             GuideShellLoader.dismiss();
             return;
@@ -1286,7 +1286,7 @@ export class LoadingController extends Component {
             // Prep GameRoot/BG/Transition dưới đen → rồi mới FadeIn
             await gec.enterFromExternalGuide(shared, () => GuideShellLoader.fadeRevealAndDismiss());
         } else {
-            Log.e('[LoadingController] GameEntryController missing on Base');
+            Log.err('[LoadingController] GameEntryController missing on Base');
             const gameRoot = base.getChildByName('GameRoot');
             if (shared && gameRoot) {
                 shared.setParent(gameRoot, false);

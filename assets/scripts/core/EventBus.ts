@@ -84,7 +84,7 @@ export class EventBus {
             try {
                 entry.callback.apply(entry.target, args);
             } catch (err) {
-                Log.e(`[EventBus] listener error on "${event}"`, err);
+                Log.err(`[EventBus] listener error on "${event}"`, err);
             }
             if (entry.once) {
                 this.off(event, entry.callback, entry.target);

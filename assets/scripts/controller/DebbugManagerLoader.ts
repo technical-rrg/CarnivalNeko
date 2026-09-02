@@ -137,7 +137,7 @@ export class DebbugManagerLoader extends Component {
                 const panel = instance.getComponent(SlotDebugPanel)
                     ?? instance.getComponentInChildren(SlotDebugPanel);
                 if (!panel) {
-                    Log.e('[DebbugManagerLoader] Prefab thiếu SlotDebugPanel');
+                    Log.err('[DebbugManagerLoader] Prefab thiếu SlotDebugPanel');
                     instance.destroy();
                     resolve(null);
                     return;
@@ -165,7 +165,7 @@ export class DebbugManagerLoader extends Component {
             const path = (this.prefabPath || DEFAULT_PREFAB_PATH).trim();
             bundle.load(path, Prefab, (err: Error | null, prefab: Prefab) => {
                 if (err || !prefab) {
-                    Log.e(`[DebbugManagerLoader] Load failed: ${path}`, err);
+                    Log.err(`[DebbugManagerLoader] Load failed: ${path}`, err);
                     resolve(null);
                     return;
                 }

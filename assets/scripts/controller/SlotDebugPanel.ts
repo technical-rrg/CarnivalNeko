@@ -457,7 +457,7 @@ export class SlotDebugPanel extends Component {
 
         } catch (err) {
 
-            Log.e('[SlotDebugPanel] onSendDebugSpin error:', err);
+            Log.err('[SlotDebugPanel] onSendDebugSpin error:', err);
 
             this._setStatus('❌ Lỗi: ' + String(err));
 

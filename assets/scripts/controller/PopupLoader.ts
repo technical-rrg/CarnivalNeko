@@ -271,7 +271,7 @@ export class PopupLoader extends Component {
         Log.e(`[PopupLoader] _onJackpotTrigger — type=${jackpotType}, amount=${amount}, _jackpotPopupNode=${!!this._jackpotPopupNode}, nodeValid=${nodeValid}, nodeActive=${nodeActive}`);
         if (this._jackpotPopupNode) {
             if (!nodeValid) {
-                Log.e(`[PopupLoader] _onJackpotTrigger — node reference invalid, clearing _jackpotPopupNode`);
+                Log.err(`[PopupLoader] _onJackpotTrigger — node reference invalid, clearing _jackpotPopupNode`);
                 this._jackpotPopupNode = null;
             } else {
                 // Đã instantiate rồi — popup tự xử lý qua listener của nó.
@@ -297,7 +297,7 @@ export class PopupLoader extends Component {
         Log.e(`[PopupLoader] _onProgressiveWinShow — tier=${tier}, amount=${amount}, nodeExists=${!!this._progressiveWinNode}, nodeValid=${nodeValid}`);
         if (this._progressiveWinNode) {
             if (!nodeValid) {
-                Log.e(`[PopupLoader] _onProgressiveWinShow — node reference invalid, clearing _progressiveWinNode`);
+                Log.err(`[PopupLoader] _onProgressiveWinShow — node reference invalid, clearing _progressiveWinNode`);
                 this._progressiveWinNode = null;
             } else {
                 // Đã instantiate rồi — popup tự xử lý qua listener của nó.
@@ -579,7 +579,7 @@ export class PopupLoader extends Component {
         }
 
         const failLoad = () => {
-            Log.e('[PopupLoader] RED_ENVELOPE prefab load failed — emit closed');
+            Log.err('[PopupLoader] RED_ENVELOPE prefab load failed — emit closed');
             EventBus.instance.emit(GameEvents.CARNIVAL_RED_ENVELOPE_CLOSED);
         };
 
@@ -594,7 +594,7 @@ export class PopupLoader extends Component {
         bundle.load(prefabName, Prefab, (err: Error | null, prefab: Prefab) => {
             this._loadingSet.delete(prefabName);
             if (err || !prefab) {
-                Log.e(`[PopupLoader] Load prefab thất bại: ${prefabName}`, err);
+                Log.err(`[PopupLoader] Load prefab thất bại: ${prefabName}`, err);
                 failLoad();
                 return;
             }
@@ -610,7 +610,7 @@ export class PopupLoader extends Component {
     private _showRedEnvelope(node: Node, amount: number): void {
         const popup = node.getComponent(RedEnvelopePopup);
         if (!popup) {
-            Log.e('[PopupLoader] RedEnvelopePopup component missing on prefab');
+            Log.err('[PopupLoader] RedEnvelopePopup component missing on prefab');
             EventBus.instance.emit(GameEvents.CARNIVAL_RED_ENVELOPE_CLOSED);
             return;
         }

@@ -120,7 +120,7 @@ export class WinAmountCenterEffect extends Component {
             return;
         }
         if (!this.effectNode || !this.amountLabel) {
-            Log.e(`[MULTI-LINE-WIN] WinAmountCenter SKIP — missing nodes source=${source}`);
+            Log.err(`[MULTI-LINE-WIN] WinAmountCenter SKIP — missing nodes source=${source}`);
             return;
         }
 

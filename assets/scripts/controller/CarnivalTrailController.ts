@@ -360,7 +360,7 @@ export class CarnivalTrailController extends Component {
         this._flyingCount++;
         const symbolNode = this._getSymbolNode(hit.reel, hit.row);
         if (!symbolNode) {
-            Log.e(`[CarnivalTrail] MISSING symbol r${hit.reel}row${hit.row} — check reels[]`);
+            Log.err(`[CarnivalTrail] MISSING symbol r${hit.reel}row${hit.row} — check reels[]`);
             this._flyingCount = Math.max(0, this._flyingCount - 1);
             this._emitHitAndMaybeDone(hit.color);
             return;
@@ -403,7 +403,7 @@ export class CarnivalTrailController extends Component {
             this._playSpineFlip(symbolNode, view, color, coloredId, data, startFly, gen);
             return;
         }
-        Log.e(`[CarnivalTrail] Flip spine missing ${FLIP_SPINE_PATH[color]} — skip scale-flip, show color + fly`);
+        Log.err(`[CarnivalTrail] Flip spine missing ${FLIP_SPINE_PATH[color]} — skip scale-flip, show color + fly`);
         if (view?.isValid) {
             view.setSymbol(coloredId);
             this._resetSpriteColor(view);
@@ -459,9 +459,9 @@ export class CarnivalTrailController extends Component {
             SoundManager.instance?.playSfxByName('sxTrailLand');
             const entry = skel.setAnimation(0, animName, false);
             duration = entry?.animation?.duration ?? duration;
-            Log.e(`[CarnivalTrail] PLAY flip ${TrailColor[color]} anim="${animName}" dur=${duration.toFixed(2)} x${timeScale}`);
+            Log.err(`[CarnivalTrail] PLAY flip ${TrailColor[color]} anim="${animName}" dur=${duration.toFixed(2)} x${timeScale}`);
         } catch (err) {
-            Log.e(`[CarnivalTrail] setAnimation failed ${animName}`, err);
+            Log.err(`[CarnivalTrail] setAnimation failed ${animName}`, err);
             startFly();
             finish();
             return;
@@ -568,7 +568,7 @@ export class CarnivalTrailController extends Component {
                     Log.w(`[CarnivalTrail] bundle.load failed ${path}`, err);
                     assetManager.loadAny({ uuid }, (uuidErr: Error | null, uuidData: sp.SkeletonData) => {
                         if (uuidErr || !uuidData) {
-                            Log.e(`[CarnivalTrail] loadAny uuid failed ${uuid}`, uuidErr);
+                            Log.err(`[CarnivalTrail] loadAny uuid failed ${uuid}`, uuidErr);
                             done(null, 'fail');
                             return;
                         }
@@ -581,7 +581,7 @@ export class CarnivalTrailController extends Component {
             Log.w(`[CarnivalTrail] Bundle '${SPINE_BUNDLE}' missing — try uuid ${uuid}`);
             assetManager.loadAny({ uuid }, (uuidErr: Error | null, uuidData: sp.SkeletonData) => {
                 if (uuidErr || !uuidData) {
-                    Log.e(`[CarnivalTrail] loadAny uuid failed ${uuid}`, uuidErr);
+                    Log.err(`[CarnivalTrail] loadAny uuid failed ${uuid}`, uuidErr);
                     done(null, 'fail');
                     return;
                 }
@@ -1178,7 +1178,7 @@ export class CarnivalTrailController extends Component {
                     ps.play();
                 }
             } catch (err) {
-                Log.e('[CarnivalTrail] play particle failed:', err);
+                Log.err('[CarnivalTrail] play particle failed:', err);
             }
         }
     }

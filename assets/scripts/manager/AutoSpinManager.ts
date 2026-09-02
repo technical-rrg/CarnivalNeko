@@ -1,26 +1,26 @@
-/**
- * AutoSpinManager - Quản lý Auto Spin count và Speed Mode.
+﻿/**
+ * AutoSpinManager - Quáº£n lÃ½ Auto Spin count vÃ  Speed Mode.
  *
- * ── SINGLETON ──
- *   Không cần gắn vào Node. Khởi tạo qua AutoSpinManager.instance.
- *   Gọi AutoSpinManager.instance trong GameManager.onLoad() để khởi tạo sớm.
+ * â”€â”€ SINGLETON â”€â”€
+ *   KhÃ´ng cáº§n gáº¯n vÃ o Node. Khá»Ÿi táº¡o qua AutoSpinManager.instance.
+ *   Gá»i AutoSpinManager.instance trong GameManager.onLoad() Ä‘á»ƒ khá»Ÿi táº¡o sá»›m.
  *
- * ── AUTO SPIN FLOW ──
- *   User chọn count N → đóng AutoSettingPopup → spin thủ công lần đầu.
- *   Sau mỗi Normal Spin kết thúc (NORMAL_SPIN_DONE):
- *     count > 0 → decrement → delay nhỏ → emit SPIN_REQUEST.
- *     count = 0 → dừng.
- *   Free Spin KHÔNG ảnh hưởng count (chỉ Normal Spin mới decrement).
+ * â”€â”€ AUTO SPIN FLOW â”€â”€
+ *   User chá»n count N â†’ Ä‘Ã³ng AutoSettingPopup â†’ spin thá»§ cÃ´ng láº§n Ä‘áº§u.
+ *   Sau má»—i Normal Spin káº¿t thÃºc (NORMAL_SPIN_DONE):
+ *     count > 0 â†’ decrement â†’ delay nhá» â†’ emit SPIN_REQUEST.
+ *     count = 0 â†’ dá»«ng.
+ *   Free Spin KHÃ”NG áº£nh hÆ°á»Ÿng count (chá»‰ Normal Spin má»›i decrement).
  *
- * ── SPEED MODE ──
- *   Normal: tốc độ mặc định.
- *   Quick: 2× nhanh hơn.
- *   Turbo: gần như dừng ngay khi có kết quả từ server.
+ * â”€â”€ SPEED MODE â”€â”€
+ *   Normal: tá»‘c Ä‘á»™ máº·c Ä‘á»‹nh.
+ *   Quick: 2Ã— nhanh hÆ¡n.
+ *   Turbo: gáº§n nhÆ° dá»«ng ngay khi cÃ³ káº¿t quáº£ tá»« server.
  *
- * ── PERSIST ──
- *   Lưu vào localStorage: count còn lại + speed mode, key theo SLOT_ID + memberId
- *   để không leak Auto Spin giữa các game (cùng origin / cùng player).
- *   Tải lại khi khởi động → tiếp tục auto spin nếu còn count (cùng game).
+ * â”€â”€ PERSIST â”€â”€
+ *   LÆ°u vÃ o localStorage: count cÃ²n láº¡i + speed mode, key theo SLOT_ID + memberId
+ *   Ä‘á»ƒ khÃ´ng leak Auto Spin giá»¯a cÃ¡c game (cÃ¹ng origin / cÃ¹ng player).
+ *   Táº£i láº¡i khi khá»Ÿi Ä‘á»™ng â†’ tiáº¿p tá»¥c auto spin náº¿u cÃ²n count (cÃ¹ng game).
  */
 
 import { EventBus } from '../core/EventBus';
@@ -54,22 +54,21 @@ export class AutoSpinManager {
     private _speedMode: SpeedMode = SpeedMode.NORMAL;
     private _isFreeSpinMode: boolean = false;
     private _isPaused: boolean = false;
-    /** Flag để chỉ trigger auto spin resume 1 lần duy nhất sau khi game khởi tạo */
+    /** Flag Ä‘á»ƒ chá»‰ trigger auto spin resume 1 láº§n duy nháº¥t sau khi game khá»Ÿi táº¡o */
     private _gameInitDone: boolean = false;
     /**
-     * Set = true bởi _onEnterSuccess() → báo cho _onGameReady() biết cần check resume.
-     * Tách khỏi _gameInitDone để tránh race condition trong two-scene flow:
-     *   loading scene GAME_READY set _gameInitDone=true trước khi game scene ENTER_SUCCESS.
+     * Set = true bá»Ÿi _onEnterSuccess() â†’ bÃ¡o cho _onGameReady() biáº¿t cáº§n check resume.
+     * TÃ¡ch khá»i _gameInitDone Ä‘á»ƒ trÃ¡nh race condition trong two-scene flow:
+     *   loading scene GAME_READY set _gameInitDone=true trÆ°á»›c khi game scene ENTER_SUCCESS.
      */
     private _pendingResumeAfterLoad: boolean = false;
-    /** Member ID từ lần load trước — dùng để detect khi player thay đổi (undefined = chưa init) */
+    /** Member ID tá»« láº§n load trÆ°á»›c â€” dÃ¹ng Ä‘á»ƒ detect khi player thay Ä‘á»•i (undefined = chÆ°a init) */
     private _lastMemberId: number | null | undefined = undefined;
 
     private constructor() {
-        console.log('[AutoSpinManager] 🔧 constructor() — singleton created');
-        Log.d('[AutoSpinManager] 🔧 constructor() — bắt đầu khởi tạo');
-        // KHÔNG gọi _load() ở đây — session/memberIdx chưa có tại thời điểm constructor.
-        // _load() sẽ được gọi lần đầu trong _onSpinButtonState khi session đã sẵn sàng.
+        Log.d('[AutoSpinManager] ðŸ”§ constructor() â€” báº¯t Ä‘áº§u khá»Ÿi táº¡o');
+        // KHÃ”NG gá»i _load() á»Ÿ Ä‘Ã¢y â€” session/memberIdx chÆ°a cÃ³ táº¡i thá»i Ä‘iá»ƒm constructor.
+        // _load() sáº½ Ä‘Æ°á»£c gá»i láº§n Ä‘áº§u trong _onSpinButtonState khi session Ä‘Ã£ sáºµn sÃ ng.
         this._bindEvents();
     }
 
@@ -81,8 +80,8 @@ export class AutoSpinManager {
     }
 
     /**
-     * Lấy member ID từ GameData để tạo unique keys cho mỗi player.
-     * Trả về null nếu chưa login hoặc memberIdx <= 0 (mock mode).
+     * Láº¥y member ID tá»« GameData Ä‘á»ƒ táº¡o unique keys cho má»—i player.
+     * Tráº£ vá» null náº¿u chÆ°a login hoáº·c memberIdx <= 0 (mock mode).
      */
     private _getMemberId(): number | null {
         try {
@@ -95,30 +94,30 @@ export class AutoSpinManager {
     }
 
     /**
-     * Tạo unique storage key theo game + player.
-     * Format: {baseKey}_{slotId}_{memberId}  (hoặc {baseKey}_{slotId} nếu chưa login).
+     * Táº¡o unique storage key theo game + player.
+     * Format: {baseKey}_{slotId}_{memberId}  (hoáº·c {baseKey}_{slotId} náº¿u chÆ°a login).
      */
     private _getStorageKey(baseKey: string): string {
         const slotId = ServerConfig.SLOT_ID;
         const memberId = this._getMemberId();
         const key = memberId !== null ? `${baseKey}_${slotId}_${memberId}` : `${baseKey}_${slotId}`;
-        Log.d(`[AutoSpinManager] _getStorageKey("${baseKey}") → ${key}`);
+        Log.d(`[AutoSpinManager] _getStorageKey("${baseKey}") â†’ ${key}`);
         return key;
     }
 
     /**
-     * Kiểm tra xem player có thay đổi không (e.g. login khác account).
-     * Gọi từ _save() mỗi lần lưu để detect switch account và reset state.
+     * Kiá»ƒm tra xem player cÃ³ thay Ä‘á»•i khÃ´ng (e.g. login khÃ¡c account).
+     * Gá»i tá»« _save() má»—i láº§n lÆ°u Ä‘á»ƒ detect switch account vÃ  reset state.
      */
     private _onPlayerChanged(): void {
         const currentMemberId = this._getMemberId();
 
-        // Nếu memberIdx thay đổi từ một giá trị hợp lệ sang giá trị khác → đang switch account
+        // Náº¿u memberIdx thay Ä‘á»•i tá»« má»™t giÃ¡ trá»‹ há»£p lá»‡ sang giÃ¡ trá»‹ khÃ¡c â†’ Ä‘ang switch account
         if (this._lastMemberId !== null &&
             this._lastMemberId !== undefined &&
             currentMemberId !== null &&
             this._lastMemberId !== currentMemberId) {
-            Log.d(`[AutoSpinManager] 🔄 Player thay đổi từ ${this._lastMemberId} → ${currentMemberId} — reset Auto Spin state`);
+            Log.d(`[AutoSpinManager] ðŸ”„ Player thay Ä‘á»•i tá»« ${this._lastMemberId} â†’ ${currentMemberId} â€” reset Auto Spin state`);
             this._autoSpinCount = 0;
             this._isAutoSpinActive = false;
             this._speedMode = SpeedMode.NORMAL;
@@ -130,7 +129,7 @@ export class AutoSpinManager {
         if (currentMemberId !== null) this._lastMemberId = currentMemberId;
     }
 
-    // ─── GETTERS ───
+    // â”€â”€â”€ GETTERS â”€â”€â”€
 
     get autoSpinCount(): number { return this._autoSpinCount; }
     get originalAutoSpinCount(): number { return this._originalAutoSpinCount; }
@@ -140,10 +139,10 @@ export class AutoSpinManager {
     get isPaused(): boolean { return this._isPaused; }
 
     /**
-     * Trả về multiplier để điều chỉnh thời gian animation theo speed mode.
-     * NORMAL: 1.0 (không thay đổi)
-     * QUICK: 0.5 (2x nhanh hơn - tất cả thời gian giảm 50%)
-     * TURBO: 0.33 (3x nhanh hơn - tất cả thời gian giảm 67%)
+     * Tráº£ vá» multiplier Ä‘á»ƒ Ä‘iá»u chá»‰nh thá»i gian animation theo speed mode.
+     * NORMAL: 1.0 (khÃ´ng thay Ä‘á»•i)
+     * QUICK: 0.5 (2x nhanh hÆ¡n - táº¥t cáº£ thá»i gian giáº£m 50%)
+     * TURBO: 0.33 (3x nhanh hÆ¡n - táº¥t cáº£ thá»i gian giáº£m 67%)
      */
     getTimingMultiplier(): number {
         switch (this._speedMode) {
@@ -157,16 +156,16 @@ export class AutoSpinManager {
         return AUTO_NEXT_SPIN_BASE_DELAY_MS;
     }
 
-    // ─── SETTERS (gọi từ AutoSettingPopup) ───
+    // â”€â”€â”€ SETTERS (gá»i tá»« AutoSettingPopup) â”€â”€â”€
 
     setAutoSpinCount(count: number): void {
         this._isPaused = false;
         const rounded = Math.max(0, Math.round(count));
         this._autoSpinCount = rounded;
-        // Lưu giá trị gốc user đã chọn; reset khi count về 0
+        // LÆ°u giÃ¡ trá»‹ gá»‘c user Ä‘Ã£ chá»n; reset khi count vá» 0
         this._originalAutoSpinCount = rounded > 0 ? rounded : 0;
-        // KHÔNG set _isAutoSpinActive ở đây — chỉ lưu số đếm.
-        // _isAutoSpinActive chỉ được bật khi resumeAutoSpin() (tức là nhấn Confirm).
+        // KHÃ”NG set _isAutoSpinActive á»Ÿ Ä‘Ã¢y â€” chá»‰ lÆ°u sá»‘ Ä‘áº¿m.
+        // _isAutoSpinActive chá»‰ Ä‘Æ°á»£c báº­t khi resumeAutoSpin() (tá»©c lÃ  nháº¥n Confirm).
         if (this._autoSpinCount === 0) this._isAutoSpinActive = false;
         this._save();
         EventBus.instance.emit(GameEvents.AUTO_SPIN_CHANGED, this._autoSpinCount);
@@ -183,8 +182,8 @@ export class AutoSpinManager {
     }
 
     /**
-     * Tạm dừng auto spin nhưng giữ nguyên count (cho popup hiển thị lại).
-     * _isAutoSpinActive = false được save → reload game sẽ không tự resume.
+     * Táº¡m dá»«ng auto spin nhÆ°ng giá»¯ nguyÃªn count (cho popup hiá»ƒn thá»‹ láº¡i).
+     * _isAutoSpinActive = false Ä‘Æ°á»£c save â†’ reload game sáº½ khÃ´ng tá»± resume.
      */
     pauseAutoSpin(): void {
         if (this._autoSpinCount <= 0) return;
@@ -198,16 +197,15 @@ export class AutoSpinManager {
         this._isPaused = false;
         this._isAutoSpinActive = this._autoSpinCount > 0;
         this._save();
-        // Thông báo UI biết autoSpin vừa ACTIVE (setAutoSpinCount đã emit với _isAutoSpinActive=false)
+        // ThÃ´ng bÃ¡o UI biáº¿t autoSpin vá»«a ACTIVE (setAutoSpinCount Ä‘Ã£ emit vá»›i _isAutoSpinActive=false)
         EventBus.instance.emit(GameEvents.AUTO_SPIN_CHANGED, this._autoSpinCount);
     }
 
-    // ─── EVENTS ───
+    // â”€â”€â”€ EVENTS â”€â”€â”€
 
     private _bindEvents(): void {
         const bus = EventBus.instance;
-        console.log('[AutoSpinManager] 📡 _bindEvents() — registering events');
-        Log.d('[AutoSpinManager] 📡 _bindEvents() — đăng ký ENTER_SUCCESS, GAME_READY, UI_SPIN_BUTTON_STATE, NORMAL_SPIN_DONE, FREE_SPIN_*');
+        Log.d('[AutoSpinManager] ðŸ“¡ _bindEvents() â€” Ä‘Äƒng kÃ½ ENTER_SUCCESS, GAME_READY, UI_SPIN_BUTTON_STATE, NORMAL_SPIN_DONE, FREE_SPIN_*');
         bus.on(GameEvents.ENTER_SUCCESS,        this._onEnterSuccess,     this);
         bus.on(GameEvents.FREE_SPIN_START,      this._onFreeSpinStart,    this);
         bus.on(GameEvents.FREE_SPIN_END,        this._onFreeSpinEnd,      this);
@@ -218,28 +216,24 @@ export class AutoSpinManager {
     }
 
     /**
-     * ENTER_SUCCESS — session/memberIdx đã sẵn sàng → load state từ localStorage ngay.
-     * Payload có thể chứa memberIdx trực tiếp nhưng ta dùng GameData để nhất quán.
+     * ENTER_SUCCESS â€” session/memberIdx Ä‘Ã£ sáºµn sÃ ng â†’ load state tá»« localStorage ngay.
+     * Payload cÃ³ thá»ƒ chá»©a memberIdx trá»±c tiáº¿p nhÆ°ng ta dÃ¹ng GameData Ä‘á»ƒ nháº¥t quÃ¡n.
      */
     private _onEnterSuccess(): void {
         const mid = this._getMemberId();
-        console.log(`[AutoSpinManager] 🔑 ENTER_SUCCESS fired — memberId=${mid ?? 'null (chưa login / mock mode)'}`);
-        Log.d(`[AutoSpinManager] 🔑 _onEnterSuccess — memberId=${mid ?? 'null'} → load from localStorage`);
+        Log.d(`[AutoSpinManager] ðŸ”‘ _onEnterSuccess â€” memberId=${mid ?? 'null'} â†’ load from localStorage`);
         this._load();
-        // Đánh dấu cần check resume ở GAME_READY tiếp theo.
-        // KHÔNG reset _gameInitDone vì loading scene GAME_READY đã chạy rồi.
-        // _pendingResumeAfterLoad chỉ được set SAU _load() nên GAME_READY loading scene KHÔNG ảnh hưởng.
+        // ÄÃ¡nh dáº¥u cáº§n check resume á»Ÿ GAME_READY tiáº¿p theo.
+        // KHÃ”NG reset _gameInitDone vÃ¬ loading scene GAME_READY Ä‘Ã£ cháº¡y rá»“i.
+        // _pendingResumeAfterLoad chá»‰ Ä‘Æ°á»£c set SAU _load() nÃªn GAME_READY loading scene KHÃ”NG áº£nh hÆ°á»Ÿng.
         this._pendingResumeAfterLoad = true;
-        console.log(`[AutoSpinManager] 🔑 _onEnterSuccess → _pendingResumeAfterLoad=true, chờ GAME_READY của game scene`);
 
-        // ── FALLBACK: nếu GAME_READY không fire (hoặc đã fire trước ENTER_SUCCESS)
-        // → tự resume sau 3 giây nếu isActive=true và chưa có gì trigger spin
+        // â”€â”€ FALLBACK: náº¿u GAME_READY khÃ´ng fire (hoáº·c Ä‘Ã£ fire trÆ°á»›c ENTER_SUCCESS)
+        // â†’ tá»± resume sau 3 giÃ¢y náº¿u isActive=true vÃ  chÆ°a cÃ³ gÃ¬ trigger spin
         setTimeout(() => {
             if (this._pendingResumeAfterLoad) {
-                console.log(`[AutoSpinManager] ⏰ FALLBACK: GAME_READY chưa fire sau 3s — tự kiểm tra resume (isActive=${this._isAutoSpinActive}, count=${this._autoSpinCount})`);
                 this._pendingResumeAfterLoad = false;
                 if (this._isAutoSpinActive && this._autoSpinCount > 0 && !this._isFreeSpinMode) {
-                    console.log(`[AutoSpinManager] ▶️ FALLBACK → emit SPIN_REQUEST (count=${this._autoSpinCount})`);
                     this._emitSpinRequestIfAllowed();
                 }
             }
@@ -252,7 +246,7 @@ export class AutoSpinManager {
 
     private _onFreeSpinEnd(): void {
         this._isFreeSpinMode = false;
-        // Tiếp tục normal spin nếu đang active và còn count
+        // Tiáº¿p tá»¥c normal spin náº¿u Ä‘ang active vÃ  cÃ²n count
         if (this._isAutoSpinActive && this._autoSpinCount > 0) {
             setTimeout(() => {
                 this._emitSpinRequestIfAllowed();
@@ -261,7 +255,7 @@ export class AutoSpinManager {
     }
 
     private _onTopUpEnd(): void {
-        // Tiếp tục normal spin nếu đang active và còn count
+        // Tiáº¿p tá»¥c normal spin náº¿u Ä‘ang active vÃ  cÃ²n count
         if (this._isAutoSpinActive && this._autoSpinCount > 0) {
             setTimeout(() => {
                 this._emitSpinRequestIfAllowed();
@@ -270,13 +264,11 @@ export class AutoSpinManager {
     }
 
     private _onGameReady(): void {
-        console.log(`[AutoSpinManager] 🎟️ GAME_READY fired — count=${this._autoSpinCount}, isActive=${this._isAutoSpinActive}, pendingResume=${this._pendingResumeAfterLoad}, gameInitDone=${this._gameInitDone}, isFreeSpinMode=${this._isFreeSpinMode}`);
-        Log.d(`[AutoSpinManager] 🎟️ _onGameReady — autoSpinCount=${this._autoSpinCount}, isAutoSpinActive=${this._isAutoSpinActive}, pendingResume=${this._pendingResumeAfterLoad}, gameInitDone=${this._gameInitDone}`);
+        Log.d(`[AutoSpinManager] ðŸŽŸï¸ _onGameReady â€” autoSpinCount=${this._autoSpinCount}, isAutoSpinActive=${this._isAutoSpinActive}, pendingResume=${this._pendingResumeAfterLoad}, gameInitDone=${this._gameInitDone}`);
 
-        // KHÔNG set _gameInitDone ở đây — để _onSpinButtonState có thể xử lý tiếp nếu cần.
-        // Chỉ resume nếu ENTER_SUCCESS đã fire trước GAME_READY này (_pendingResumeAfterLoad=true).
+        // KHÃ”NG set _gameInitDone á»Ÿ Ä‘Ã¢y â€” Ä‘á»ƒ _onSpinButtonState cÃ³ thá»ƒ xá»­ lÃ½ tiáº¿p náº¿u cáº§n.
+        // Chá»‰ resume náº¿u ENTER_SUCCESS Ä‘Ã£ fire trÆ°á»›c GAME_READY nÃ y (_pendingResumeAfterLoad=true).
         if (!this._pendingResumeAfterLoad) {
-            console.log(`[AutoSpinManager] ⚠️ GAME_READY: pendingResume=false → loading scene GAME_READY, bỏ qua`);
             return;
         }
         this._pendingResumeAfterLoad = false;
@@ -284,36 +276,30 @@ export class AutoSpinManager {
 
         if (this._isAutoSpinActive && this._autoSpinCount > 0 && !this._isFreeSpinMode) {
             const delayMs = this.getNextSpinDelayMs();
-            console.log(`[AutoSpinManager] ▶️ GAME_READY → sẽ emit SPIN_REQUEST sau ${delayMs}ms (count=${this._autoSpinCount})`);
-            Log.d(`[AutoSpinManager] ▶️ _onGameReady → Resume auto spin — count=${this._autoSpinCount}, emit SPIN_REQUEST sau ${delayMs}ms`);
+            Log.d(`[AutoSpinManager] â–¶ï¸ _onGameReady â†’ Resume auto spin â€” count=${this._autoSpinCount}, emit SPIN_REQUEST sau ${delayMs}ms`);
             setTimeout(() => {
-                console.log(`[AutoSpinManager] 🟢 emit SPIN_REQUEST (auto spin resume from GAME_READY)`);
-                Log.d(`[AutoSpinManager] 🟢 emit SPIN_REQUEST (auto spin resume from GAME_READY)`);
+                Log.d(`[AutoSpinManager] ðŸŸ¢ emit SPIN_REQUEST (auto spin resume from GAME_READY)`);
                 this._emitSpinRequestIfAllowed();
             }, delayMs);
         } else {
-            console.log(`[AutoSpinManager] ⏹️ GAME_READY: không resume — isActive=${this._isAutoSpinActive}, count=${this._autoSpinCount}, isFreeSpinMode=${this._isFreeSpinMode}`);
         }
     }
 
     /**
-     * UI_SPIN_BUTTON_STATE(true) — signal chắc chắn nhất "game sẵn sàng spin".
-     * Dùng làm fallback resume nếu GAME_READY không có _pendingResumeAfterLoad
-     * (xảy ra khi GAME_READY game scene fire trước ENTER_SUCCESS re-emit).
+     * UI_SPIN_BUTTON_STATE(true) â€” signal cháº¯c cháº¯n nháº¥t "game sáºµn sÃ ng spin".
+     * DÃ¹ng lÃ m fallback resume náº¿u GAME_READY khÃ´ng cÃ³ _pendingResumeAfterLoad
+     * (xáº£y ra khi GAME_READY game scene fire trÆ°á»›c ENTER_SUCCESS re-emit).
      */
     private _onSpinButtonState(enabled: boolean): void {
         if (!enabled) return;
-        console.log(`[AutoSpinManager] 🔘 UI_SPIN_BUTTON_STATE(true) — pendingResume=${this._pendingResumeAfterLoad}, gameInitDone=${this._gameInitDone}, isActive=${this._isAutoSpinActive}, count=${this._autoSpinCount}`);
 
-        // Fallback: ENTER_SUCCESS đã set pendingResume=true nhưng GAME_READY đã bỏ qua
-        // → dùng UI_SPIN_BUTTON_STATE lần đầu để trigger resume
+        // Fallback: ENTER_SUCCESS Ä‘Ã£ set pendingResume=true nhÆ°ng GAME_READY Ä‘Ã£ bá» qua
+        // â†’ dÃ¹ng UI_SPIN_BUTTON_STATE láº§n Ä‘áº§u Ä‘á»ƒ trigger resume
         if (this._pendingResumeAfterLoad && !this._gameInitDone) {
             this._pendingResumeAfterLoad = false;
             this._gameInitDone = true;
-            console.log(`[AutoSpinManager] ▶️ UI_SPIN_BUTTON_STATE fallback resume — isActive=${this._isAutoSpinActive}, count=${this._autoSpinCount}`);
             if (this._isAutoSpinActive && this._autoSpinCount > 0 && !this._isFreeSpinMode) {
                 setTimeout(() => {
-                    console.log(`[AutoSpinManager] 🟢 emit SPIN_REQUEST (fallback from UI_SPIN_BUTTON_STATE)`);
                     this._emitSpinRequestIfAllowed();
                 }, this.getNextSpinDelayMs());
             }
@@ -322,12 +308,12 @@ export class AutoSpinManager {
 
         if (this._gameInitDone) return;
         this._gameInitDone = true;
-        Log.d(`[AutoSpinManager] 🔘 _onSpinButtonState(true) lần đầu — gameInitDone=true set`);
+        Log.d(`[AutoSpinManager] ðŸ”˜ _onSpinButtonState(true) láº§n Ä‘áº§u â€” gameInitDone=true set`);
     }
 
     private _onNormalSpinDone(): void {
         // Log.e(`[SPIN-HANG][AUTO] NORMAL_SPIN_DONE received | freeSpinMode=${this._isFreeSpinMode} active=${this._isAutoSpinActive} count=${this._autoSpinCount} paused=${this._isPaused} speed=${this._speedMode}`);
-        // Chỉ trigger khi đang active và đang Normal spin
+        // Chá»‰ trigger khi Ä‘ang active vÃ  Ä‘ang Normal spin
         if (this._isFreeSpinMode) return;
         if (!this._isAutoSpinActive) return;
         if (this._autoSpinCount <= 0) return;
@@ -349,10 +335,10 @@ export class AutoSpinManager {
         }
     }
 
-    /** Không /Spin khi server/client còn trong Pick Game (CurrentStage=PICK). */
+    /** KhÃ´ng /Spin khi server/client cÃ²n trong Pick Game (CurrentStage=PICK). */
     private _emitSpinRequestIfAllowed(): void {
         if (this._isPickGameBlockingSpin()) {
-            Log.w('[AutoSpinManager] skip SPIN_REQUEST — Pick Game in progress');
+            Log.w('[AutoSpinManager] skip SPIN_REQUEST â€” Pick Game in progress');
             return;
         }
         EventBus.instance.emit(GameEvents.SPIN_REQUEST);
@@ -377,43 +363,41 @@ export class AutoSpinManager {
             || ns === SlotStageType.POT_WIN;
     }
 
-    // ─── PERSIST ───
+    // â”€â”€â”€ PERSIST â”€â”€â”€
 
     private _save(): void {
         try {
-            // Kiểm tra switch account trước khi lưu
+            // Kiá»ƒm tra switch account trÆ°á»›c khi lÆ°u
             this._onPlayerChanged();
 
-            // Cập nhật _lastMemberId để _getStorageKey() dùng đúng key
+            // Cáº­p nháº­t _lastMemberId Ä‘á»ƒ _getStorageKey() dÃ¹ng Ä‘Ãºng key
             const memberId = this._getMemberId();
             if (memberId !== null) this._lastMemberId = memberId;
 
-            // Tạo storage keys (có memberIdx hoặc legacy nếu chưa login)
+            // Táº¡o storage keys (cÃ³ memberIdx hoáº·c legacy náº¿u chÆ°a login)
             const keyCount    = this._getStorageKey(LS_AUTO_COUNT_LEGACY);
             const keyActive   = this._getStorageKey(LS_AUTO_ACTIVE_LEGACY);
             const keyMode     = this._getStorageKey(LS_SPEED_MODE_LEGACY);
             const keyOriginal = this._getStorageKey(LS_AUTO_ORIGINAL_COUNT_LEGACY);
 
-            console.log(`[AutoSpinManager] 💾 _save() — key=${keyCount}, active=${this._isAutoSpinActive}, count=${this._autoSpinCount}, original=${this._originalAutoSpinCount}, mode=${this._speedMode}`);
-            Log.d(`[AutoSpinManager] 💾 _save() — memberId=${this._lastMemberId ?? 'null'}, keys: ${keyCount}, active=${this._isAutoSpinActive}, count=${this._autoSpinCount}`);
+            Log.d(`[AutoSpinManager] ðŸ’¾ _save() â€” memberId=${this._lastMemberId ?? 'null'}, keys: ${keyCount}, active=${this._isAutoSpinActive}, count=${this._autoSpinCount}`);
             localStorage.setItem(keyCount,    String(this._autoSpinCount));
             localStorage.setItem(keyActive,   String(this._isAutoSpinActive));
             localStorage.setItem(keyMode,     this._speedMode);
             localStorage.setItem(keyOriginal, String(this._originalAutoSpinCount));
             // Verify
-            console.log(`[AutoSpinManager] ✅ _save() verify — read back: count=${localStorage.getItem(keyCount)}, active=${localStorage.getItem(keyActive)}, mode=${localStorage.getItem(keyMode)}`);
         } catch (err) {
-            console.error(`[AutoSpinManager] ❌ _save() FAILED — localStorage error:`, err);
+            Log.err(`[AutoSpinManager] _save() FAILED â€” localStorage error:`, err);
         }
     }
 
     private _load(): void {
         try {
-            // Lấy memberIdx tại thời điểm load (session đã sẵn sàng khi gọi từ _onEnterSuccess)
+            // Láº¥y memberIdx táº¡i thá»i Ä‘iá»ƒm load (session Ä‘Ã£ sáºµn sÃ ng khi gá»i tá»« _onEnterSuccess)
             const memberId = this._getMemberId();
             if (memberId !== null) this._lastMemberId = memberId;
 
-            // Tạo storage keys (có memberIdx hoặc legacy nếu chưa login)
+            // Táº¡o storage keys (cÃ³ memberIdx hoáº·c legacy náº¿u chÆ°a login)
             const keyCount    = this._getStorageKey(LS_AUTO_COUNT_LEGACY);
             const keyActive   = this._getStorageKey(LS_AUTO_ACTIVE_LEGACY);
             const keyMode     = this._getStorageKey(LS_SPEED_MODE_LEGACY);
@@ -423,8 +407,7 @@ export class AutoSpinManager {
             const active   = localStorage.getItem(keyActive);
             const mode     = localStorage.getItem(keyMode);
             const original = localStorage.getItem(keyOriginal);
-            console.log(`[AutoSpinManager] 💾 _load() — key=${keyCount}, raw values: count=${count ?? 'null'}, active=${active ?? 'null'}, mode=${mode ?? 'null'}`);
-            Log.d(`[AutoSpinManager] 💾 _load() — memberId=${this._lastMemberId ?? 'null'}, keys: ${keyCount}, count=${count ?? 'null'}, active=${active ?? 'null'}, mode=${mode ?? 'null'}`);
+            Log.d(`[AutoSpinManager] ðŸ’¾ _load() â€” memberId=${this._lastMemberId ?? 'null'}, keys: ${keyCount}, count=${count ?? 'null'}, active=${active ?? 'null'}, mode=${mode ?? 'null'}`);
 
             if (count !== null) {
                 this._autoSpinCount = Math.max(0, Math.min(1000, parseInt(count, 10) || 0));
@@ -432,7 +415,7 @@ export class AutoSpinManager {
             if (original !== null) {
                 this._originalAutoSpinCount = Math.max(0, parseInt(original, 10) || 0);
             } else if (this._autoSpinCount > 0) {
-                // Fallback: nếu chưa có key original thì dùng count hiện tại
+                // Fallback: náº¿u chÆ°a cÃ³ key original thÃ¬ dÃ¹ng count hiá»‡n táº¡i
                 this._originalAutoSpinCount = this._autoSpinCount;
             }
             if (active !== null) {
@@ -441,8 +424,7 @@ export class AutoSpinManager {
             if (mode !== null && Object.values(SpeedMode).includes(mode as SpeedMode)) {
                 this._speedMode = mode as SpeedMode;
             }
-            console.log(`[AutoSpinManager] ✅ _load() done — autoSpinCount=${this._autoSpinCount}, original=${this._originalAutoSpinCount}, isActive=${this._isAutoSpinActive}, speedMode=${this._speedMode}`);
-            Log.d(`[AutoSpinManager] ✅ _load() done — autoSpinCount=${this._autoSpinCount}, isActive=${this._isAutoSpinActive}, speedMode=${this._speedMode}`);
+            Log.d(`[AutoSpinManager] âœ… _load() done â€” autoSpinCount=${this._autoSpinCount}, isActive=${this._isAutoSpinActive}, speedMode=${this._speedMode}`);
         } catch (_) {}
     }
 }

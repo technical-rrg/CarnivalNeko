@@ -118,7 +118,7 @@ export class BroadcastPopupLoader extends Component {
                 const mgr = instance.getComponent(BroadcastManager)
                     ?? instance.getComponentInChildren(BroadcastManager);
                 if (!mgr) {
-                    Log.e('[BroadcastPopupLoader] Prefab thiếu BroadcastManager');
+                    Log.err('[BroadcastPopupLoader] Prefab thiếu BroadcastManager');
                     instance.destroy();
                     resolve(null);
                     return;
@@ -148,7 +148,7 @@ export class BroadcastPopupLoader extends Component {
             const path = (this.prefabPath || DEFAULT_PREFAB_PATH).trim();
             bundle.load(path, Prefab, (err: Error | null, prefab: Prefab) => {
                 if (err || !prefab) {
-                    Log.e(`[BroadcastPopupLoader] Load failed: ${path}`, err);
+                    Log.err(`[BroadcastPopupLoader] Load failed: ${path}`, err);
                     resolve(null);
                     return;
                 }

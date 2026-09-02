@@ -230,7 +230,7 @@ export class TopUpManager extends Component {
             : 120;
         const parent = oldReels[0]?.node?.parent;
         if (!parent) {
-            Log.e('[TopUpManager] ensureRowCount: thiếu parent — không clone được');
+            Log.err('[TopUpManager] ensureRowCount: thiếu parent — không clone được');
             return;
         }
 
@@ -247,7 +247,7 @@ export class TopUpManager extends Component {
                 }
                 const template = oldReels[col * oldRows + (oldRows - 1)];
                 if (!template) {
-                    Log.e(`[TopUpManager] ensureRowCount: thiếu template col=${col}`);
+                    Log.err(`[TopUpManager] ensureRowCount: thiếu template col=${col}`);
                     continue;
                 }
                 const node = instantiate(template.node);
@@ -261,7 +261,7 @@ export class TopUpManager extends Component {
                     ctrl.reset();
                     newReels.push(ctrl);
                 } else {
-                    Log.e(`[TopUpManager] clone thiếu TopUpReelController col=${col} row=${row}`);
+                    Log.err(`[TopUpManager] clone thiếu TopUpReelController col=${col} row=${row}`);
                 }
             }
         }

@@ -191,7 +191,7 @@ export class GuideController extends Component {
             }
             this.beginEntranceFade();
         } catch (err) {
-            Log.e('[GuideController] onEnable failed', err);
+            Log.err('[GuideController] onEnable failed', err);
         }
     }
 

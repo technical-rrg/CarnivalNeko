@@ -108,7 +108,7 @@ export class TopUpUI extends Component {
     private _logRemainPos(phase: string): void {
         const remain = this._findRemainNode();
         if (!remain) {
-            Log.e(`[REMAIN-POS] ${phase} Remain=<missing>`);
+            Log.err(`[REMAIN-POS] ${phase} Remain=<missing>`);
             return;
         }
 

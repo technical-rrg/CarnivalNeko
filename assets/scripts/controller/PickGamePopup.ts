@@ -284,7 +284,7 @@ export class PickGamePopup extends Component {
         }
         loadSymbolPackAtlas(
             apply,
-            (err) => Log.e('[PickGamePopup] load SymbolPack failed', err),
+            (err) => Log.err('[PickGamePopup] load SymbolPack failed', err),
         );
     }
 
@@ -461,7 +461,7 @@ export class PickGamePopup extends Component {
                 }
             });
         } catch (err) {
-            Log.e('[PickGamePopup] sendPickRequest failed:', err);
+            Log.err('[PickGamePopup] sendPickRequest failed:', err);
             this._setButtonsInteractable(true);
         }
     }
@@ -535,7 +535,7 @@ export class PickGamePopup extends Component {
         if (!s.grid && raw.Grid) s = { ...s, grid: raw.Grid };
         if (!s.revealed && raw.Revealed) s = { ...s, revealed: raw.Revealed };
         if (!s.grid) {
-            Log.e('[PickGamePopup] pick state grid missing — abort');
+            Log.err('[PickGamePopup] pick state grid missing — abort');
             return null;
         }
         if (s.grid.length < PICK_GAME_CELL_COUNT) {

@@ -67,7 +67,7 @@ export class LongSpinVFXLoader {
         LongSpinVFXLoader._loading = new Promise<Prefab | null>((resolve) => {
             const bundle = assetManager.getBundle(BUNDLE_NAME);
             if (!bundle) {
-                Log.e(`[LongSpinVFXLoader] Bundle '${BUNDLE_NAME}' missing`);
+                Log.err(`[LongSpinVFXLoader] Bundle '${BUNDLE_NAME}' missing`);
                 LongSpinVFXLoader._loading = null;
                 resolve(null);
                 return;
@@ -76,7 +76,7 @@ export class LongSpinVFXLoader {
             bundle.load(p, Prefab, (err, prefab) => {
                 LongSpinVFXLoader._loading = null;
                 if (err || !prefab) {
-                    Log.e(`[LongSpinVFXLoader] Load failed: ${p}`, err);
+                    Log.err(`[LongSpinVFXLoader] Load failed: ${p}`, err);
                     resolve(null);
                     return;
                 }

@@ -474,11 +474,11 @@ addExtension({
 
         // Sanity check
         if (uncompressedLen <= 0 || uncompressedLen > 10 * 1024 * 1024) {
-            Log.e(`[MsgPack] ext99: invalid uncompressedLen=${uncompressedLen}`);
+            Log.err(`[MsgPack] ext99: invalid uncompressedLen=${uncompressedLen}`);
             try {
                 return _packr.unpack(buffer);
             } catch (e: any) {
-                Log.e(`[MsgPack] ext99 raw fallback failed: ${e.message}`);
+                Log.err(`[MsgPack] ext99 raw fallback failed: ${e.message}`);
                 return null;
             }
         }
@@ -490,7 +490,7 @@ addExtension({
             _lz4DecompressBlock(compressed, decompressed);
             return _packr.unpack(decompressed);
         } catch (lz4Err: any) {
-            Log.e(`[MsgPack] ext99 LZ4 FAILED: ${lz4Err.message}`);
+            Log.err(`[MsgPack] ext99 LZ4 FAILED: ${lz4Err.message}`);
             _hexDump(compressed, 'ext99 failed compressed', 64);
             return null;
         }
@@ -1379,13 +1379,13 @@ class RealNetworkAdapter implements INetworkAdapter {
         try {
             decrypted = this._decryptAES256(responsePacket[8], session.aky);
         } catch (decryptErr: any) {
-            Log.e(`[Network] ❌ Spin decrypt failed: ${decryptErr?.message}`, decryptErr);
+            Log.err(`[Network] ❌ Spin decrypt failed: ${decryptErr?.message}`, decryptErr);
             throw decryptErr;
         }
         try {
             raw = JSON.parse(decrypted);
         } catch (parseErr: any) {
-            Log.e(`[Network] ❌ Spin JSON.parse failed: ${parseErr?.message} | decrypted(100B)="${decrypted.substring(0, 100)}"`);
+            Log.err(`[Network] ❌ Spin JSON.parse failed: ${parseErr?.message} | decrypted(100B)="${decrypted.substring(0, 100)}"`);
             throw parseErr;
         }
 
@@ -1413,7 +1413,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         try {
             result = this._convertSpinResponse(raw);
         } catch (convertErr: any) {
-            Log.e(`[Network] ❌ _convertSpinResponse failed: ${convertErr?.message} | raw.Res keys=${Object.keys(raw?.Res ?? {}).join(',')}`, convertErr);
+            Log.err(`[Network] ❌ _convertSpinResponse failed: ${convertErr?.message} | raw.Res keys=${Object.keys(raw?.Res ?? {}).join(',')}`, convertErr);
             throw convertErr;
         }
 
@@ -1883,7 +1883,7 @@ class RealNetworkAdapter implements INetworkAdapter {
                     // );
                     exReelData = decryptedExReel;
                 } catch (err: any) {
-                    Log.e(`[EXREEL] Decrypt failed (trying as plain): ${err.message}`);
+                    Log.err(`[EXREEL] Decrypt failed (trying as plain): ${err.message}`);
                 }
             }
 
@@ -2260,7 +2260,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             try {
                 unpacked = _packr.unpack(rawBytes) as any[];
             } catch (unpackErr: any) {
-                Log.e(`[Network] ❌ unpack failed (${apiName}):`, unpackErr.message);
+                Log.err(`[Network] ❌ unpack failed (${apiName}):`, unpackErr.message);
                 _hexDump(rawBytes, 'failed response', 64);
                 throw unpackErr;
             }
@@ -2277,7 +2277,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         } catch (err: any) {
             const endTime = Date.now();
             const pingMs = endTime - startTime;
-            Log.e(`[Network] ❌ ${apiName} failed | ${err.message} | PING=${pingMs}ms`);
+            Log.err(`[Network] ❌ ${apiName} failed | ${err.message} | PING=${pingMs}ms`);
             throw err;
         } finally {
             clearTimeout(timeoutId);
@@ -2335,7 +2335,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         this._isDead = true;
         NetworkManager.instance.dispose();
         const networkErr = lastError ?? new Error('Request failed after retries');
-        Log.e(`[Network] ❌ All retries failed — network dead: ${networkErr.message}`);
+        Log.err(`[Network] ❌ All retries failed — network dead: ${networkErr.message}`);
         EventBus.instance.emit(GameEvents.SHOW_SYSTEM_POPUP, { popupCase: PopupCase.DISCONNECTED });
         throw new ServerApiError(networkErr.message, 0, true);
     }
@@ -2361,10 +2361,10 @@ class RealNetworkAdapter implements INetworkAdapter {
                 // JSON.stringify throws on BigInt (e.g. SESSION_KEY at [3]) — use String() instead
                 return `[${i}]=${typeof v === 'bigint' ? v.toString() : JSON.stringify(v)}`;
             }).join(' ');
-            Log.e(`[Network] ❌ SERVER ERROR → code=${code} | msg="${msg}" | popup=${popupCase}`);
-            Log.e(`[Network] ❌ RAW PACKET: ${packetSummary}`);
+            Log.err(`[Network] ❌ SERVER ERROR → code=${code} | msg="${msg}" | popup=${popupCase}`);
+            Log.err(`[Network] ❌ RAW PACKET: ${packetSummary}`);
             // Alias để thấy khi Preview chỉ whitelist carnival
-            Log.e(`[CarnivalMatsuri] SERVER ERROR code=${code} msg="${msg}" popup=${popupCase}`);
+            Log.err(`[CarnivalMatsuri] SERVER ERROR code=${code} msg="${msg}" popup=${popupCase}`);
             EventBus.instance.emit(GameEvents.SHOW_SYSTEM_POPUP, { popupCase });
             throw new ServerApiError(`Server error [${code}]: ${msg}`, code, true);
         }
@@ -3030,7 +3030,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         const payouts = data.symbolPayouts; // {psId: rate, ...} từ PS SymbolRates
 
         if (!rands || rands.length === 0) {
-            Log.e(`[StickyCredit] ⚠ Cannot compute — rands empty`);
+            Log.err(`[StickyCredit] ⚠ Cannot compute — rands empty`);
             return undefined;
         }
 
@@ -3082,7 +3082,7 @@ class RealNetworkAdapter implements INetworkAdapter {
                     const rawAround = rawCenter >= 0
                         ? `raw[c-1]=${rawStrip[((rawCenter - 1) % rawLen + rawLen) % rawLen]} raw[c]=${rawStrip[rawCenter]} raw[c+1]=${rawStrip[(rawCenter + 1) % rawLen]}`
                         : 'rawStrip unavailable';
-                    Log.e(
+                    Log.err(
                         `[StickyCredit] ⚠ r${reel}row${row} ${SymbolId[clientSymId]} psId=${psId}` +
                         ` rate=0/missing — rands[${reel}]=${rands[reel]} rawLen=${rawLen} rawCenter=${rawCenter}` +
                         ` | ${rawAround}` +
@@ -3715,9 +3715,9 @@ class RealNetworkAdapter implements INetworkAdapter {
             gateUrl = parsed.GateUrl ?? parsed.gateUrl;
             token   = parsed.Token   ?? parsed.token;
             if (!gateUrl || !token) throw new Error('Missing GateUrl or Token in decrypted gp');
-            Log.e(`[Gate] Decrypt gp OK | GateUrl=${gateUrl} | tokenLength=${token.length}`);
+            Log.err(`[Gate] Decrypt gp OK | GateUrl=${gateUrl} | tokenLength=${token.length}`);
         } catch (e: any) {
-            Log.e(`[Gate] Decrypt gp failed: ${e.message}`);
+            Log.err(`[Gate] Decrypt gp failed: ${e.message}`);
             throw new ServerApiError(`[Gate] Cannot decrypt gp: ${e.message}`, 0, false);
         }
 
@@ -3753,7 +3753,7 @@ class RealNetworkAdapter implements INetworkAdapter {
                 GameParam:     gameParam,
             };
         } catch (err: any) {
-            Log.e(`[Gate] GetServiceInfo failed: ${err.message}`);
+            Log.err(`[Gate] GetServiceInfo failed: ${err.message}`);
             throw new ServerApiError(`Gate API failed: ${err.message}`, 0, false);
         } finally {
             clearTimeout(timeoutId);
@@ -3877,11 +3877,6 @@ export class NetworkManager {
     private _jackpotTimer: any = null;
 
     private constructor() {
-        // ★ Log WinPopup tiers khi Enter (chỉ debug) — tag riêng 'winpopup' để không lẫn log PS khác.
-        if (ENABLE_DEBUG_TOOLS) {
-            Log.enable('winpopup');
-        }
-
         // ★ Chuyển đổi Mock ↔ Real dựa trên USE_REAL_API
         if (USE_REAL_API) {
             this._adapter = new RealNetworkAdapter();
@@ -3928,7 +3923,7 @@ export class NetworkManager {
         const data = GameData.instance;
         const pick = data.pickGameState;
         if (pick && !pick.wonTier && !(data.pickGameWinAmount > 0)) {
-            Log.e('[Network] Spin blocked — Pick Game still in progress (use /Pick)');
+            Log.err('[Network] Spin blocked — Pick Game still in progress (use /Pick)');
             return Promise.reject(new Error('Spin blocked: Pick Game in progress'));
         }
         return this._adapter.sendSpinRequest(isFreeSpin);

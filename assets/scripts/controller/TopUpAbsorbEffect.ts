@@ -348,7 +348,7 @@ export class TopUpAbsorbEffect extends Component {
 
             Log.d(`[TopUpAbsorb] DONE`);
         } catch (err) {
-            Log.e(`[TopUpAbsorb] Error:`, err);
+            Log.err(`[TopUpAbsorb] Error:`, err);
         }
 
         this._isPlaying = false;
@@ -427,7 +427,7 @@ export class TopUpAbsorbEffect extends Component {
             if (sn) labelNode = sn.node;
         }
         if (!labelNode || !sn) {
-            Log.e(`[TopUpAbsorb] Missing CreditLabel/SpriteNumber on ${slotNode.name}`);
+            Log.err(`[TopUpAbsorb] Missing CreditLabel/SpriteNumber on ${slotNode.name}`);
             return;
         }
         const safeValue = Math.max(0, value);
@@ -548,7 +548,7 @@ export class TopUpAbsorbEffect extends Component {
 
             const fx = this._borrowEffect(this._flyPool, this.flyEffectTemplate, 'flyPool');
             if (!fx) {
-                Log.e('[TopUpAbsorb] Fly effect create failed, skip this fly effect - RESOLVE immediately');
+                Log.err('[TopUpAbsorb] Fly effect create failed, skip this fly effect - RESOLVE immediately');
                 resolve();
                 return;
             }
@@ -643,7 +643,7 @@ export class TopUpAbsorbEffect extends Component {
             this.greenHitTemplate;
         const fx = this._borrowEffect(pool, template, poolName);
         if (!fx) {
-            Log.e(`[TopUpAbsorb] ${poolName} create failed, skip this hit effect`);
+            Log.err(`[TopUpAbsorb] ${poolName} create failed, skip this hit effect`);
             return;
         }
         Log.d(`[TopUpAbsorb] _spawnHitEffect: got ${fx.name} from ${poolName}`);

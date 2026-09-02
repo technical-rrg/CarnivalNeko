@@ -969,7 +969,7 @@ export class StickyOverlayController extends Component {
             : 120;
         const parent = oldSlots[0]?.parent;
         if (!parent) {
-            Log.e('[StickyOverlay] ensureRowCount: thiếu parent coinSlots');
+            Log.err('[StickyOverlay] ensureRowCount: thiếu parent coinSlots');
             this._rowCount = target;
             this._applyGridFitScale(target);
             return;
@@ -2585,11 +2585,11 @@ export class StickyOverlayController extends Component {
                 if (sn && (creditChanged || shouldActive)) {
                     sn.setData(Math.max(0, displayCredit), 0, 2);
                 } else if (!sn && !quiet) {
-                    Log.e(`[StickyOverlay] Missing SpriteNumber on ${slotNode.name}/CreditLabel`);
+                    Log.err(`[StickyOverlay] Missing SpriteNumber on ${slotNode.name}/CreditLabel`);
                 }
             }
         } else if (!quiet) {
-            Log.e(`[StickyOverlay] Missing CreditLabel on ${slotNode.name}`);
+            Log.err(`[StickyOverlay] Missing CreditLabel on ${slotNode.name}`);
         }
 
         this._slotCreditMap.set(slotNode, Math.max(0, displayCredit));

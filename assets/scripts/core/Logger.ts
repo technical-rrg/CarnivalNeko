@@ -1,7 +1,12 @@
 /**
  * Logger - production-safe logging utility.
- * Runtime logging is intentionally disabled except whitelist tags.
+ * Khi SILENCE_LOGS=true (ServerConfig): mọi Log.* và console.* đều im lặng.
+ * Dev: đặt SILENCE_LOGS=false rồi dùng Log.enable(tag) + whitelist.
  */
+
+import { SILENCE_LOGS } from '../data/ServerConfig';
+
+const SILENT = SILENCE_LOGS;
 
 const noop = (..._args: any[]): void => {};
 
@@ -14,13 +19,13 @@ const _orig = _c ? {
     error: (_c.error && typeof _c.error === 'function') ? _c.error.bind(_c) : noop,
     trace: (_c.trace && typeof _c.trace === 'function') ? _c.trace.bind(_c) : noop,
 } : null;
-if (_c) {
+if (_c && SILENT) {
     _c.log = noop;
     _c.info = noop;
     _c.debug = noop;
     _c.warn = noop;
-    _c.error = noop;
     _c.trace = noop;
+    _c.error = noop;
 }
 
 const _white: Set<string> = new Set();
@@ -36,23 +41,27 @@ const _matchWhitelist = (args: any[]): boolean => {
 };
 
 export const Log = {
-    d: (...args: any[]) => { if (_orig && _matchWhitelist(args)) { _orig.log(...args); } },
-    w: (...args: any[]) => { if (_orig && _matchWhitelist(args)) { _orig.warn(...args); } },
-    e: (...args: any[]) => { if (_orig && _matchWhitelist(args)) { _orig.error(...args); } },
+    d: (...args: any[]) => { if (!SILENT && _orig && _matchWhitelist(args)) { _orig.log(...args); } },
+    w: (...args: any[]) => { if (!SILENT && _orig && _matchWhitelist(args)) { _orig.warn(...args); } },
+    /** Debug trace — không dùng cho lỗi thật (silent khi SILENT). */
+    e: (...args: any[]) => { if (!SILENT && _orig && _matchWhitelist(args)) { _orig.log(...args); } },
+    /** Lỗi thật — silent khi SILENCE_LOGS. */
+    err: (...args: any[]) => { if (!SILENT && _orig) { _orig.error(...args); } },
     isEnabled: (tag: string = ''): boolean => {
-        if (!tag) return false;
+        if (SILENT || !tag) return false;
         const s = tag.toLowerCase();
         for (const t of _white) {
             if (s.includes(t) || t.includes(s)) return true;
         }
         return false;
     },
-    // Cho phép bật thêm tag khi đang làm Carnival (không block nữa)
     enable: (tag: string): void => {
-        if (tag) _white.add(String(tag).toLowerCase());
+        if (SILENT || !tag) return;
+        _white.add(String(tag).toLowerCase());
     },
-    disable: (tag: string): void => { if (tag) _white.delete(String(tag).toLowerCase()); },
+    disable: (tag: string): void => { if (SILENT || !tag) return; _white.delete(String(tag).toLowerCase()); },
     setWhitelist: (tags: readonly string[] | string[]): void => {
+        if (SILENT) return;
         _white.clear();
         if (!tags) return;
         for (const tg of tags as any) {
@@ -61,6 +70,3 @@ export const Log = {
     },
     clearWhitelist: (): void => { _white.clear(); },
 };
-
-// Chỉ bật log WinPopup (PS.WinPopup lúc Enter). Mọi tag khác (sound, …) bị rào.
-Log.setWhitelist(['winpopup']);

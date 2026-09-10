@@ -27,7 +27,7 @@
  */
 
 import {
-    _decorator, Component, Node, Vec3, tween, Tween, NodePool,
+    _decorator, Component, Node, Vec3, tween, Tween,
     Color, Sprite, SpriteFrame, instantiate, ParticleSystem, UIOpacity, UITransform, Camera,
     sp, assetManager,
 } from 'cc';
@@ -212,12 +212,6 @@ export class CarnivalTrailController extends Component {
     @property({ tooltip: 'Tốc độ xoay trục Y tối đa (deg/giây)' })
     coinClusterRotateSpeedMax = 480;
 
-    @property({ tooltip: 'Pool Fx_Coin_Trail — tái sử dụng thay instantiate/destroy mỗi trail' })
-    flyFxPoolEnabled = true;
-
-    @property({ tooltip: 'Số instance Fx_Coin_Trail giữ trong pool tối đa' })
-    flyFxMaxPoolSize = 10;
-
     private _pending: CarnivalTrailHit[] = [];
     private _flyingCount = 0;
     private _started = false;
@@ -227,8 +221,7 @@ export class CarnivalTrailController extends Component {
     private _activeFlips: Node[] = [];
     private _flipData = new Map<TrailColor, sp.SkeletonData>();
     private _flipLoad: Map<TrailColor, Promise<sp.SkeletonData | null>> = new Map();
-    private _flyFxPool: NodePool | null = null;
-    /** rateOverTime/Distance gốc từ template — restore sau fade/pool. */
+    /** rateOverTime/Distance gốc từ template — restore sau fade. */
     private _particleEmitDefaults = new Map<string, { rateTime: number; rateDist: number }>();
 
     onLoad(): void {
@@ -245,9 +238,13 @@ export class CarnivalTrailController extends Component {
         void this._preloadFlipSpines();
         if (this.particleTemplate?.isValid) {
             this.particleTemplate.active = false;
+            for (const ps of this.particleTemplate.getComponentsInChildren(ParticleSystem)) {
+                if ('playOnAwake' in ps) {
+                    (ps as unknown as { playOnAwake: boolean }).playOnAwake = false;
+                }
+            }
         }
         this._cacheParticleEmitDefaults();
-        this._initFlyFxPool();
         this._syncParticle3DCamera();
         Log.e(
             `[CarnivalTrail] ready | reels=${this.reels?.length ?? 0}` +
@@ -261,7 +258,6 @@ export class CarnivalTrailController extends Component {
         EventBus.instance.offTarget(this);
         this._clearParticles();
         this._clearFlips();
-        this._clearFlyFxPool();
     }
 
     lateUpdate(): void {
@@ -887,79 +883,34 @@ export class CarnivalTrailController extends Component {
     private _destroyParticle(root: Node): void {
         const idx = this._activeParticles.indexOf(root);
         if (idx >= 0) this._activeParticles.splice(idx, 1);
-        this._recycleFlyFx(root);
+        this._destroyFlyFx(root);
     }
 
-    private _initFlyFxPool(): void {
-        if (!this.flyFxPoolEnabled || !this.particleTemplate?.isValid) {
-            this._flyFxPool = null;
-            return;
-        }
-        this._clearFlyFxPool();
-        for (const ps of this.particleTemplate.getComponentsInChildren(ParticleSystem)) {
-            if ('playOnAwake' in ps) {
-                (ps as unknown as { playOnAwake: boolean }).playOnAwake = false;
-            }
-        }
-        const pool = new NodePool();
-        const seed = instantiate(this.particleTemplate);
-        seed.active = false;
-        pool.put(seed);
-        this._flyFxPool = pool;
-    }
-
-    private _clearFlyFxPool(): void {
-        if (!this._flyFxPool) return;
-        while (this._flyFxPool.size() > 0) {
-            const n = this._flyFxPool.get();
-            if (n?.isValid) n.destroy();
-        }
-        this._flyFxPool.clear();
-        this._flyFxPool = null;
-    }
-
-    private _recycleFlyFx(fx: Node): void {
-        if (!fx?.isValid) return;
-        this._resetFlyFx(fx);
-        if (!this.flyFxPoolEnabled || !this._flyFxPool) {
-            fx.destroy();
-            return;
-        }
-        if (this._flyFxPool.size() >= Math.max(1, this.flyFxMaxPoolSize)) {
-            fx.destroy();
-            return;
-        }
-        this._flyFxPool.put(fx);
-    }
-
-    /** Reset state trước khi trả Fx_Coin_Trail về pool. */
-    private _resetFlyFx(fx: Node): void {
+    /** Stop tween + particle/trail rồi destroy — không pool, mỗi lần bay là instance mới. */
+    private _destroyFlyFx(fx: Node): void {
         this._destroyCoinCluster(fx);
+        if (!fx?.isValid) return;
+
         const flyProxy = (fx as unknown as { _trailFlyProxy?: { t: number } })._trailFlyProxy;
         if (flyProxy) Tween.stopAllByTarget(flyProxy);
         delete (fx as unknown as { _trailFlyProxy?: { t: number } })._trailFlyProxy;
         Tween.stopAllByTarget(fx);
 
-        fx.removeFromParent();
-        fx.active = false;
-        fx.setPosition(0, 0, 0);
-        fx.setScale(1, 1, 1);
-        fx.setRotationFromEuler(0, 0, 0);
-
-        for (const child of fx.children) {
-            if (this._matchesParticlePrefix(child.name, this.particleHitStopPrefixes)) {
-                child.active = true;
+        for (const ps of fx.getComponentsInChildren(ParticleSystem)) {
+            if (!ps?.isValid) continue;
+            try {
+                ps.loop = false;
+                ps.stop();
+                const maybeClear = (ps as unknown as { clear?: () => void }).clear;
+                if (maybeClear) maybeClear.call(ps);
+            } catch {
+                /* ignore */
             }
         }
-        for (const ps of fx.getComponentsInChildren(ParticleSystem)) {
-            this._restoreParticleEmission(ps);
-            ps.loop = false;
-            ps.stop();
-            const maybeClear = (ps as unknown as { clear?: () => void }).clear;
-            if (maybeClear) maybeClear.call(ps);
-        }
-        const op = fx.getComponent(UIOpacity) ?? fx.getComponentInChildren(UIOpacity);
-        if (op) op.opacity = 255;
+
+        fx.active = false;
+        fx.removeFromParent();
+        fx.destroy();
     }
 
     /** Ẩn Coins_Trail* — giữ qilin và các particle khác. */
@@ -1132,15 +1083,13 @@ export class CarnivalTrailController extends Component {
             Log.e('[CarnivalTrail] particleTemplate NULL — kéo child template vào slot');
             return null;
         }
-        const fromPool = !!(this.flyFxPoolEnabled && this._flyFxPool && this._flyFxPool.size() > 0);
-        const clone = fromPool ? this._flyFxPool!.get()! : instantiate(this.particleTemplate);
+        this._purgeLeftoverFlyFx();
+        const clone = instantiate(this.particleTemplate);
         clone.name = `CarnivalTrailFly_${Date.now() % 100000}`;
         clone.active = false;
-        if (!fromPool) {
-            for (const ps of clone.getComponentsInChildren(ParticleSystem)) {
-                if ('playOnAwake' in ps) {
-                    (ps as unknown as { playOnAwake: boolean }).playOnAwake = false;
-                }
+        for (const ps of clone.getComponentsInChildren(ParticleSystem)) {
+            if ('playOnAwake' in ps) {
+                (ps as unknown as { playOnAwake: boolean }).playOnAwake = false;
             }
         }
         return clone;
@@ -1168,13 +1117,11 @@ export class CarnivalTrailController extends Component {
                     trailModule?: { enable?: boolean; _enable?: boolean };
                 }).trailModule;
                 const hasTrail = !!(trail?.enable ?? trail?._enable);
-                // qilin*: luôn stop+clear+play — trailModule thường tắt; tránh state cũ từ pool.
-                if (isQilin || !hasTrail) {
+                // Instance mới mỗi lần: stop+clear rồi play. Frame sau (đã playing) chỉ play — giữ trail seed.
+                if (isQilin || !hasTrail || !ps.isPlaying) {
                     ps.stop();
                     const maybeClear = (ps as unknown as { clear?: () => void }).clear;
                     if (maybeClear) maybeClear.call(ps);
-                    ps.play();
-                } else if (!ps.isPlaying) {
                     ps.play();
                 }
             } catch (err) {
@@ -1184,10 +1131,24 @@ export class CarnivalTrailController extends Component {
     }
 
     private _clearParticles(): void {
-        for (const p of this._activeParticles) {
-            if (p?.isValid) this._recycleFlyFx(p);
+        const list = this._activeParticles.splice(0);
+        for (const p of list) {
+            if (p?.isValid) this._destroyFlyFx(p);
         }
-        this._activeParticles.length = 0;
+        this._purgeLeftoverFlyFx();
         this._coinClusterByFx.clear();
+    }
+
+    /** Destroy clone bay sót (không đụng template / FlipCoin / trail đang bay). */
+    private _purgeLeftoverFlyFx(): void {
+        if (!this.node?.isValid) return;
+        const children = this.node.children.slice();
+        for (const child of children) {
+            if (!child?.isValid) continue;
+            if (child === this.particleTemplate) continue;
+            if (!child.name.startsWith('CarnivalTrailFly_')) continue;
+            if (this._activeParticles.indexOf(child) >= 0) continue;
+            this._destroyFlyFx(child);
+        }
     }
 }

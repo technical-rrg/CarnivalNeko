@@ -315,6 +315,7 @@ export class SoundManager extends Component {
     onDestroy(): void {
         if (SoundManager._instance === this) SoundManager._instance = null;
         this._removeBonusLoopCallback();
+        this._disarmBgmLoopRestart();
         this.unscheduleAllCallbacks();
         EventBus.instance.offTarget(this);
     }
@@ -830,11 +831,12 @@ export class SoundManager extends Component {
 
         const start = (c: AudioClip) => {
             if (!this.bgmSource) return;
-            if (this.bgmSource.clip === c && this.bgmSource.playing) return;
+            if (this.bgmSource.clip === c && this.bgmSource.playing && !this.bgmSource.loop) return;
             this.bgmSource.stop();
             this.bgmSource.clip = c;
-            this.bgmSource.loop = true;
+            this.bgmSource.loop = false;
             this.bgmSource.volume = this._bgmVolumeForClip(c);
+            this._armBgmLoopHandoffForClip(c, 0);
             if (!this._masterMuted && !this._bgmMuted) this.bgmSource.play();
         };
 
@@ -935,7 +937,7 @@ export class SoundManager extends Component {
                 return;
             }
 
-            if (this._isPickGameBgmPlaying()) {
+            if (this._isPickGameBgmPlaying() && this.bgmSource && !this.bgmSource.loop) {
                 this._soundLog('SKIP pick BGM (already playing)');
                 return;
             }
@@ -994,13 +996,20 @@ export class SoundManager extends Component {
         if (this._progressiveSkipPlaying) return;
 
         const { prop, clip: targetClip } = this._resolveLoopBgmTarget();
-        if (targetClip && this.bgmSource?.clip === targetClip && this.bgmSource.playing) return;
+        const playingTarget = !!this.bgmSource?.playing && (
+            (targetClip && this.bgmSource.clip === targetClip)
+            || (prop === 'mxPickgameLoop' && this._isPickGameLoopClip(this.bgmSource.clip))
+            || (prop === 'mxBonusLoop' && this._isBonusLoopClip(this.bgmSource.clip))
+            || (prop === 'mxNormalLoop' && this._isNormalLoopClip(this.bgmSource.clip))
+        );
+        if (playingTarget && !this.bgmSource.loop) return;
 
         if (this._bgmFadeTick) {
             this.unschedule(this._bgmFadeTick);
             this._bgmFadeTick = null;
         }
         this._removeBonusLoopCallback();
+        this._stopSecondaryBgmSources();
         if (this.bgmSource?.playing) this.bgmSource.stop();
         this._playMusicProp(prop, true);
     }
@@ -1058,22 +1067,19 @@ export class SoundManager extends Component {
     }
 
     private _isPickGameBgmPlaying(): boolean {
-        const clip = this.bgmSource?.clip;
-        if (!clip) return false;
-        if (clip === this.mxPickgameLoop) return true;
-        return (clip.name ?? '').includes('mx_pickgame_loop');
+        return this._isPickGameLoopClip(this.bgmSource?.clip);
     }
 
     private _isFeatureBgmPlaying(): boolean {
-        const clip = this.bgmSource?.clip;
-        if (!clip) return false;
-        if (clip === this.mxBonusLoop) return true;
-        return (clip.name ?? '').includes('mx_bonus_loop');
+        return this._isBonusLoopClip(this.bgmSource?.clip);
     }
 
     private _startFeatureMusic(force = false): void {
         if (this._progressiveWinActive || this._progressiveSkipPlaying) return;
-        if (!force && this._isFeatureBgmPlaying()) return;
+        if (!force && this._isFeatureBgmPlaying() && this.bgmSource?.playing) {
+            if (this.bgmSource.loop) this._playMusicProp('mxBonusLoop', true);
+            return;
+        }
         if (this._bgmFadeTick) {
             this.unschedule(this._bgmFadeTick);
             this._bgmFadeTick = null;
@@ -1105,17 +1111,20 @@ export class SoundManager extends Component {
         }
         const start = () => {
             if (!this.bgmSource || !clip) return;
-            this.bgmSource.stop();
+            const useSoftLoop = loop && this._isLongBgmLoopClip(clip) && !onEnded;
+            if (this.bgmSource.playing) this.bgmSource.stop();
             this.bgmSource.clip = clip;
-            this.bgmSource.loop = loop;
+            this.bgmSource.loop = useSoftLoop ? false : loop;
             this.bgmSource.volume = this._bgmVolumeForClip(clip);
             if (onEnded) {
                 this._bonusLoopCallback = onEnded;
                 this.bgmSource.node.once(AudioSource.EventType.ENDED, onEnded, this);
+            } else if (useSoftLoop) {
+                this._armBgmLoopHandoffForClip(clip, 0);
             }
             const muted = this._masterMuted || this._bgmMuted;
             if (!muted) this.bgmSource.play();
-            this._soundLog(`PLAY BGM ${name}${loop ? ' (loop)' : ''}${muted ? ' [muted]' : ''}`);
+            this._soundLog(`PLAY BGM ${name}${useSoftLoop || loop ? ' (loop)' : ''}${muted ? ' [muted]' : ''}`);
         };
         this._fadeOutBgm(start);
     }
@@ -1150,12 +1159,111 @@ export class SoundManager extends Component {
     }
 
     private _removeBonusLoopCallback(): void {
+        this._disarmBgmLoopRestart();
         if (!this._bonusLoopCallback || !this.bgmSource) {
             this._bonusLoopCallback = null;
             return;
         }
         this.bgmSource.node.off(AudioSource.EventType.ENDED, this._bonusLoopCallback, this);
         this._bonusLoopCallback = null;
+    }
+
+    private _clipNameIncludes(clip: AudioClip | null | undefined, token: string): boolean {
+        return (clip?.name ?? '').toLowerCase().includes(token);
+    }
+
+    private _isNormalLoopClip(clip: AudioClip | null | undefined): clip is AudioClip {
+        if (!clip) return false;
+        return clip === this.mxNormalLoop || this._clipNameIncludes(clip, 'mx_normal_loop');
+    }
+
+    private _isBonusLoopClip(clip: AudioClip | null | undefined): clip is AudioClip {
+        if (!clip) return false;
+        return clip === this.mxBonusLoop || this._clipNameIncludes(clip, 'mx_bonus_loop');
+    }
+
+    private _isPickGameLoopClip(clip: AudioClip | null | undefined): clip is AudioClip {
+        if (!clip) return false;
+        return clip === this.mxPickgameLoop || this._clipNameIncludes(clip, 'mx_pickgame_loop');
+    }
+
+    /** mx_normal_loop / mx_bonus_loop / mx_pickgame_loop — soft-loop, không native wrap. */
+    private _isLongBgmLoopClip(clip: AudioClip | null | undefined): clip is AudioClip {
+        return this._isNormalLoopClip(clip) || this._isBonusLoopClip(clip) || this._isPickGameLoopClip(clip);
+    }
+
+    private _stopSecondaryBgmSources(): void {
+        const xf = this.bgmCrossfadeSource;
+        if (xf?.playing && !this._crossfadeFadeTick) {
+            xf.stop();
+        }
+        const keep = new Set<AudioSource | null>([
+            this.bgmSource, this.bgmCrossfadeSource, this.sfxSource,
+            this.coinSource, this.ambienceSource, this._winSource,
+        ]);
+        for (const src of this.node.getComponents(AudioSource)) {
+            if (keep.has(src)) continue;
+            if (src.playing) src.stop();
+            src.destroy();
+        }
+    }
+
+    private _clearBgmLoopTimers(): void {
+        this.unschedule(this._handoffBgmLoop);
+        this.bgmSource?.node.off(AudioSource.EventType.ENDED, this._onBgmSourceEnded, this);
+    }
+
+    private _armBgmLoopHandoffForClip(clip: AudioClip, elapsed: number): void {
+        this._clearBgmLoopTimers();
+        if (!this.bgmSource) return;
+        this.bgmSource.node.once(AudioSource.EventType.ENDED, this._onBgmSourceEnded, this);
+        const dur = (this.bgmSource.duration && this.bgmSource.duration > 0)
+            ? this.bgmSource.duration
+            : this._clipDurationSeconds(clip);
+        const remain = dur > 0 ? Math.max(0.05, dur - Math.max(0, elapsed)) + 0.08 : 0;
+        if (remain > 0) {
+            this.scheduleOnce(this._handoffBgmLoop, remain);
+        }
+    }
+
+    private _disarmBgmLoopRestart(): void {
+        this._clearBgmLoopTimers();
+    }
+
+    private _onBgmSourceEnded(src?: AudioSource): void {
+        if (src instanceof AudioSource && src !== this.bgmSource) return;
+        this._handoffBgmLoop();
+    }
+
+    /**
+     * Hết 1 vòng = Setting Music off → on: pause() rồi play() cùng AudioSource.
+     * Seek 0 vì bài đã hết (Setting resume giữa bài).
+     */
+    private _handoffBgmLoop(): void {
+        const cur = this.bgmSource;
+        const clip = cur?.clip;
+        if (!cur || !this._isLongBgmLoopClip(clip)) return;
+        if (this._progressiveWinActive || this._progressiveSkipPlaying) return;
+
+        this._clearBgmLoopTimers();
+        if (this._isLongBgmLoopClip(this.bgmCrossfadeSource?.clip) && !this._crossfadeFadeTick) {
+            this.bgmCrossfadeSource?.stop();
+        }
+        cur.pause();
+        this.bgmCrossfadeSource?.pause();
+        try { cur.currentTime = 0; } catch { /* một số platform không seek */ }
+        cur.loop = false;
+        cur.volume = this._bgmVolumeForClip(clip);
+        if (!this._masterMuted && !this._bgmMuted) {
+            cur.play();
+            this._armBgmLoopHandoffForClip(clip, 0);
+        }
+    }
+
+    private _resumeBgmLoopHandoffIfNeeded(): void {
+        const clip = this.bgmSource?.clip;
+        if (!this._isLongBgmLoopClip(clip)) return;
+        this._armBgmLoopHandoffForClip(clip, this.bgmSource?.currentTime ?? 0);
     }
 
     private _startAmbience(): void {
@@ -1517,11 +1625,7 @@ export class SoundManager extends Component {
     /** BGM volume — 3 loop giữ MX_NORMAL_LOOP; còn lại có NON_LOOP. */
     private _bgmVolumeForClip(clip: AudioClip | null): number {
         const base = this._baseVolume(this.bgmVolume);
-        if (clip && (
-            (this.mxNormalLoop && clip === this.mxNormalLoop)
-            || (this.mxBonusLoop && clip === this.mxBonusLoop)
-            || (this.mxPickgameLoop && clip === this.mxPickgameLoop)
-        )) {
+        if (this._isLongBgmLoopClip(clip)) {
             return base * MX_NORMAL_LOOP_VOLUME_SCALE;
         }
         return base * NON_LOOP_VOLUME_SCALE;
@@ -1532,11 +1636,16 @@ export class SoundManager extends Component {
         this._bgmMuted = muted;
         if (!this.bgmSource) return;
         if (muted) {
+            this._disarmBgmLoopRestart();
+            if (this._isLongBgmLoopClip(this.bgmCrossfadeSource?.clip) && !this._crossfadeFadeTick) {
+                this.bgmCrossfadeSource?.stop();
+            }
             this.bgmSource.pause();
             this.bgmCrossfadeSource?.pause();
         } else if (!this._masterMuted) {
             if (this.bgmSource.clip) {
                 this.bgmSource.play();
+                this._resumeBgmLoopHandoffIfNeeded();
             } else this._restoreCurrentLoop();
         }
     }
@@ -1562,6 +1671,7 @@ export class SoundManager extends Component {
         if (this._masterMuted === muted) return;
         this._masterMuted = muted;
         if (muted) {
+            this._disarmBgmLoopRestart();
             this.bgmSource?.pause();
             this.bgmCrossfadeSource?.pause();
             this.sfxSource?.pause();
@@ -1571,6 +1681,7 @@ export class SoundManager extends Component {
         } else {
             if (this.bgmSource?.clip && !this._bgmMuted) {
                 this.bgmSource.play();
+                this._resumeBgmLoopHandoffIfNeeded();
             }
             if (!this._sfxMuted) {
                 if (this._coinLoopActive) this.playCoinLoop();

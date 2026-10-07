@@ -109,8 +109,6 @@ export class MiniSetting extends Component {
 
         // Đóng MiniSetting nếu một popup khác được mở ra
         EventBus.instance.on(GameEvents.POPUP_OPENED, this._onAnyPopupOpened, this);
-        // Đóng MiniSetting khi nhấn Spin
-        EventBus.instance.on(GameEvents.SPIN_REQUEST, this._onSpinRequest, this);
     }
 
 
@@ -200,11 +198,6 @@ export class MiniSetting extends Component {
     /** Đóng panel khi một popup khác được mở ra (tránh tự đóng chính mình) */
     private _onAnyPopupOpened(): void {
         if (this._selfOpening) return;
-        this._closePanel();
-    }
-
-    /** Đóng panel khi nhấn Spin */
-    private _onSpinRequest(): void {
         this._closePanel();
     }
 

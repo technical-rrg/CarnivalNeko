@@ -1,6 +1,7 @@
 import { _decorator, Component, Node, view, ResolutionPolicy, screen, Camera, Rect, director, Label } from 'cc';
 import { FontManager } from '../manager/FontManager';
 import { Log } from '../core/Logger';
+import { syncRenderWindowSize } from '../core/RenderWindowSync';
 
 const { ccclass, property, executionOrder } = _decorator;
 
@@ -59,7 +60,15 @@ export class ResponsiveController extends Component {
         this.scheduleOnce(this._applyOrientation, 0);
     }
 
+    /** Bỏ cache hướng cũ rồi áp lại design resolution + camera viewport. */
+    forceApply(): void {
+        this._lastApplyKey = '';
+        this.unschedule(this._applyOrientation);
+        this._applyOrientation();
+    }
+
     private _applyOrientation(): void {
+        syncRenderWindowSize();
         const size = screen.windowSize;
         const isPortrait = size.height > size.width;
         const screenRatio = size.width / size.height;

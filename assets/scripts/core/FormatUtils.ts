@@ -2,6 +2,13 @@
  * FormatUtils - Các hàm tiện ích định dạng hiển thị.
  */
 
+import { LocalizationManager } from './LocalizationManager';
+
+/** Truncated-unit suffix ("K" for IDK/VNK) appended by the money formatters (BR CurrencyFormatUtil). */
+function amountSuffix(): string {
+    return LocalizationManager.instance.getAmountSuffix();
+}
+
 /**
  * Truncate (không làm tròn) về đúng `decimals` chữ số thập phân.
  */
@@ -73,14 +80,14 @@ export function formatCurrency(value: number): string {
     const clean = Math.round(value * 1e9) / 1e9;
     const isInteger = Number.isInteger(clean) || Math.abs(clean - Math.round(clean)) < 0.0005;
     if (isInteger) {
-        return Math.round(clean).toLocaleString('en-US');
+        return Math.round(clean).toLocaleString('en-US') + amountSuffix();
     }
     const fixed9 = clean.toFixed(9);
     const [rawInt, rawDec = ''] = fixed9.split('.');
     const fixed = `${rawInt}.${rawDec.padEnd(3, '0').slice(0, 3)}`;
     const [intPart, decPart] = fixed.split('.');
     const formattedInt = parseInt(intPart, 10).toLocaleString('en-US');
-    return `${formattedInt}.${decPart}`;
+    return `${formattedInt}.${decPart}${amountSuffix()}`;
 }
 
 /**
@@ -96,7 +103,7 @@ export function formatCurrency2(value: number): string {
     const fixed = clean.toFixed(2);
     const [intPart, decPart] = fixed.split('.');
     const formattedInt = parseInt(intPart, 10).toLocaleString('en-US');
-    return `${formattedInt}.${decPart}`;
+    return `${formattedInt}.${decPart}${amountSuffix()}`;
 }
 
 /**
@@ -118,7 +125,7 @@ export function formatCurrencyFixed(value: number): string {
     const fixed = `${rawInt}.${rawDec.padEnd(3, '0').slice(0, 3)}`;
     const [intPart, decPart] = fixed.split('.');
     const formattedInt = parseInt(intPart, 10).toLocaleString('en-US');
-    return `${formattedInt}.${decPart}`;
+    return `${formattedInt}.${decPart}${amountSuffix()}`;
 }
 
 /**

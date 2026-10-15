@@ -76,6 +76,12 @@ export interface CdnManifest {
 /** Prefix theo SLOT_ID để locale/font cache không đụng giữa các game cùng origin. */
 const LS_PREFIX = `sn_cdn_${ServerConfig.SLOT_ID}_`;
 
+/**
+ * Platform languages (id/tr/fr/pt/es) have no font on the CDN (see tools/generate-cdn-manifest.js)
+ * and FontManager.applyRemoteFonts has no slot for them — they use the bundled font.
+ */
+const NO_CDN_FONT_LANGUAGES: ReadonlySet<string> = new Set(['id', 'tr', 'fr', 'pt', 'es']);
+
 function lsGet(key: string): string | null {
     try { return localStorage.getItem(key); } catch { return null; }
 }
@@ -239,6 +245,10 @@ export class CdnAssetManager {
      * @returns TTFFont asset hoặc null nếu thất bại
      */
     loadFont(lang: LanguageCode): Promise<TTFFont | null> {
+        if (NO_CDN_FONT_LANGUAGES.has(lang)) {
+            // No <lang>-subset.ttf on the CDN — skip the 404 (+ engine retries); bundled font is used.
+            return Promise.resolve(null);
+        }
         const lsVerKey   = `${LS_PREFIX}font_${lang}_v`;
         const cachedVer  = lsGet(lsVerKey);
         const remoteInfo = this._manifest?.fonts?.[lang];

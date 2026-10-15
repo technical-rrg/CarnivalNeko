@@ -34,6 +34,7 @@ import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { SoundManager } from '../manager/SoundManager';
 import { Log } from '../core/Logger';
+import { isSpinButtonTouch, POPUP_SOURCE_GAME } from '../core/UserPopupRule';
 
 const { ccclass, property } = _decorator;
 
@@ -196,8 +197,10 @@ export class MiniSetting extends Component {
     }
 
     /** Đóng panel khi một popup khác được mở ra (tránh tự đóng chính mình) */
-    private _onAnyPopupOpened(): void {
+    private _onAnyPopupOpened(source?: string): void {
         if (this._selfOpening) return;
+        // User instruction: popups the game opens itself (free spin, jackpot, …) do not close a user popup.
+        if (source === POPUP_SOURCE_GAME) return;
         this._closePanel();
     }
 
@@ -232,6 +235,11 @@ export class MiniSetting extends Component {
 
     /** Touch vào blocker (vùng ngoài panel) → đóng panel, nuốt event */
     private _onBlockerTouch(event: EventTouch): void {
+        // User instruction: Spin is not an outside touch — keep the panel open and let the touch reach the button.
+        if (isSpinButtonTouch(event)) {
+            event.preventSwallow = true;
+            return;
+        }
         event.propagationStopped = true; // Không cho event lan lên canvas
         this._closePanel();
     }

@@ -66,6 +66,11 @@ const CACHE_MODE_MAP: Record<LanguageCode, number> = {
     'vi':    CacheMode.BITMAP,
     'au':    CacheMode.BITMAP,
     'hk':    CacheMode.BITMAP,
+    'id':    CacheMode.BITMAP,
+    'tr':    CacheMode.BITMAP,
+    'fr':    CacheMode.BITMAP,
+    'pt':    CacheMode.BITMAP,
+    'es':    CacheMode.BITMAP,
 };
 
 @ccclass('FontManager')
@@ -156,6 +161,7 @@ export class FontManager extends Component {
             case 'fil':
             case 'au':
             case 'hk':
+            // id/tr/fr/pt/es: defaultFont (en-subset) already has every letter they use
             default:      return this.defaultFont ?? null;
         }
     }

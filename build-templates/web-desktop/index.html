@@ -92,6 +92,51 @@
         };
       }());
     </script>
+    <script type="text/javascript">
+      /* ── Partner brand (Blast Rocket a6ff834f3 WebGLTemplates/Ambiens/index.html) ──
+         ?ln=<file> → loading logo (#sn-loading-gif), ?fn=<file> → favicon, both from
+         https://downloads.realreelsgaming.com/brand/<encodeURIComponent(file)>.
+         Each param works on its own; missing / empty → unchanged. #sn-loading-logo (text image) is never replaced.
+         tools/patch-build-css.js injects the same script into builds that lack it.
+      ─────────────────────────────────────────────────────────────────── */
+      (function () {
+        if (window.snApplyPartnerBrand) return;
+        var BRAND_BASE = 'https://downloads.realreelsgaming.com/brand/';
+        var ln = null, fn = null;
+        try {
+          var query = new URLSearchParams(window.location.search);
+          ln = query.get('ln');
+          fn = query.get('fn');
+        } catch (e) {}
+        var logoUrl = ln ? BRAND_BASE + encodeURIComponent(ln) : null;
+        var faviconUrl = fn ? BRAND_BASE + encodeURIComponent(fn) : null;
+        function apply() {
+          if (faviconUrl) {
+            var links = document.querySelectorAll('link[rel~="icon"]');
+            if (!links.length && document.head) {
+              var link = document.createElement('link');
+              link.rel = 'icon';
+              document.head.appendChild(link);
+              links = [link];
+            }
+            for (var i = 0; i < links.length; i++) {
+              if (links[i].getAttribute('href') !== faviconUrl) {
+                links[i].removeAttribute('type');
+                links[i].href = faviconUrl;
+              }
+            }
+          }
+          var img = logoUrl ? document.getElementById('sn-loading-gif') : null;
+          if (img && img.getAttribute('src') !== logoUrl) {
+            img.style.display = '';
+            img.src = logoUrl;
+          }
+        }
+        window.snApplyPartnerBrand = apply;
+        apply();
+        document.addEventListener('DOMContentLoaded', apply);
+      }());
+    </script>
   </head>
   <body>
     <h1 class="header">Carnival Neko</h1>
@@ -107,7 +152,7 @@
       <img id="sn-loading-gif"  src="https://downloads.newworld.id/Icons/logo.gif"          alt="Loading" onerror="this.style.display='none'"/>
       <img id="sn-loading-logo" src="https://downloads.newworld.id/Icons/nw_logo_text.png"  alt="Logo"    onerror="this.style.display='none'"/>
     </div>
-    <script type="text/javascript">(function(){var DW=1920,DH=1080,imgs={'sn-loading-gif':[960,714,375,292,1.5],'sn-loading-logo':[960,297.941,290,150,1]};function pos(){var vw=window.innerWidth,vh=window.innerHeight,R=vh>vw?9/16:16/9,cw,ch;if(vw/vh>R){ch=vh;cw=vh*R;}else{cw=vw;ch=vw/R;}var ox=(vw-cw)/2,oy=(vh-ch)/2;for(var id in imgs){var n=imgs[id],el=document.getElementById(id);if(!el)continue;var ew=n[2]/DW*cw*n[4],eh=n[3]/DH*ch*n[4],lx=ox+n[0]/DW*cw,ty=oy+(1-n[1]/DH)*ch;el.style.cssText='position:fixed;opacity:0;width:'+ew+'px;height:'+eh+'px;left:'+lx+'px;top:'+ty+'px;transform:translate(-50%,-50%);object-fit:contain;max-width:none;max-height:none;';}}pos();window.addEventListener('resize',pos);window.addEventListener('orientationchange',function(){setTimeout(pos,200);});}());</script>
+    <script type="text/javascript">(function(){if(window.snApplyPartnerBrand)window.snApplyPartnerBrand();var DW=1920,DH=1080,imgs={'sn-loading-gif':[960,714,375,292,1.5],'sn-loading-logo':[960,297.941,290,150,1]};function pos(){var vw=window.innerWidth,vh=window.innerHeight,R=vh>vw?9/16:16/9,cw,ch;if(vw/vh>R){ch=vh;cw=vh*R;}else{cw=vw;ch=vw/R;}var ox=(vw-cw)/2,oy=(vh-ch)/2;for(var id in imgs){var n=imgs[id],el=document.getElementById(id);if(!el)continue;var ew=n[2]/DW*cw*n[4],eh=n[3]/DH*ch*n[4],lx=ox+n[0]/DW*cw,ty=oy+(1-n[1]/DH)*ch;el.style.cssText='position:fixed;opacity:0;width:'+ew+'px;height:'+eh+'px;left:'+lx+'px;top:'+ty+'px;transform:translate(-50%,-50%);object-fit:contain;max-width:none;max-height:none;';}}pos();window.addEventListener('resize',pos);window.addEventListener('orientationchange',function(){setTimeout(pos,200);});}());</script>
 
     <div id="GameDiv" cc_exact_fit_screen="false">
       <div id="Cocos3dGameContainer">

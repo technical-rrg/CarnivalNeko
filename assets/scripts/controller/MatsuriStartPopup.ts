@@ -16,6 +16,7 @@ import {
     UITransform, UIOpacity, Widget, tween, Tween, Vec3, view,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
+import { POPUP_SOURCE_GAME } from '../core/UserPopupRule';
 import { GameEvents } from '../core/GameEvents';
 import { applyLocalizedSprite, applySpriteFrameTrimmed, LocalizedSpriteFrames } from '../core/LocalizedSpriteFrames';
 import { LocalizationManager } from '../core/LocalizationManager';
@@ -142,7 +143,7 @@ export class MatsuriStartPopup extends Component {
         }
         this.node.active = true;
         this._fitOverlayFullscreen();
-        EventBus.instance.emit(GameEvents.POPUP_OPENED);
+        EventBus.instance.emit(GameEvents.POPUP_OPENED, POPUP_SOURCE_GAME);
 
         if (this.popupNode) {
             this.popupNode.setScale(1, 1, 1);

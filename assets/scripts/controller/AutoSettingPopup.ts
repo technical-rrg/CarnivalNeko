@@ -25,9 +25,10 @@
  *   - Không có cái nào : cả hai selected ẩn, cả hai sprite hiện → Normal mode
  */
 
-import { _decorator, Component, Node, Label, Button, Slider, Sprite, tween, Vec3, BlockInputEvents, UITransform } from 'cc';
+import { _decorator, Component, Node, Label, Button, Slider, Sprite, tween, Vec3, BlockInputEvents, UITransform, EventTouch } from 'cc';
 import { AutoSpinManager, SpeedMode } from '../manager/AutoSpinManager';
 import { EventBus } from '../core/EventBus';
+import { isSpinButtonTouch } from '../core/UserPopupRule';
 import { GameEvents } from '../core/GameEvents';
 import { SoundManager } from '../manager/SoundManager';
 import { L } from '../core/LocalizationManager';
@@ -135,7 +136,8 @@ export class AutoSettingPopup extends Component {
         if (this.popupNode) this.popupNode.active = false;
         if (this.fillOverlay) {
             this.fillOverlay.active = false;
-            this.fillOverlay.on(Node.EventType.TOUCH_END, () => { SoundManager.instance?.playButtonClick(); this.close(); }, this);
+            // User instruction: a spin never closes a popup the user opened — Spin is not an outside touch.
+            this.fillOverlay.on(Node.EventType.TOUCH_END, (e: EventTouch) => { if (isSpinButtonTouch(e)) return; SoundManager.instance?.playButtonClick(); this.close(); }, this);
         }
         // Chặn touch xuyên qua xuống các node bên dưới khi popup đang hiển thị
         if (!this.node.getComponent(BlockInputEvents)) {

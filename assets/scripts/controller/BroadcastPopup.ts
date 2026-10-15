@@ -61,6 +61,12 @@ const REST_DURATION    = 3.0;
  */
 @ccclass('BroadcastManager')
 export class BroadcastManager extends Component {
+    /**
+     * Remote image URL → SpriteFrame, successful loads only (BR a6ff834f3 UIBroadCastingPopup._textureCache).
+     * Failed URLs are not stored, so the next broadcast tries again.
+     */
+    private static readonly _remoteFrameCache = new Map<string, SpriteFrame>();
+
     @property({ tooltip: 'Hiện log khi nhận/skip broadcast message.' })
     debugLog = false;
 
@@ -392,9 +398,19 @@ export class BroadcastManager extends Component {
 
     private _loadRemoteSprite(url: string, sprite: Sprite | null, hideFallbackOnSuccess: boolean): void {
         if (!url || !sprite) return;
+        const show = (frame: SpriteFrame) => {
+            sprite.spriteFrame = frame;
+            sprite.node.active = true;
+            if (hideFallbackOnSuccess && this.gradeFallback) this.gradeFallback.node.active = false;
+        };
+        const cached = BroadcastManager._remoteFrameCache.get(url);
+        if (cached && cached.isValid) {
+            show(cached);
+            return;
+        }
         const ext = this._guessImageExt(url);
         assetManager.loadRemote<ImageAsset>(url, { ext }, (err, imageAsset) => {
-            if (err || !imageAsset || !sprite.isValid) {
+            if (err || !imageAsset) {
                 if (this.debugLog) Log.w(`[Broadcast] image load failed: ${url}`, err);
                 return;
             }
@@ -402,9 +418,9 @@ export class BroadcastManager extends Component {
             texture.image = imageAsset;
             const frame = new SpriteFrame();
             frame.texture = texture;
-            sprite.spriteFrame = frame;
-            sprite.node.active = true;
-            if (hideFallbackOnSuccess && this.gradeFallback) this.gradeFallback.node.active = false;
+            BroadcastManager._remoteFrameCache.set(url, frame);
+            if (!sprite.isValid) return;
+            show(frame);
         });
     }
 

@@ -19,6 +19,7 @@ import { OrientationLayout } from './OrientationLayout';
 import { L } from '../core/LocalizationManager';
 import { AutoSpinManager, SpeedMode } from '../manager/AutoSpinManager';
 import { Log } from '../core/Logger';
+import { isSpinButtonTouch, registerSpinButton, unregisterSpinButton } from '../core/UserPopupRule';
 
 const { ccclass, property } = _decorator;
 
@@ -204,6 +205,7 @@ export class UIController extends Component {
             Tween.stopAllByTarget(this.spinButton.node);
         }
         input.off(Input.EventType.KEY_DOWN, this._onKeyDown, this);
+        unregisterSpinButton(this.spinButton?.node);
         if (this._currencyOutsideTouchHandler) {
             input.off(Input.EventType.TOUCH_START, this._currencyOutsideTouchHandler, this);
             this._currencyOutsideTouchHandler = null;
@@ -223,6 +225,7 @@ export class UIController extends Component {
             this.spinButton.transition = Button.Transition.SCALE;
             this.spinButton.zoomScale = 1.05;
             this.spinButton.node.on('click', this._onSpinClick, this);
+            registerSpinButton(this.spinButton.node);
         }
         if (this.betUpButton) {
             this.betUpButton.node.on('click', this._onBetUp, this);
@@ -298,6 +301,10 @@ export class UIController extends Component {
      */
     private _onKeyDown(event: EventKeyboard): void {
         if (this._openPopupCount > 0) return;
+        // Guide / loading: the game logic already runs under the guide, so a key spin there
+        // spun hidden reels and later locked the game. Key spin only while the Spin button is on screen.
+        if (GameData.instance.isGuideShowing) return;
+        if (!this.spinButton || !this.spinButton.node.activeInHierarchy) return;
         if (event.keyCode === KeyCode.SPACE
             || event.keyCode === KeyCode.ENTER
             || event.keyCode === KeyCode.NUM_ENTER) {
@@ -455,6 +462,8 @@ export class UIController extends Component {
             if (uiBtn && uiBtn.hitTest(event.getUILocation())) {
                 return;
             }
+            // User instruction: a spin never closes a popup the user opened — Spin is not an outside touch.
+            if (isSpinButtonTouch(event)) return;
             this._currencyChildHideCb && this._currencyChildHideCb();
         };
         this.scheduleOnce(() => {

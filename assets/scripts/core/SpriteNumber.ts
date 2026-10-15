@@ -63,6 +63,13 @@ export enum CurrencyPosition {
 @ccclass('SpriteNumber')
 export class SpriteNumber extends Component {
 
+    /**
+     * Never draw the currency sprite on bitmap numbers (platform rule — new currencies have no
+     * sprite; same as AztecCarnival). Ignores the enableLangCurrency checkbox; the
+     * "currency → min decimals" rule still applies.
+     */
+    private static readonly FORCE_HIDE_CURRENCY = true;
+
     // ─── Inspector Properties ─────────────────────────────────────────────
 
     @property({
@@ -384,6 +391,7 @@ export class SpriteNumber extends Component {
      */
     lockWidth(finalValue: number, currencyIndex: number = -1, minDecimals: number = 0): void {
         minDecimals = this._resolveCurrencyMinDecimals(minDecimals, currencyIndex);
+        currencyIndex = this._visibleCurrencyIndex(currencyIndex);
         const sizeResult = this._computeSize(finalValue, currencyIndex, minDecimals);
         const { totalWidth, maxHeight, sumSpriteWidth, sumVisualGaps } = sizeResult;
         this._lockedWidth  = totalWidth;
@@ -474,6 +482,12 @@ export class SpriteNumber extends Component {
         return minDecimals > 0 ? minDecimals : 3;
     }
 
+    /** -1 = no currency sprite. Always -1 while FORCE_HIDE_CURRENCY; otherwise follows enableLangCurrency. */
+    private _visibleCurrencyIndex(currencyIndex: number): number {
+        if (SpriteNumber.FORCE_HIDE_CURRENCY || !this.enableLangCurrency || currencyIndex < 0) return -1;
+        return currencyIndex;
+    }
+
     /**
      * Tạo hoặc lấy Label node để hiển thị KMBT text khi value >= 100K.
      */
@@ -514,7 +528,7 @@ export class SpriteNumber extends Component {
         // Khi enableLangCurrency=true và caller muốn hiển thị tiền tệ (>= 0),
         // ƯU TIÊN: dùng currency code từ server (nếu có) để chọn sprite đúng.
         // FALLBACK: dùng ngôn ngữ UI hiện tại.
-        if (this.enableLangCurrency && currencyIndex >= 0) {
+        if (this.enableLangCurrency && currencyIndex >= 0 && !SpriteNumber.FORCE_HIDE_CURRENCY) {
             const code = LocalizationManager.instance.currencyCode;
             if (code && SpriteNumber.CURRENCY_CODE_TO_SPRITE_INDEX[code] !== undefined) {
                 const codeIdx = SpriteNumber.CURRENCY_CODE_TO_SPRITE_INDEX[code];
@@ -529,6 +543,8 @@ export class SpriteNumber extends Component {
                 }
             }
         }
+
+        currencyIndex = this._visibleCurrencyIndex(currencyIndex);
 
         // KMBT fallback: khi số >= 100K và bật flag → dùng Label hiển thị K/M/B/T
         const useKMBTMode = useKMBT && value >= 100000;

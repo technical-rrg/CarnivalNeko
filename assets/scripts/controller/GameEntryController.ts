@@ -399,6 +399,10 @@ export class GameEntryController extends Component {
         Log.d('[GameEntryController] Warm GameRoot in background while Guide showing');
         this._gameRootWarmed = true;
         this.gameRoot.active = true;
+        // Warmed at opacity 0 under the Guide: its buttons still took taps (the Guide does not block
+        // input), so a tap where Spin sits spun hidden reels and later locked the game.
+        // No input reaches GameRoot until it is shown (_showGameRoot resumes it).
+        this.gameRoot.pauseSystemEvents(true);
 
         this.scheduleOnce(() => {
             this._applySymbolsSafe();
@@ -453,6 +457,7 @@ export class GameEntryController extends Component {
 
         const wasInactive = !this.gameRoot.active;
         this.gameRoot.active = true;
+        this.gameRoot.resumeSystemEvents(true); // paused while warmed under the Guide
         this._gameRootWarmed = true;
 
         if (wasInactive) {

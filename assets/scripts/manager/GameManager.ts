@@ -4368,6 +4368,9 @@ export class GameManager extends Component {
                 // Set spinning=true trước khi REELS_STOPPED — _afterWinProcessed cần guard này
                 this._isSpinning = true;
                 this._gameState = GameState.SPINNING;
+                // A spin that ran before entry (e.g. under the Guide) leaves this true — REELS_STOPPED
+                // of the resume would then be ignored and the game stays 'spinning' forever.
+                this._reelsStoppedProcessed = false;
                 EventBus.instance.emit(GameEvents.RESUME_NORMAL_SPIN, resp.rands);
             } else {
                 Log.d(`[RESUME-DEBUG] _executeResume → SPIN resume nhưng thiếu rands, bỏ qua`);

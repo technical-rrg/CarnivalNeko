@@ -14,7 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────────
 
@@ -375,6 +375,34 @@ function writeDebugFile(langCpSets) {
     console.log(`\n  Debug file: ${DEBUG_FILE}`);
 }
 
+/**
+ * Transplant currency glyphs into every assets/Font/*.ttf (tools/merge-currency-glyphs.py,
+ * same tool as AztecCarnival). Needs python with fontTools; sources in FontBase/.
+ */
+function injectCurrencyGlyphs() {
+    const script = path.join(ROOT, 'tools', 'merge-currency-glyphs.py');
+    if (!fs.existsSync(script)) {
+        console.warn('  ! Skip currency glyphs: tools/merge-currency-glyphs.py not found');
+        return false;
+    }
+    const args = [script, '--dir', FONT_DIR];
+    if (fs.existsSync(OUTPUT_DIR)) args.push('--woff2-dir', OUTPUT_DIR);
+    const result = spawnSync('python', args, {
+        cwd: ROOT,
+        windowsHide: true,
+        timeout: 180000,
+        encoding: 'utf8',
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    });
+    const log = `${result.stdout || ''}${result.stderr || ''}`.trim();
+    if (log) console.log(log);
+    if (result.status !== 0) {
+        console.error('  ✗ Currency glyph inject failed');
+        return false;
+    }
+    return true;
+}
+
 // ─── MAIN ──────────────────────────────────────────────────────────────────────
 
 function main() {
@@ -415,6 +443,9 @@ function main() {
             fail++;
         }
     }
+
+    // Currency symbols (৳ ៛ ₩ د.ت …) are not in the locale texts — subsetting drops them, put them back
+    injectCurrencyGlyphs();
 
     // Step 5: Debug file
     writeDebugFile(langCpSets);

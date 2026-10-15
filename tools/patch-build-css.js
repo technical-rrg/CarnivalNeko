@@ -112,6 +112,7 @@ const LOADING_OVERLAY_SCRIPT =
 const LOADING_INIT_SCRIPT =
   '<script type="text/javascript">' +
   '(function(){' +
+  'if(window.snApplyPartnerBrand)window.snApplyPartnerBrand();' +
   'var DW=1920,DH=1080,' +
   "imgs={'sn-loading-gif':[960,714,375,292,1.5],'sn-loading-logo':[960,297.941,290,150,1]};" +
   'function pos(){' +
@@ -192,13 +193,64 @@ function patchGameTitle(content) {
   return patched;
 }
 
+// ─── Partner brand (?ln= logo / ?fn= favicon) ────────────────────────────────
+// Blast Rocket a6ff834f3 WebGLTemplates/Ambiens/index.html. Same script as
+// build-templates/web-desktop/index.html — injected before </head> (after the favicon link)
+// when a build does not have it yet. Runs again on DOMContentLoaded so the favicon link added
+// above is covered too. LOADING_INIT_SCRIPT calls snApplyPartnerBrand() for the logo <img>.
+const PARTNER_BRAND_SENTINEL = 'window.snApplyPartnerBrand = apply';
+const PARTNER_BRAND_SCRIPT = `<script type="text/javascript">
+(function () {
+  if (window.snApplyPartnerBrand) return;
+  var BRAND_BASE = 'https://downloads.realreelsgaming.com/brand/';
+  var ln = null, fn = null;
+  try {
+    var query = new URLSearchParams(window.location.search);
+    ln = query.get('ln');
+    fn = query.get('fn');
+  } catch (e) {}
+  var logoUrl = ln ? BRAND_BASE + encodeURIComponent(ln) : null;
+  var faviconUrl = fn ? BRAND_BASE + encodeURIComponent(fn) : null;
+  function apply() {
+    if (faviconUrl) {
+      var links = document.querySelectorAll('link[rel~="icon"]');
+      if (!links.length && document.head) {
+        var link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+        links = [link];
+      }
+      for (var i = 0; i < links.length; i++) {
+        if (links[i].getAttribute('href') !== faviconUrl) {
+          links[i].removeAttribute('type');
+          links[i].href = faviconUrl;
+        }
+      }
+    }
+    var img = logoUrl ? document.getElementById('sn-loading-gif') : null;
+    if (img && img.getAttribute('src') !== logoUrl) {
+      img.style.display = '';
+      img.src = logoUrl;
+    }
+  }
+  window.snApplyPartnerBrand = apply;
+  apply();
+  document.addEventListener('DOMContentLoaded', apply);
+}());
+</script>`;
+
+function ensurePartnerBrand(content) {
+  if (content.includes(PARTNER_BRAND_SENTINEL) || !content.includes('</head>')) return content;
+  return content.replace('</head>', `  ${PARTNER_BRAND_SCRIPT}\n</head>`);
+}
+
 function patchFavicon(content) {
   // Remove all existing favicon links
   let patched = content.replace(/\s*<link\s+rel=["'](?:shortcut\s+)?icon["'][^>]*>/gi, '');
   if (CUSTOM_FAVICON_LINK && (!FAVICON_SENTINEL || !patched.includes(FAVICON_SENTINEL))) {
     patched = patched.replace('</head>', `  ${CUSTOM_FAVICON_LINK}\n</head>`);
   }
-  return patched;
+  return ensurePartnerBrand(patched);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

@@ -116,6 +116,8 @@ import { ResponseLogger } from '../core/ResponseLogger';
 import { PopUpMessage, PopupCase } from '../core/PopUpMessage';
 import { Log } from '../core/Logger';
 import { LocalizationManager } from '../core/LocalizationManager';
+import { isFirstBroadcastRequest, pickLatestBroadcast } from '../core/BroadcastSeq';
+import { applyLinkLanguage, setLinkLanguageHint } from '../core/LinkLanguage';
 
 /**
  * ServerApiError - Error được throw khi server trả về CODE != 0 hoặc network thất bại.
@@ -1688,7 +1690,15 @@ class RealNetworkAdapter implements INetworkAdapter {
         }
 
         // Update last win msg ID
-        if (raw.WinMsgs && raw.WinMsgs.length > 0) {
+        // First poll (sent LastWinMsgId = 0): only the newest message, remember the highest Seq (BR a6ff834f3)
+        const firstLatest = raw.WinMsgs && raw.WinMsgs.length > 0 && isFirstBroadcastRequest(requestData.LastWinMsgId)
+            ? pickLatestBroadcast(raw.WinMsgs)
+            : null;
+        if (firstLatest) {
+            Log.d(`[Broadcast] First poll: ${raw.WinMsgs.length} msg(s) → newest Seq=${firstLatest.maxSeq} only`);
+            EventBus.instance.emit(GameEvents.BROADCAST_WIN_MESSAGE, firstLatest.latest);
+            data.lastWinMsgId = firstLatest.maxSeq;
+        } else if (raw.WinMsgs && raw.WinMsgs.length > 0) {
             Log.d(`[Broadcast] Server trả ${raw.WinMsgs.length} msg(s) | LastWinMsgId: ${data.lastWinMsgId}`);
             for (const msg of raw.WinMsgs) {
                 Log.d(`[Broadcast] ← Seq=${msg.Seq} Nick="${msg.DisplayName || msg.Nick}" Slot="${msg.Slot}" Feature="${msg.Feature}" MX=${msg.MX}`);
@@ -3715,6 +3725,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             gateUrl = parsed.GateUrl ?? parsed.gateUrl;
             token   = parsed.Token   ?? parsed.token;
             if (!gateUrl || !token) throw new Error('Missing GateUrl or Token in decrypted gp');
+            setLinkLanguageHint(parsed.Lang ?? parsed.lang);
             Log.err(`[Gate] Decrypt gp OK | GateUrl=${gateUrl} | tokenLength=${token.length}`);
         } catch (e: any) {
             Log.err(`[Gate] Decrypt gp failed: ${e.message}`);
@@ -3911,7 +3922,11 @@ export class NetworkManager {
      */
     login(params?: any): Promise<ServerSession> {
         this._logoutSent = false;
-        return this._adapter.login(params);
+        return this._adapter.login(params).then((session) => {
+            // No `gl` in the URL → launch-link Lang (before Enter)
+            applyLinkLanguage();
+            return session;
+        });
     }
 
     /** Enter game — nhận config + initial state */

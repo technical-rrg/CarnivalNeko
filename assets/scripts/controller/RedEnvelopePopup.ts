@@ -22,6 +22,7 @@ import {
     tween, Tween, Vec3, EventTouch, input, Input, EventMouse, view, sp, ParticleSystem,
 } from 'cc';
 import { EventBus } from '../core/EventBus';
+import { POPUP_SOURCE_GAME } from '../core/UserPopupRule';
 import { GameEvents } from '../core/GameEvents';
 import { L } from '../core/LocalizationManager';
 import { naturalCountUpValue } from '../core/FormatUtils';
@@ -148,7 +149,7 @@ export class RedEnvelopePopup extends Component {
         this.node.active = true;
         this._fitOverlayFullscreen();
         this.scheduleOnce(() => this._fitOverlayFullscreen(), 0);
-        EventBus.instance.emit(GameEvents.POPUP_OPENED);
+        EventBus.instance.emit(GameEvents.POPUP_OPENED, POPUP_SOURCE_GAME);
         SoundManager.instance?.playRedMysteryEnv();
 
         this._playSpineIn(pay);

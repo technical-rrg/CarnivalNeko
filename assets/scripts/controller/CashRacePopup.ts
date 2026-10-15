@@ -318,10 +318,13 @@ export class CashRacePopup extends Component {
     }
 
     onDestroy(): void {
-        if (this.btnClose)  this.btnClose.off(Node.EventType.TOUCH_END,  this._onClose,              this);
-        if (this.btnTop3)   this.btnTop3.off(Node.EventType.TOUCH_END,   this._onToggleTop3,          this);
-        if (this.btnRefresh) this.btnRefresh.off(Node.EventType.TOUCH_END, this._onRefresh,           this);
-        if (this.cheatBtn)  this.cheatBtn.off(Node.EventType.TOUCH_END,  this._onCheatCycleScenario, this);
+        // Rotation destroys this popup; the engine destroys (and empties) child nodes before this
+        // runs, so .off() on them threw → black screen + endless Error 5000. Skip destroyed nodes
+        // (their listeners are already gone).
+        if (this.btnClose?.isValid)  this.btnClose.off(Node.EventType.TOUCH_END,  this._onClose,              this);
+        if (this.btnTop3?.isValid)   this.btnTop3.off(Node.EventType.TOUCH_END,   this._onToggleTop3,          this);
+        if (this.btnRefresh?.isValid) this.btnRefresh.off(Node.EventType.TOUCH_END, this._onRefresh,           this);
+        if (this.cheatBtn?.isValid)  this.cheatBtn.off(Node.EventType.TOUCH_END,  this._onCheatCycleScenario, this);
     }
 
     // ═══════════════════════════════════════════════════════

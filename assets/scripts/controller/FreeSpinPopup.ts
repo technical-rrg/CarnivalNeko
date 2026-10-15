@@ -16,6 +16,7 @@
 
 import { _decorator, Component, Node, Label, Button, tween, Vec3, EventTouch } from 'cc';
 import { EventBus } from '../core/EventBus';
+import { POPUP_SOURCE_GAME } from '../core/UserPopupRule';
 import { GameEvents } from '../core/GameEvents';
 import { L } from '../core/LocalizationManager';
 import { SoundManager } from '../manager/SoundManager';
@@ -105,7 +106,7 @@ export class FreeSpinPopup extends Component {
     private _show(): void {
         if (!this.popupNode) return;
         this._isOpen = true;
-        EventBus.instance.emit(GameEvents.POPUP_OPENED);
+        EventBus.instance.emit(GameEvents.POPUP_OPENED, POPUP_SOURCE_GAME);
 
         // Show overlay instantly (no animation)
         if (this.overlayNode) {

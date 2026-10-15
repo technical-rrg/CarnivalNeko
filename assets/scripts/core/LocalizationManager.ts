@@ -59,11 +59,24 @@ import { LOCALE_MS } from '../data/locales/ms';
 import { LOCALE_VI } from '../data/locales/vi';
 import { LOCALE_AU } from '../data/locales/au';
 import { LOCALE_HK } from '../data/locales/hk';
+import { LOCALE_ID } from '../data/locales/id';
+import { LOCALE_TR } from '../data/locales/tr';
+import { LOCALE_FR } from '../data/locales/fr';
+import { LOCALE_PT } from '../data/locales/pt';
+import { LOCALE_ES } from '../data/locales/es';
+import { PLATFORM_CURRENCY_SYMBOLS, TRUNCATED_UNIT_SUFFIX } from '../data/PlatformCurrency';
 import { Log } from './Logger';
 
 // ─── Types ───
 
-export type LanguageCode = 'en' | 'ko' | 'zh-cn' | 'zh-tw' | 'fil' | 'ja' | 'th' | 'sg' | 'ms' | 'vi' | 'au' | 'hk';
+export type LanguageCode = 'en' | 'ko' | 'zh-cn' | 'zh-tw' | 'fil' | 'ja' | 'th' | 'sg' | 'ms' | 'vi' | 'au' | 'hk'
+    | 'id' | 'tr' | 'fr' | 'pt' | 'es';
+
+/**
+ * Platform languages (server Lang ID = code, BR a6ff834f3). Exact match only — 'es419', 'pt-BR' → 'en'.
+ * Texts: data/locales/{id,tr,fr,pt,es}.ts, generated from client-porting/rrg-web-template/locale-data.
+ */
+const PLATFORM_LANGUAGES: readonly LanguageCode[] = ['id', 'tr', 'fr', 'pt', 'es'];
 
 /**
  * Map từ currency code (ISO 4217) → ký hiệu tiền tệ hiển thị.
@@ -91,6 +104,13 @@ export const CURRENCY_SYMBOL_MAP: Record<string, string> = {
     'INR': '₹',
 };
 
+/** Symbol shown when the server currency is unknown or not received yet (platform rule, BR a6ff834f3). */
+const DEFAULT_CURRENCY_SYMBOL = '$';
+/** Right-to-left letters (Arabic/Hebrew) — e.g. TND "د.ت". */
+const RTL_CHARS = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+/** U+200E LEFT-TO-RIGHT MARK — keeps an RTL symbol on the left of the number. */
+const LEFT_TO_RIGHT_MARK = '‎';
+
 // Re-export for backward compatibility
 export type { LocaleData };
 
@@ -109,6 +129,11 @@ const LOCALE_MODULES: Record<LanguageCode, LocaleData> = {
     'vi':    LOCALE_VI,
     'au':    LOCALE_AU,
     'hk':    LOCALE_HK,
+    'id':    LOCALE_ID,
+    'tr':    LOCALE_TR,
+    'fr':    LOCALE_FR,
+    'pt':    LOCALE_PT,
+    'es':    LOCALE_ES,
 };
 
 /**
@@ -127,6 +152,11 @@ export const SUPPORTED_LANGUAGES: { code: LanguageCode; name: string; nativeName
     { code: 'vi',    name: 'Vietnamese',           nativeName: 'Tiếng Việt' },
     { code: 'au',    name: 'Australia',            nativeName: 'English (AU)' },
     { code: 'hk',    name: 'Hong Kong',            nativeName: 'English (HK)' },
+    { code: 'id',    name: 'Indonesian',           nativeName: 'Bahasa Indonesia' },
+    { code: 'tr',    name: 'Turkish',              nativeName: 'Türkçe' },
+    { code: 'fr',    name: 'French',               nativeName: 'Français' },
+    { code: 'pt',    name: 'Portuguese',           nativeName: 'Português' },
+    { code: 'es',    name: 'Spanish',              nativeName: 'Español' },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -183,17 +213,38 @@ export class LocalizationManager {
      * bất kể ngôn ngữ UI đang chọn.
      *
      * @param currencyCode  ISO 4217 code, ví dụ "USD", "KRW", "JPY", ...
-     *                      Nếu không tìm thấy trong map → giữ nguyên locale symbol.
+     *                      CURRENCY_SYMBOL_MAP → PLATFORM_CURRENCY_SYMBOLS (BR a6ff834f3).
+     *                      Not found → getText returns '$'.
      */
     setCurrencyOverride(currencyCode: string): void {
-        const symbol = CURRENCY_SYMBOL_MAP[currencyCode.toUpperCase()];
+        const code = currencyCode.toUpperCase();
+        const symbol = CURRENCY_SYMBOL_MAP[code] ?? PLATFORM_CURRENCY_SYMBOLS[code];
         if (symbol) {
-            this._currencyCode     = currencyCode.toUpperCase();
+            this._currencyCode     = code;
             this._currencyOverride = symbol;
             Log.d(`[i18n] Currency override: ${currencyCode} → "${symbol}"`);
         } else {
-            Log.w(`[i18n] Unknown currency code "${currencyCode}", keeping locale symbol`);
+            Log.w(`[i18n] Unknown currency code "${currencyCode}", showing "${DEFAULT_CURRENCY_SYMBOL}"`);
         }
+    }
+
+    /**
+     * Symbol placed before amounts — what L('CLIENT_CURRENENCY_SYMBOL') returns.
+     * Platform rule (BR a6ff834f3): server Currency decides it, never the UI language;
+     * unknown / before login → '$'. RTL symbols get U+200E so they stay left of the number.
+     * Truncated units (IDK/VNK/MY1) show the code in the symbol slot, so a space follows.
+     */
+    getCurrencyDisplaySymbol(): string {
+        const symbol = this._currencyOverride ?? DEFAULT_CURRENCY_SYMBOL;
+        const pinned = RTL_CHARS.test(symbol) ? symbol + LEFT_TO_RIGHT_MARK : symbol;
+        return this._currencyCode !== null && TRUNCATED_UNIT_SUFFIX[this._currencyCode] !== undefined
+            ? `${pinned} `
+            : pinned;
+    }
+
+    /** Text appended after amounts — "K" for IDK/VNK (1 = 1,000), "" otherwise (BR CurrencyFormatUtil.GetSuffix). */
+    getAmountSuffix(): string {
+        return this._currencyCode !== null ? (TRUNCATED_UNIT_SUFFIX[this._currencyCode] ?? '') : '';
     }
 
     /**
@@ -286,6 +337,11 @@ export class LocalizationManager {
         this.setLanguage(this._detectFromUrlGl());
     }
 
+    /** Same mapping as `gl` — used for the launch-link Lang (core/LinkLanguage.ts). */
+    normalizeLanguageCode(input: string): LanguageCode {
+        return this._normalizeLangCode(input);
+    }
+
     /**
      * Lấy text đã dịch theo key.
      * Hỗ trợ placeholder: {count}, {amount}, {name}, ...
@@ -295,9 +351,9 @@ export class LocalizationManager {
      * @returns       Translated string (fallback English nếu thiếu)
      */
     getText(key: string, params?: Record<string, string | number>): string {
-        // Currency override từ server luôn ưu tiên hơn locale
-        if (key === 'CLIENT_CURRENENCY_SYMBOL' && this._currencyOverride !== null) {
-            return this._currencyOverride;
+        // Currency symbol follows the server Currency, not the UI language
+        if (key === 'CLIENT_CURRENENCY_SYMBOL') {
+            return this.getCurrencyDisplaySymbol();
         }
         let text = this._currentData[key] ?? this._fallbackData[key] ?? `[${key}]`;
         if (params) {
@@ -449,6 +505,8 @@ export class LocalizationManager {
         if (lower === 'sg' || lower.startsWith('sg')) return 'sg';
         if (lower === 'ms' || lower.startsWith('ms')) return 'ms';
         if (lower === 'vi' || lower.startsWith('vi')) return 'vi';
+        const platform = PLATFORM_LANGUAGES.find((code) => code === lower);
+        if (platform) return platform;
         if (lower.startsWith('en')) return 'en';
         return 'en';
     }

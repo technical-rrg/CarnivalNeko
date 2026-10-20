@@ -53,9 +53,8 @@
  *       └── BtnMaxBet → maxBetButton
  */
 
-import { _decorator, Component, Node, Label, Button, tween, Vec3, EventTouch } from 'cc';
+import { _decorator, Component, Node, Label, Button, tween, Vec3 } from 'cc';
 import { EventBus } from '../core/EventBus';
-import { isSpinButtonTouch } from '../core/UserPopupRule';
 import { GameEvents } from '../core/GameEvents';
 import { BetManager } from '../manager/BetManager';
 import { BuyBonusManager } from '../manager/BuyBonusManager';
@@ -185,8 +184,7 @@ export class BetSettingsPopup extends Component {
         if (this.popupNode) this.popupNode.active = false;
         if (this.fillOverlay) {
             this.fillOverlay.active = false;
-            // User instruction: a spin never closes a popup the user opened — Spin is not an outside touch.
-            this.fillOverlay.on(Node.EventType.TOUCH_END, (e: EventTouch) => { if (!isSpinButtonTouch(e)) this._close(); }, this);
+            this.fillOverlay.on(Node.EventType.TOUCH_END, this._close, this);
         }
 
         // Button handlers

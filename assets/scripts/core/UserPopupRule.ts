@@ -1,12 +1,13 @@
 /**
- * User instruction (all games): a spin — normal or auto — never closes a popup the
- * user opened (mini menu, currency bubble, settings, pay table, …). Those close only
- * by their own close button or a touch on empty space, as before.
+ * User popups vs. spin — user instruction for all games (PLATFORM_SPEC D8, 2026-10-16).
  *
- * 1. Spin-family buttons are not an "outside touch": pressing Spin / Stop / auto-stop
- *    while such a popup is open keeps it open and the spin goes through.
- *    UIController registers its spin button; popups ask isSpinButtonTouch().
- * 2. Popups the game opens by itself (free spin, jackpot, …) emit POPUP_OPENED with
+ * 1. Spin pressed while a user popup is open:
+ *    - mini menu, currency bubble: stay open, the spin goes through. Their outside-touch
+ *      checks ask isSpinButtonTouch() (UIController registers its spin button).
+ *    - bet / auto-setting / settings: the touch lands on their overlay — it is an outside
+ *      touch, so they close and no spin starts (original overlay behaviour, no exception).
+ * 2. Auto spin moving to the next round never closes a user popup.
+ * 3. Popups the game opens by itself (free spin, jackpot, …) emit POPUP_OPENED with
  *    POPUP_SOURCE_GAME, so user popups that close "when another popup opens" skip them.
  */
 

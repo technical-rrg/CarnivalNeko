@@ -47,11 +47,10 @@
  *   - Localization keys: setting_title, setting_volume, setting_music, setting_sound, setting_intro, setting_broadcast
  */
 
-import { _decorator, Component, Node, Button, Slider, Label, tween, Vec3, BlockInputEvents, UITransform, EventTouch } from 'cc';
+import { _decorator, Component, Node, Button, Slider, Label, tween, Vec3, BlockInputEvents, UITransform } from 'cc';
 import { SoundManager } from '../manager/SoundManager';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
 import { EventBus } from '../core/EventBus';
-import { isSpinButtonTouch } from '../core/UserPopupRule';
 import { GameEvents } from '../core/GameEvents';
 import { L } from '../core/LocalizationManager';
 import { Log } from '../core/Logger';
@@ -178,8 +177,7 @@ export class SettingPopup extends Component {
         if (this.popupNode) this.popupNode.active = false;
         if (this.fillOverlay) {
             this.fillOverlay.active = false;
-            // User instruction: a spin never closes a popup the user opened — Spin is not an outside touch.
-            this.fillOverlay.on(Node.EventType.TOUCH_END, (e: EventTouch) => { if (!isSpinButtonTouch(e)) this._close(); }, this);
+            this.fillOverlay.on(Node.EventType.TOUCH_END, this._close, this);
         }
         // Chặn touch xuyên qua xuống các node bên dưới khi popup đang hiển thị
         if (!this.node.getComponent(BlockInputEvents)) {

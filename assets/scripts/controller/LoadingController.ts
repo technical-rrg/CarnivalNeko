@@ -30,6 +30,7 @@ import { GuideShellLoader } from '../core/GuideShellLoader';
 import { GameEntryController } from './GameEntryController';
 import { ResponsiveController } from './ResponsiveController';
 import { syncRenderWindowSize } from '../core/RenderWindowSync';
+import { installMaintenanceView } from './MaintenanceView';
 
 const { ccclass, property } = _decorator;
 
@@ -198,6 +199,7 @@ export class LoadingController extends Component {
     // ─── LIFECYCLE ───
 
     onLoad(): void {
+        installMaintenanceView(); // PLATFORM_SPEC D12 — before login (reload during maintenance)
         // Khóa 60 FPS sớm nhất (trước khi vào game scene).
         game.frameRate = 60;
 

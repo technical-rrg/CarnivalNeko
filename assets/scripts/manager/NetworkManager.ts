@@ -115,6 +115,7 @@ import {
 import { ResponseLogger } from '../core/ResponseLogger';
 import { PopUpMessage, PopupCase } from '../core/PopUpMessage';
 import { Log } from '../core/Logger';
+import { maintenance, ERR_SERVER_MAINTENANCE } from '../core/Maintenance';
 import { LocalizationManager } from '../core/LocalizationManager';
 import { isFirstBroadcastRequest, pickLatestBroadcast } from '../core/BroadcastSeq';
 import { applyLinkLanguage, setLinkLanguageHint } from '../core/LinkLanguage';
@@ -1158,7 +1159,7 @@ class RealNetworkAdapter implements INetworkAdapter {
 
         // Parse response
         // Response format: [API, PACKET_TYPE, MIDX, SKEY, SEQ, CODE, MSG, CONT_YN, EncData]
-        this._checkResponseCode(responsePacket);
+        this._checkResponseCode(responsePacket, 'login');
 
         // Find the encrypted data field (longest string in packet)
         let encryptedField: string = '';
@@ -1229,6 +1230,8 @@ class RealNetworkAdapter implements INetworkAdapter {
             },
         });
 
+        // PLATFORM_SPEC D12 — SMM in this response (only heartbeat answers without SMM release)
+        if (session.smm) maintenance.process(session.smm);
         if (session.smm) {
             EventBus.instance.emit(GameEvents.SERVER_MAINTENANCE, session.smm);
         }
@@ -1333,6 +1336,8 @@ class RealNetworkAdapter implements INetworkAdapter {
             ps: parsedPS,
         });
 
+        // PLATFORM_SPEC D12 — SMM in this response (only heartbeat answers without SMM release)
+        if (enterResp.smm) maintenance.process(enterResp.smm);
         if (enterResp.smm) {
             EventBus.instance.emit(GameEvents.SERVER_MAINTENANCE, enterResp.smm);
         }
@@ -1374,7 +1379,7 @@ class RealNetworkAdapter implements INetworkAdapter {
 
         // SEQ trước check CODE (giống Pick/SelectFeature) — lỗi vẫn đồng bộ SEQ
         data.updateSeq(responsePacket[4]);
-        this._checkResponseCode(responsePacket);
+        this._checkResponseCode(responsePacket, 'play');
 
         let decrypted: string;
         let raw: ServerSpinResponse;
@@ -1392,6 +1397,8 @@ class RealNetworkAdapter implements INetworkAdapter {
         }
 
         // Check SMM (PascalCase per doc)
+        // PLATFORM_SPEC D12 — SMM in this response (only heartbeat answers without SMM release)
+        if (raw.SMM) maintenance.process(raw.SMM);
         if (raw.SMM) {
             EventBus.instance.emit(GameEvents.SERVER_MAINTENANCE, raw.SMM);
         }
@@ -1452,7 +1459,7 @@ class RealNetworkAdapter implements INetworkAdapter {
             packet
         );
         data.updateSeq(responsePacket[4]);
-        this._checkResponseCode(responsePacket);
+        this._checkResponseCode(responsePacket, 'play');
         const decrypted = this._decryptAES256(responsePacket[8], session.aky);
         const outer: any = JSON.parse(decrypted);
         // Server can return either {RemainCash, Res: GFPickResponse}
@@ -1527,7 +1534,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         );
 
         data.updateSeq(responsePacket[4]);
-        this._checkResponseCode(responsePacket);
+        this._checkResponseCode(responsePacket, 'play');
 
         const decrypted = this._decryptAES256(responsePacket[8], session.aky);
         const raw: ServerClaimResponse = JSON.parse(decrypted);
@@ -1662,6 +1669,7 @@ class RealNetworkAdapter implements INetworkAdapter {
         const _jackpotCode = responsePacket[5] as number;
         if (_jackpotCode !== 0) {
             const _jackpotMsg = (responsePacket[6] as string) || '';
+            if (_jackpotCode === ERR_SERVER_MAINTENANCE) maintenance.onRequestRejected();
             Log.w(`[Jackpot Poll] Server error code=${_jackpotCode} msg="${_jackpotMsg}" — skipping poll`);
             throw new ServerApiError(`Server error [${_jackpotCode}]: ${_jackpotMsg}`, _jackpotCode, false);
         }
@@ -1714,6 +1722,8 @@ class RealNetworkAdapter implements INetworkAdapter {
         // CashRace đi kèm response Jackpot poll (field CR) — không log mỗi lần poll.
         EventBus.instance.emit(GameEvents.CASH_RACE_CR_UPDATED, raw.CR ?? null);
 
+        // PLATFORM_SPEC D12 — SMM in this response (only heartbeat answers without SMM release)
+        if (raw.SMM) maintenance.process(raw.SMM);
         if (raw.SMM) {
             EventBus.instance.emit(GameEvents.SERVER_MAINTENANCE, raw.SMM);
         }
@@ -1995,14 +2005,23 @@ class RealNetworkAdapter implements INetworkAdapter {
             // SHOW_SYSTEM_POPUP (DISCONNECTED) trước khi throw, gây popup giả khi poll thất bại.
             // Xử lý lỗi thủ công: chỉ throw, không emit popup.
             const _hbCode = responsePacket[5] as number;
+            const _hbMsg = (responsePacket[6] as string) || '';
+            // PLATFORM_SPEC D12 (BR RequestHeartBeat): decrypt whenever there is data — a 10015 answer can carry
+            // SMM too. Decrypted → that SMM decides (none = release); 10015 with nothing to decrypt → server MSG
+            // popup; a decrypt failure changes nothing.
+            let raw: any = null;
+            try {
+                if (responsePacket[8]) raw = JSON.parse(this._decryptAES256(responsePacket[8], session.aky));
+            } catch (decryptErr) {
+                Log.w('[HeartBeat] decrypt failed:', decryptErr);
+            }
+            if (raw) maintenance.process(raw.SMM ? this._parseSMM(raw.SMM) : null);
+            else if (_hbCode === ERR_SERVER_MAINTENANCE) maintenance.onHeartbeatRejected(_hbMsg);
             if (_hbCode !== 0) {
-                const _hbMsg = (responsePacket[6] as string) || '';
                 Log.w(`[HeartBeat] Server error code=${_hbCode} msg="${_hbMsg}"`);
                 throw new ServerApiError(`Server error [${_hbCode}]: ${_hbMsg}`, _hbCode, false);
             }
-            const decrypted = this._decryptAES256(responsePacket[8], session.aky);
-            const raw = JSON.parse(decrypted);
-            if (raw.SMM) {
+            if (raw?.SMM) {
                 EventBus.instance.emit(GameEvents.SERVER_MAINTENANCE, this._parseSMM(raw.SMM));
             }
         } catch (err) {
@@ -2353,7 +2372,7 @@ class RealNetworkAdapter implements INetworkAdapter {
     /** Check response CODE field — 0 = success.
      * Nếu code != 0: emit SHOW_SYSTEM_POPUP ngay tại đây và throw ServerApiError.
      */
-    private _checkResponseCode(packet: any[]): void {
+    private _checkResponseCode(packet: any[], phase: 'login' | 'play' | 'game' = 'game'): void {
         const code = packet[5] as number;
         const msg = (packet[6] as string) || '';
         if (code !== 0) {
@@ -2361,6 +2380,16 @@ class RealNetworkAdapter implements INetworkAdapter {
             if (code === 30034) {
                 Log.w(`[Network] 30034 ERR_NO_NEED_CLAIM msg="${msg}" — skip DISCONNECTED`);
                 throw new ServerApiError(`Server error [30034]: ${msg}`, 30034, true);
+            }
+            // PLATFORM_SPEC D12 (BR CheckResponsePacket / TryProcessLoginMaintenance): no disconnect popup.
+            // Login refused → the SMM in its Data, else the MSG text; after login → stop auto spin and
+            // send one heartbeat now, its SMM drives the display. A refused play request (spin, pick, claim,
+            // feature choice) leaves the game mid-action — it reloads once nothing blocks (core/Maintenance.ts).
+            if (code === ERR_SERVER_MAINTENANCE) {
+                Log.w(`[Network] ${code} ERR_SERVER_MAINTENANCE (${phase}) msg="${msg}"`);
+                if (phase === 'login') maintenance.onLoginRejected(this._loginMaintenanceSMM(packet), msg);
+                else maintenance.onRequestRejected(phase === 'play');
+                throw new ServerApiError(`Server error [${code}]: ${msg}`, code, true);
             }
             const popupCase = PopUpMessage.popupCaseFromServerCode(code);
             // Log toàn bộ packet để backend biết chính xác server trả về gì
@@ -3859,6 +3888,20 @@ class RealNetworkAdapter implements INetworkAdapter {
         return MAP[lang] ?? 0;
     }
 
+    /** PLATFORM_SPEC D12: SMM carried by a login refused with 10015 (fixed-key AES-128, or plain JSON). */
+    private _loginMaintenanceSMM(packet: any[]): ServerMaintenanceMessage | null {
+        const data = packet?.[8];
+        if (typeof data !== 'string' || !data) return null;
+        try {
+            const json = data.trimStart().startsWith('{') ? data : this._decryptAES128(data);
+            const raw = JSON.parse(json);
+            return raw?.SMM ? this._parseSMM(raw.SMM) : null;
+        } catch (e) {
+            Log.w('[Network] login maintenance SMM unreadable:', e);
+            return null;
+        }
+    }
+
     /** Parse SMM (Server Maintenance Message) */
     private _parseSMM(raw: any): ServerMaintenanceMessage {
         return {
@@ -4039,7 +4082,12 @@ export class NetworkManager {
         this.stopHeartBeat();
         if (!USE_REAL_API) return;
         this._ensureLogoutOnUnload();
+        // PLATFORM_SPEC D12: every 3 s while maintenance is announced, otherwise the normal interval.
+        let waitedMs = 0;
         this._heartBeatTimer = setInterval(async () => {
+            waitedMs += 1000;
+            if (waitedMs < maintenance.heartbeatIntervalMs(ServerConfig.HEARTBEAT_INTERVAL)) return;
+            waitedMs = 0;
             try {
                 await this._adapter.sendHeartBeat();
             } catch (err) {
@@ -4050,7 +4098,13 @@ export class NetworkManager {
                 }
                 Log.w('[HeartBeat] Error:', err);
             }
-        }, ServerConfig.HEARTBEAT_INTERVAL);
+        }, 1000);
+    }
+
+    /** One heartbeat now (PLATFORM_SPEC D12: a request refused with 10015 fetches the current SMM). */
+    heartBeatNow(): void {
+        if (!USE_REAL_API) return;
+        this._adapter.sendHeartBeat().catch((err) => Log.w('[HeartBeat] Error:', err));
     }
 
     stopHeartBeat(): void {
@@ -4086,4 +4140,13 @@ export class NetworkManager {
     }
 }
 export { USE_REAL_API };
+
+// PLATFORM_SPEC D12: heartbeat on demand; Shutdown / server MSG stops heartbeat and polling (no logout, no popup).
+maintenance.setHandlers({
+    requestHeartbeat: () => NetworkManager.instance.heartBeatNow(),
+    disconnect: () => {
+        NetworkManager.instance.stopHeartBeat();
+        NetworkManager.instance.stopJackpotPolling();
+    },
+});
 

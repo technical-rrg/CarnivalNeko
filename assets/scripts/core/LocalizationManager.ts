@@ -108,8 +108,15 @@ export const CURRENCY_SYMBOL_MAP: Record<string, string> = {
 const DEFAULT_CURRENCY_SYMBOL = '$';
 /** Right-to-left letters (Arabic/Hebrew) — e.g. TND "د.ت". */
 const RTL_CHARS = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
-/** U+200E LEFT-TO-RIGHT MARK — keeps an RTL symbol on the left of the number. */
-const LEFT_TO_RIGHT_MARK = '‎';
+/**
+ * RTL symbols are drawn in their stored order, left to right — as the original Unity games
+ * (Ranch Rush) show TND: DAL · dot · TEH · amount ("د.ت100"). The canvas text renderer
+ * would otherwise reorder them to "ت.د". LEFT-TO-RIGHT OVERRIDE … POP DIRECTIONAL
+ * FORMATTING keeps the stored order; LEFT-TO-RIGHT MARK keeps the symbol left of the number.
+ */
+const LEFT_TO_RIGHT_OVERRIDE = '\u202D';
+const POP_DIRECTIONAL_FORMATTING = '\u202C';
+const LEFT_TO_RIGHT_MARK = '\u200E';
 
 // Re-export for backward compatibility
 export type { LocaleData };
@@ -231,12 +238,14 @@ export class LocalizationManager {
     /**
      * Symbol placed before amounts — what L('CLIENT_CURRENENCY_SYMBOL') returns.
      * Platform rule (BR a6ff834f3): server Currency decides it, never the UI language;
-     * unknown / before login → '$'. RTL symbols get U+200E so they stay left of the number.
+     * unknown / before login → '$'. RTL symbols keep their stored order, left of the number.
      * Truncated units (IDK/VNK/MY1) show the code in the symbol slot, so a space follows.
      */
     getCurrencyDisplaySymbol(): string {
         const symbol = this._currencyOverride ?? DEFAULT_CURRENCY_SYMBOL;
-        const pinned = RTL_CHARS.test(symbol) ? symbol + LEFT_TO_RIGHT_MARK : symbol;
+        const pinned = RTL_CHARS.test(symbol)
+            ? LEFT_TO_RIGHT_OVERRIDE + symbol + POP_DIRECTIONAL_FORMATTING + LEFT_TO_RIGHT_MARK
+            : symbol;
         return this._currencyCode !== null && TRUNCATED_UNIT_SUFFIX[this._currencyCode] !== undefined
             ? `${pinned} `
             : pinned;

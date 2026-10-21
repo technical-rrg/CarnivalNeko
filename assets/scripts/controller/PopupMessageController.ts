@@ -51,7 +51,7 @@
  *   });
  */
 
-import { _decorator, Component, Node, Label, Button, tween, Tween, Vec3, BlockInputEvents, RichText, director } from 'cc';
+import { _decorator, Component, Node, Label, Button, tween, Tween, Vec3, BlockInputEvents, RichText, director, Canvas, Widget, UITransform } from 'cc';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { L } from '../core/LocalizationManager';
@@ -119,6 +119,12 @@ export class PopupMessageController extends Component {
     private _isOpen: boolean = false;
     private _onConfirmCallback: (() => void) | null = null;
     private _onCancelCallback: (() => void) | null = null;
+    /** Maintenance popup without buttons is up — it stays and nothing replaces it. */
+    private _locked: boolean = false;
+    /** Where the popup lived before a locked popup raised it to the top of the Canvas. */
+    private _home: { parent: Node; pos: Vec3 } | null = null;
+    private _addedFillWidget: Widget | null = null;
+    private _fillSize: { w: number; h: number } | null = null;
 
     // ─── LIFECYCLE ───
 
@@ -169,10 +175,15 @@ export class PopupMessageController extends Component {
      * Thường dùng qua EventBus với SHOW_SYSTEM_POPUP event.
      */
     show(payload: SystemPopupPayload): void {
-        if (this._isOpen) return;
+        // Maintenance popups (D12) are locked: nothing replaces them but a newer maintenance text
+        // (Block → Shutdown, minutes left), which updates the open popup without re-opening it.
+        if (this._locked && !payload.locked) return;
+        if (this._isOpen && !payload.locked) return;
+        const refresh = this._isOpen && this._locked;
 
         const { popupCase, onConfirm, onCancel } = payload;
-        const data = PopUpMessage.get(popupCase);
+        const base = PopUpMessage.get(popupCase);
+        const data = { title: payload.title ?? base.title, message: payload.message ?? base.message };
         const isConfirm = PopUpMessage.isConfirmType(popupCase);
 
         // RELOGIN / EXPIRED_LINK / DISCONNECTED: sau khi OK phải reload loading scene để restart game
@@ -192,16 +203,22 @@ export class PopupMessageController extends Component {
             this.titleLabel.node.active = data.title.length > 0;
         }
         if (this.messageLabel) {
-            this.messageLabel.string = data.message;
+            // The popup prefab has no title label: a server title (maintenance, D12) goes bold on top.
+            this.messageLabel.string = (!this.titleLabel && payload.title)
+                ? `<b>${payload.title}</b>\n${data.message}`
+                : data.message;
         }
 
         // Toggle container theo loại popup
-        if (this.okContainer) this.okContainer.active = !isConfirm;
-        if (this.confirmContainer) this.confirmContainer.active = isConfirm;
+        if (this.okContainer) this.okContainer.active = !isConfirm && !payload.locked;
+        if (this.confirmContainer) this.confirmContainer.active = isConfirm && !payload.locked;
+        if (payload.locked) this._locked = true;
+        if (this._locked) this._raiseOverScreens();
 
         // Lưu callbacks
         this._onConfirmCallback = resolvedConfirm ?? null;
         this._onCancelCallback = onCancel ?? null;
+        if (refresh) return;
 
         // Hiện overlay + animate panel
         this._isOpen = true;
@@ -215,6 +232,81 @@ export class PopupMessageController extends Component {
                 .to(this.tweenInDuration, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
                 .start();
         }
+    }
+
+    /** Maintenance (D12): close the locked popup — maintenance cancelled during Block. */
+    static closeLocked(): void {
+        const c = PopupMessageController._instance;
+        if (!c || !c._locked) return;
+        c._locked = false;
+        c._close(() => c._returnHome());
+    }
+
+    /** Maintenance (D12): is a locked popup on screen? */
+    static isLockedOpen(): boolean {
+        const c = PopupMessageController._instance;
+        return !!(c && c._locked && c._isOpen);
+    }
+
+    lateUpdate(): void {
+        // Loading and guide raise themselves (bringToFront) — a locked popup stays above them.
+        if (this._locked && this._isOpen) this._raiseOverScreens();
+    }
+
+    /**
+     * Maintenance (D12): the popup layer (Base/GameRoot/PopUp) is hidden under the guide during the
+     * guide-first boot (GameRoot at opacity 0, input paused). While a locked popup is up it sits on top
+     * of the scene Canvas — above loading and guide — and takes input.
+     */
+    private _raiseOverScreens(): void {
+        const scene = director.getScene();
+        const canvas = scene?.getChildByName('Canvas') ?? scene?.getComponentInChildren(Canvas)?.node ?? null;
+        if (!canvas || !this.node.isValid) return;
+        if (this.node.parent !== canvas) {
+            if (!this._home && this.node.parent) this._home = { parent: this.node.parent, pos: this.node.position.clone() };
+            this.node.setParent(canvas, false);
+            this.node.setPosition(0, 0, 0);
+            this.node.resumeSystemEvents(true);
+            this._stretchFill(true);
+            for (const w of this.node.getComponentsInChildren(Widget)) w.updateAlignment();
+        }
+        const last = canvas.children.length - 1;
+        if (this.node.getSiblingIndex() !== last) this.node.setSiblingIndex(last);
+    }
+
+    /**
+     * CN / FoR / SL's Fill is a fixed 1920×1080 without Widget — in portrait the top and bottom stay open
+     * and clicks reach the guide below. While a locked popup is up, stretch it over the whole screen.
+     */
+    private _stretchFill(on: boolean): void {
+        const fill = this.overlayNode ?? this.node.getChildByName('Fill');
+        if (!fill?.isValid) return;
+        if (on && !fill.getComponent(Widget)) {
+            const ut = fill.getComponent(UITransform);
+            this._fillSize = ut ? { w: ut.width, h: ut.height } : null;
+            const w = fill.addComponent(Widget);
+            w.isAlignTop = w.isAlignBottom = w.isAlignLeft = w.isAlignRight = true;
+            w.top = w.bottom = w.left = w.right = 0;
+            w.alignMode = Widget.AlignMode.ALWAYS;
+            this._addedFillWidget = w;
+        } else if (!on && this._addedFillWidget) {
+            this._addedFillWidget.destroy();
+            this._addedFillWidget = null;
+            if (this._fillSize) fill.getComponent(UITransform)?.setContentSize(this._fillSize.w, this._fillSize.h);
+        }
+    }
+
+    /** Back to the popup layer once the Block popup has closed (input paused again if the layer is). */
+    private _returnHome(): void {
+        const home = this._home;
+        this._home = null;
+        if (!home || !home.parent.isValid || !this.node.isValid || this.node.parent === home.parent) return;
+        this.node.setParent(home.parent, false);
+        this.node.setPosition(home.pos);
+        this._stretchFill(false);
+        const layer = home.parent as unknown as { eventProcessor?: { isEnabled?: boolean } };
+        if (layer.eventProcessor?.isEnabled === false) this.node.pauseSystemEvents(true);
+        for (const w of this.node.getComponentsInChildren(Widget)) w.updateAlignment();
     }
 
     // ─── EVENT HANDLERS ───
@@ -251,7 +343,7 @@ export class PopupMessageController extends Component {
     // ─── INTERNAL ───
 
     private _close(afterClose?: () => void): void {
-        if (!this._isOpen) return;
+        if (!this._isOpen || this._locked) return;
         this._isOpen = false;
         this._onConfirmCallback = null;
         this._onCancelCallback = null;

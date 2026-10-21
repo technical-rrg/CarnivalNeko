@@ -45,6 +45,7 @@ import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { NwCashRaceSimpleForUser } from '../data/SlotTypes';
 import { Log } from '../core/Logger';
+import { maintenance } from '../core/Maintenance';
 import { USE_REAL_API } from '../data/ServerConfig';
 import { NetworkManager } from '../manager/NetworkManager';
 
@@ -182,6 +183,7 @@ export class CashRaceWidget extends Component {
         if (!this._raceInfo) return;
 
         // ── Polling data định kỳ ──
+        if (maintenance.locked) return; // PLATFORM_SPEC D12: maintenance Shutdown — no more requests
         this._pollTimer += dt;
         if (this._pollTimer >= this.pollInterval) {
             this._pollTimer = 0;

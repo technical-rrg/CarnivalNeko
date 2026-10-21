@@ -7,6 +7,11 @@ export interface SystemPopupPayload {
     onConfirm?: () => void;
     /** Callback khi player nhấn Cancel (chỉ cho popup loại confirm) */
     onCancel?: () => void;
+    /** Server-provided title / body (maintenance — PLATFORM_SPEC D12); override the PopupCase text. */
+    title?: string;
+    message?: string;
+    /** No button and no way to close it; later popups are ignored (maintenance Shutdown / 10015). */
+    locked?: boolean;
 }
 
 // ─── Các trường hợp hiển thị popup trong game ────────────────────────────────
@@ -28,6 +33,9 @@ export enum PopupCase {
 
     /** ParSheet Symbol ID không khớp — mất kết nối */
     WRONG_PARSHEET = 'WRONG_PARSHEET',
+
+    /** Server maintenance (PLATFORM_SPEC D12) — text comes from the server via payload title / message */
+    MAINTENANCE = 'MAINTENANCE',
 }
 
 export interface PopupData {
@@ -69,6 +77,8 @@ export class PopUpMessage {
                     title: L('UI_POPUP_SYSTEM_TEXT4_TITLE'),
                     message: L('UI_POPUP_SYSTEM_TEXT4_MESSAGE'),
                 };
+            case PopupCase.MAINTENANCE:
+                return { title: '', message: '' };
         }
     }
 

@@ -878,6 +878,10 @@ export class GameManager extends Component {
         // PLATFORM_SPEC D12 ②③: no spin during maintenance Block / Shutdown (the server refuses it too).
         if (!maintenance.isNetworkActionValid()) {
             this._logSpinState('SPIN_REQUEST ignored — server maintenance');
+            // A feature spin the game starts by itself (free spin / respin / Matsuri) would leave the feature
+            // stuck: remembered, the page reloads once maintenance no longer blocks. A spin the
+            // player pressed is only refused.
+            if (this._isFreeSpin() || this._isTopUp() || this._isMatsuri()) maintenance.onFeatureSpinBlocked();
             return;
         }
         // Feature spin bị chặn = treo game không log → luôn báo rõ lý do.

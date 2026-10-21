@@ -30,7 +30,8 @@
  * Cocos games only: the reels start before the spin answer, and the original left a failed spin / pick /
  * claim to the disconnect popup. Without that popup a refused play request would leave the game
  * mid-spin, so once nothing blocks any more (no SMM, Notice, Canceled, Block released) the page
- * reloads; in Block it waits, after Shutdown nothing.
+ * reloads; in Block it waits, after Shutdown nothing. The same for a feature spin the game starts by
+ * itself and Block refuses locally (PLATFORM_SPEC D12 H); a spin the player pressed is only refused.
  *
  * No engine imports: UI and network side effects are injected as handlers
  * (controller/MaintenanceView.ts, NetworkManager).
@@ -246,6 +247,16 @@ export class MaintenanceState {
         if (play) this._interrupted = true;
         this._handlers.stopAutoSpin();
         this._handlers.requestHeartbeat();
+    }
+
+    /**
+     * A feature spin the game starts by itself (free spin, respin, Matsuri) was refused locally in Block:
+     * the feature is stuck, so the page reloads once nothing blocks. A spin the player pressed is only
+     * refused and not remembered.
+     */
+    onFeatureSpinBlocked(): void {
+        if (this._locked) return;
+        this._interrupted = true;
     }
 
     /** Heartbeat answered 10015 with nothing to decrypt (BR RequestHeartBeat). */

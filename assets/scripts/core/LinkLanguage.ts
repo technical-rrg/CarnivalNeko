@@ -36,7 +36,6 @@ export function applyLinkLanguage(): void {
         const lm = LocalizationManager.instance;
         const code = lm.normalizeLanguageCode(linkLanguage);
         if (code === lm.currentLanguage) return;
-        Log.d(`[i18n] Link Lang="${linkLanguage}" → language: ${code}`);
         lm.setLanguage(code);
 
         const cdnBase = ServerConfig.CDN_BASE;

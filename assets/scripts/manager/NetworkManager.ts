@@ -1703,7 +1703,6 @@ class RealNetworkAdapter implements INetworkAdapter {
             ? pickLatestBroadcast(raw.WinMsgs)
             : null;
         if (firstLatest) {
-            Log.d(`[Broadcast] First poll: ${raw.WinMsgs.length} msg(s) → newest Seq=${firstLatest.maxSeq} only`);
             EventBus.instance.emit(GameEvents.BROADCAST_WIN_MESSAGE, firstLatest.latest);
             data.lastWinMsgId = firstLatest.maxSeq;
         } else if (raw.WinMsgs && raw.WinMsgs.length > 0) {

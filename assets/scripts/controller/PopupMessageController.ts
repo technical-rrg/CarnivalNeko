@@ -125,6 +125,8 @@ export class PopupMessageController extends Component {
     private _home: { parent: Node; pos: Vec3 } | null = null;
     private _addedFillWidget: Widget | null = null;
     private _fillSize: { w: number; h: number } | null = null;
+    /** Prefab text size of the message — every popup starts from it (see _fitMessage). */
+    private _messageFont: { size: number; line: number } | null = null;
 
     // ─── LIFECYCLE ───
 
@@ -218,7 +220,7 @@ export class PopupMessageController extends Component {
         // Lưu callbacks
         this._onConfirmCallback = resolvedConfirm ?? null;
         this._onCancelCallback = onCancel ?? null;
-        if (refresh) return;
+        if (refresh) { this._fitMessage(); return; }
 
         // Hiện overlay + animate panel
         this._isOpen = true;
@@ -228,10 +230,71 @@ export class PopupMessageController extends Component {
             Tween.stopAllByTarget(this.popupNode);
             this.popupNode.active = true;
             this.popupNode.setScale(new Vec3(0, 0, 1));
+            this._fitMessage();
             tween(this.popupNode)
                 .to(this.tweenInDuration, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
                 .start();
         }
+    }
+
+    /**
+     * Keep the message inside the panel (PLATFORM_SPEC D12 ⑥). The RichText only wraps at its width
+     * and grows in height, so a long server text (maintenance title + lines) ran over the frame:
+     * shrink the text until it fits the inside of the panel. Called once the popup is active — the
+     * RichText lays itself out only when enabled.
+     */
+    private _fitMessage(): void {
+        const rt = this.messageLabel;
+        const panel = rt?.node.parent?.getComponent(UITransform);
+        const box = rt?.node.getComponent(UITransform);
+        if (!rt || !panel || !box || !rt.enabledInHierarchy) return;
+        if (!this._messageFont) this._messageFont = { size: rt.fontSize, line: rt.lineHeight };
+        const { size, line } = this._messageFont;
+        const maxHeight = panel.height * 0.68;   // inside the frame decoration
+        const apply = (s: number): void => {
+            rt.fontSize = s;
+            rt.lineHeight = Math.round(s * line / size);
+        };
+        let fit = size;
+        try {
+            for (let s = size; ; s -= 2) {
+                apply(s);
+                fit = s;
+                if (box.height <= maxHeight || s <= 20) break;
+            }
+            // RichText wraps by estimate and sometimes cuts a word over two lines ("reconne / ct"):
+            // take a slightly smaller size that wraps between words, if there is one.
+            for (let s = fit; s >= Math.max(20, fit - 6); s -= 2) {
+                apply(s);
+                if (!this._wordCut(rt)) return;
+            }
+            apply(fit);
+        } catch (_e) {
+            apply(fit);   // never keep the popup from opening
+        }
+    }
+
+    /** A word of the message is split over two lines: two lines join in the text without a space between. */
+    private _wordCut(rt: RichText): boolean {
+        // Plain arrays — the build turns a spread Map into something else (it threw there).
+        const ys: number[] = [];
+        const rows: { [y: number]: { x: number; s: string }[] } = {};
+        for (const l of rt.node.getComponentsInChildren(Label)) {
+            if (!l.node.active || !l.string) continue;
+            const y = Math.round(l.node.position.y);
+            if (!rows[y]) { rows[y] = []; ys.push(y); }
+            rows[y].push({ x: l.node.position.x, s: l.string });
+        }
+        ys.sort((a, b) => b - a);
+        const lines = ys.map((y) => rows[y].sort((a, b) => a.x - b.x).map((p) => p.s).join(''));
+        const text = rt.string.replace(/<[^>]+>/g, '');
+        const letter = /[A-Za-z0-9À-ɏ]/;
+        for (let i = 0; i + 1 < lines.length; i++) {
+            const a = lines[i], b = lines[i + 1];
+            if (!letter.test(a[a.length - 1]) || !letter.test(b[0])) continue;
+            if (text.includes(a.slice(-12) + b.slice(0, 12))) return true;
+        }
+        return false;
     }
 
     /** Maintenance (D12): close the locked popup — maintenance cancelled during Block. */

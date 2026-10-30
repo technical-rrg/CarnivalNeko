@@ -49,6 +49,7 @@ SPECIAL = [
     (0x20B5, 'NotoSans-Bold.ttf', 'GHS', '₵'),
     (0x20A9, 'NotoSans-Bold.ttf', 'WON', '₩'),
     (0x20AE, 'NotoSans-Bold.ttf', 'USDT', '₮'),
+    (0x20AD, 'NotoSans-Bold.ttf', 'LAK', '₭'),
     (0x062F, 'NotoSansArabic-Bold.ttf', 'TND1', 'د'),
     (0x062A, 'NotoSansArabic-Bold.ttf', 'TND2', 'ت'),
     (0x005A, 'NotoSans-Bold.ttf', 'ZMW', 'Z'),  # "ZK" — CJK/Thai subsets can drop Latin Z

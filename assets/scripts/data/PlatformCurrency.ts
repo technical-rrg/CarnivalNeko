@@ -50,6 +50,9 @@ export const PLATFORM_CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
     IDK: "IDR",
     VNK: "VND",
     USDT: "USD₮",
+    ETB: "Br",
+    LAK: "₭",
+    USDC: "USDC",
 };
 
 /**

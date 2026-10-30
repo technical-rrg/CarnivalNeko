@@ -34,7 +34,7 @@ import { EventBus } from './EventBus';
 import { GameEvents } from './GameEvents';
 import { LocalizationManager, LanguageCode } from './LocalizationManager';
 import { SoundManager } from '../manager/SoundManager';
-import { formatKMBT } from './FormatUtils';
+import { formatKMBT, moneyDecimals } from './FormatUtils';
 import { Log } from './Logger';
 
 const { ccclass, property } = _decorator;
@@ -479,7 +479,7 @@ export class SpriteNumber extends Component {
      */
     private _resolveCurrencyMinDecimals(minDecimals: number, currencyIndex: number): number {
         if (!this.enableLangCurrency || currencyIndex < 0) return minDecimals;
-        return minDecimals > 0 ? minDecimals : 3;
+        return minDecimals > 0 ? minDecimals : moneyDecimals();
     }
 
     /** -1 = no currency sprite. Always -1 while FORCE_HIDE_CURRENCY; otherwise follows enableLangCurrency. */

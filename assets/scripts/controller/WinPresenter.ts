@@ -20,6 +20,7 @@ import { SpinResponse, SlotStageType, WinTier, WaysPayWin } from '../data/SlotTy
 import { AutoSpinManager, SpeedMode } from '../manager/AutoSpinManager';
 import { L } from '../core/LocalizationManager';
 import { Log } from '../core/Logger';
+import { moneyDecimals } from '../core/FormatUtils';
 
 const { ccclass, property } = _decorator;
 
@@ -196,7 +197,7 @@ export class WinPresenter extends Component {
 
         // Cập nhật win label ngay khi có kết quả (chỉ ngoài free spin)
         if (!this._isFreeSpinMode && this.winLabel) {
-            this.winLabel.string = L('win_amount', { amount: response.totalWin.toFixed(3) });
+            this.winLabel.string = L('win_amount', { amount: response.totalWin.toFixed(moneyDecimals()) });
         }
 
         // 1) Hiện TẤT CẢ winning cells cùng 1 lúc

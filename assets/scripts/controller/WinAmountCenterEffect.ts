@@ -29,6 +29,7 @@ import { GameEvents }    from '../core/GameEvents';
 import { WaysPayWin, MatchedLinePay } from '../data/SlotTypes';
 import { GameData }      from '../data/GameData';
 import { Log }           from '../core/Logger';
+import { moneyDecimals } from '../core/FormatUtils';
 
 const { ccclass, property } = _decorator;
 
@@ -137,7 +138,7 @@ export class WinAmountCenterEffect extends Component {
         if (totalWin <= 0) return;
 
         this._shownThisSpin = true;
-        this.amountLabel.setData(totalWin, -1, 3);
+        this.amountLabel.setData(totalWin, -1, moneyDecimals());
         this._playEffect();
     }
 

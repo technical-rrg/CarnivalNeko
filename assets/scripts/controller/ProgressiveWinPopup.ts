@@ -56,7 +56,7 @@ import { GameData } from '../data/GameData';
 import { BetManager } from '../manager/BetManager';
 import { SoundManager } from '../manager/SoundManager';
 import { SpriteNumber } from '../core/SpriteNumber';
-import { naturalCountUpValue } from '../core/FormatUtils';
+import { naturalCountUpValue, moneyDecimals, truncateMoney } from '../core/FormatUtils';
 import { Log } from '../core/Logger';
 
 const { ccclass, property } = _decorator;
@@ -550,7 +550,7 @@ export class ProgressiveWinPopup extends Component {
         let soundStarted = false;
 
         // Lock width with 3 decimal capacity so fractional part can scroll during count-up
-        this.amountDisplay.lockWidth(to, this.currencyIndex, 3);
+        this.amountDisplay.lockWidth(to, this.currencyIndex, moneyDecimals());
 
         const isInteger = (v: number) => Number.isInteger(v) || Math.abs(v - Math.round(v)) < 0.0005;
 
@@ -590,8 +590,8 @@ export class ProgressiveWinPopup extends Component {
             const segDuration = Math.max(this._getTierDuration(segIndex), 0.0001);
             const localT = Math.min(Math.max((elapsed - segStartTime) / segDuration, 0), 1);
             // Natural count-up: tránh pattern đều (11.111→22.222) khi đích là số tròn
-            const cur = naturalCountUpValue(seg.startAmount, seg.endAmount, localT, 3);
-            this.amountDisplay!.setData(cur, this.currencyIndex, 3);
+            const cur = naturalCountUpValue(seg.startAmount, seg.endAmount, localT, moneyDecimals());
+            this.amountDisplay!.setData(cur, this.currencyIndex, moneyDecimals());
 
             // Finish when time is up OR amount already reached target.
             // Zero-range trailing segments (finalAmount == tier threshold) reach `to` early;
@@ -611,8 +611,8 @@ export class ProgressiveWinPopup extends Component {
                 if (isInteger(to)) {
                     this.amountDisplay!.setData(Math.floor(to), this.currencyIndex, 0);
                 } else {
-                    const toTrunc = Math.floor(to * 1000) / 1000;
-                    this.amountDisplay!.setData(toTrunc, this.currencyIndex, 3);
+                    const toTrunc = truncateMoney(to);
+                    this.amountDisplay!.setData(toTrunc, this.currencyIndex, moneyDecimals());
                 }
                 this.amountDisplay!.unlockWidth();
                 this._stopCountUp();
@@ -681,8 +681,8 @@ export class ProgressiveWinPopup extends Component {
             if (isInt) {
                 this.amountDisplay?.setData(Math.floor(to), this.currencyIndex, 0);
             } else {
-                const toTrunc = Math.floor(to * 1000) / 1000;
-                this.amountDisplay?.setData(toTrunc, this.currencyIndex, 3);
+                const toTrunc = truncateMoney(to);
+                this.amountDisplay?.setData(toTrunc, this.currencyIndex, moneyDecimals());
             }
             this.amountDisplay?.unlockWidth();
             SoundManager.instance?.stopCoinLoop();

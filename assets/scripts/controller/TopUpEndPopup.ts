@@ -33,7 +33,7 @@ import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { L } from '../core/LocalizationManager';
 import { SpriteNumber } from '../core/SpriteNumber';
-import { naturalCountUpValue } from '../core/FormatUtils';
+import { naturalCountUpValue, moneyDecimals, truncateMoney } from '../core/FormatUtils';
 import { SoundManager } from '../manager/SoundManager';
 import { Log } from '../core/Logger';
 
@@ -308,8 +308,8 @@ export class TopUpEndPopup extends Component {
         this._countUpTarget = totalWin;
 
         // Khoá width theo giá trị đích để layout không nhảy trong khi count-up
-        this.amountLabel.lockWidth(totalWin, 0, 3);
-        this.amountLabel.setData(0, 0, 3);
+        this.amountLabel.lockWidth(totalWin, 0, moneyDecimals());
+        this.amountLabel.setData(0, 0, moneyDecimals());
         this.amountLabel.enableCountSound = true;
         Log.d(`[coinloop][TopUpEndPopup._animateAmountLabel] showCount=${this._showCount} beginCountUp()`);
         this.amountLabel.beginCountUp();
@@ -321,8 +321,8 @@ export class TopUpEndPopup extends Component {
                 easing: 'quadOut',
                 onUpdate: (_target, ratio) => {
                     // Natural count-up: tránh pattern đều khi đích là số tròn
-                    const cur = naturalCountUpValue(0, totalWin, ratio ?? 0, 3);
-                    this.amountLabel?.setData(cur, 0, 3);
+                    const cur = naturalCountUpValue(0, totalWin, ratio ?? 0, moneyDecimals());
+                    this.amountLabel?.setData(cur, 0, moneyDecimals());
                 },
             })
             .call(() => {
@@ -353,7 +353,7 @@ export class TopUpEndPopup extends Component {
             this.amountLabel.setData(Math.floor(this._countUpTarget), 0, 0);
         } else {
             this.amountLabel.unlockWidth();
-            this.amountLabel.setData(Math.floor(this._countUpTarget * 1000) / 1000, 0, 3);
+            this.amountLabel.setData(truncateMoney(this._countUpTarget), 0, moneyDecimals());
         }
         Log.e(`[TopUpEndPopup][AMOUNT_COUNTUP_END] showCount=${this._showCount} final=${this._countUpTarget}`);
     }

@@ -61,7 +61,7 @@ import { BuyBonusManager } from '../manager/BuyBonusManager';
 import { GameData } from '../data/GameData';
 import { SoundManager } from '../manager/SoundManager';
 import { AutoSpinManager } from '../manager/AutoSpinManager';
-import { formatCurrency2 } from '../core/FormatUtils';
+import { formatCurrencyFixed } from '../core/FormatUtils';
 import { L } from '../core/LocalizationManager';
 import { Log } from '../core/Logger';
 
@@ -326,9 +326,9 @@ export class BetSettingsPopup extends Component {
             ? baseTotalBet * bonusRatio
             : baseTotalBet;
 
-        if (this.coinValueLabel) this.coinValueLabel.string = L('CLIENT_CURRENENCY_SYMBOL') + formatCurrency2(coinVal);
+        if (this.coinValueLabel) this.coinValueLabel.string = L('CLIENT_CURRENENCY_SYMBOL') + formatCurrencyFixed(coinVal);
         if (this.betLevelLabel)  this.betLevelLabel.string  = String(betVal);
-        if (this.totalBetLabel)  this.totalBetLabel.string  = L('CLIENT_CURRENENCY_SYMBOL') + formatCurrency2(totalBet);
+        if (this.totalBetLabel)  this.totalBetLabel.string  = L('CLIENT_CURRENENCY_SYMBOL') + formatCurrencyFixed(totalBet);
 
         // Sync _currentTotalBetComboIndex với betIndex/coinIndex hiện tại
         const comboIdx = this._totalBetCombos.findIndex(

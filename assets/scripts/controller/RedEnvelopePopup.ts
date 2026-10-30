@@ -25,7 +25,7 @@ import { EventBus } from '../core/EventBus';
 import { POPUP_SOURCE_GAME } from '../core/UserPopupRule';
 import { GameEvents } from '../core/GameEvents';
 import { L } from '../core/LocalizationManager';
-import { naturalCountUpValue } from '../core/FormatUtils';
+import { naturalCountUpValue, moneyDecimals, truncateMoney } from '../core/FormatUtils';
 import { Log } from '../core/Logger';
 import { SoundManager } from '../manager/SoundManager';
 import { SpriteNumber } from '../core/SpriteNumber';
@@ -253,8 +253,8 @@ export class RedEnvelopePopup extends Component {
         sn.node.active = true;
         this._configureAmountDisplay();
         sn.enableCountSound = true;
-        sn.lockWidth(pay, 0, 3);
-        sn.setData(0, 0, 3);
+        sn.lockWidth(pay, 0, moneyDecimals());
+        sn.setData(0, 0, moneyDecimals());
         sn.beginCountUp();
 
         const progress = { value: 0 };
@@ -262,8 +262,8 @@ export class RedEnvelopePopup extends Component {
             .to(this.countUpDuration, { value: pay }, {
                 easing: 'quadOut',
                 onUpdate: (_target, ratio) => {
-                    const cur = naturalCountUpValue(0, pay, ratio ?? 0, 3);
-                    sn.setData(cur, 0, 3);
+                    const cur = naturalCountUpValue(0, pay, ratio ?? 0, moneyDecimals());
+                    sn.setData(cur, 0, moneyDecimals());
                 },
             })
             .call(() => this._finishCountUp())
@@ -285,7 +285,7 @@ export class RedEnvelopePopup extends Component {
             if (isInt) {
                 sn.setData(Math.floor(pay), 0, 0);
             } else {
-                sn.setData(Math.floor(pay * 1000) / 1000, 0, 3);
+                sn.setData(truncateMoney(pay), 0, moneyDecimals());
             }
         } else {
             SoundManager.instance?.stopCoinLoop();

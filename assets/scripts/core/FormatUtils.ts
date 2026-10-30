@@ -10,9 +10,23 @@ function amountSuffix(): string {
 }
 
 /**
+ * Decimal places of money amounts. This game shows 3; MYR shows 2 (user decision 2026-10-29 — Gold of
+ * Fortune 11394607d DataManager.GetDecimalPlaces). MY1 (sen) stays 3. Every money field uses this.
+ */
+export function moneyDecimals(): number {
+    return LocalizationManager.instance.currencyCode === 'MYR' ? 2 : 3;
+}
+
+/** Cut a money amount to moneyDecimals() places — cut, not rounded, so it never shows more than it is. */
+export function truncateMoney(value: number): number {
+    const scale = 10 ** moneyDecimals();
+    return Math.floor(value * scale + 1e-9) / scale;
+}
+
+/**
  * Truncate (không làm tròn) về đúng `decimals` chữ số thập phân.
  */
-export function truncateDecimals(value: number, decimals: number = 3): number {
+export function truncateDecimals(value: number, decimals: number = moneyDecimals()): number {
     const scale = 10 ** decimals;
     return Math.floor(value * scale + 1e-9) / scale;
 }
@@ -36,7 +50,7 @@ export function naturalCountUpValue(
     from: number,
     to: number,
     t: number,
-    decimals: number = 3,
+    decimals: number = moneyDecimals(),
 ): number {
     const tt = t <= 0 ? 0 : t >= 1 ? 1 : t;
     if (tt <= 0) return truncateDecimals(from, decimals);
@@ -78,13 +92,13 @@ export function formatCurrency(value: number): string {
 
     // Loại bỏ floating-point noise (e.g. 0.8999999... → 0.9, 449.9999... → 450)
     const clean = Math.round(value * 1e9) / 1e9;
-    const isInteger = Number.isInteger(clean) || Math.abs(clean - Math.round(clean)) < 0.0005;
+    const isInteger = Number.isInteger(clean) || Math.abs(clean - Math.round(clean)) < 0.5 / 10 ** moneyDecimals();
     if (isInteger) {
         return Math.round(clean).toLocaleString('en-US') + amountSuffix();
     }
     const fixed9 = clean.toFixed(9);
     const [rawInt, rawDec = ''] = fixed9.split('.');
-    const fixed = `${rawInt}.${rawDec.padEnd(3, '0').slice(0, 3)}`;
+    const fixed = `${rawInt}.${rawDec.padEnd(moneyDecimals(), '0').slice(0, moneyDecimals())}`;
     const [intPart, decPart] = fixed.split('.');
     const formattedInt = parseInt(intPart, 10).toLocaleString('en-US');
     return `${formattedInt}.${decPart}${amountSuffix()}`;
@@ -122,7 +136,7 @@ export function formatCurrencyFixed(value: number): string {
     const clean = Math.round(value * 1e9) / 1e9;
     const fixed9 = clean.toFixed(9);
     const [rawInt, rawDec = ''] = fixed9.split('.');
-    const fixed = `${rawInt}.${rawDec.padEnd(3, '0').slice(0, 3)}`;
+    const fixed = `${rawInt}.${rawDec.padEnd(moneyDecimals(), '0').slice(0, moneyDecimals())}`;
     const [intPart, decPart] = fixed.split('.');
     const formattedInt = parseInt(intPart, 10).toLocaleString('en-US');
     return `${formattedInt}.${decPart}${amountSuffix()}`;

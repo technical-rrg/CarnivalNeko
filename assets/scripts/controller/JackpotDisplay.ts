@@ -26,7 +26,7 @@ import { GameData } from '../data/GameData';
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../core/GameEvents';
 import { SpriteNumber } from '../core/SpriteNumber';
-import { naturalCountUpValue } from '../core/FormatUtils';
+import { naturalCountUpValue, moneyDecimals, truncateMoney } from '../core/FormatUtils';
 import { JackpotType } from '../data/SlotTypes';
 import { Log } from '../core/Logger';
 
@@ -472,7 +472,7 @@ export class JackpotDisplay extends Component {
     private _updateAll(): void {
         this._ensureLabels();
         const vals = GameData.instance.jackpotValues;   // [MINI=0, MINOR=1, MAJOR=2, GRAND=3]
-        const truncate3 = (n: number) => Math.floor(n * 1000) / 1000;
+        const truncate3 = (n: number) => truncateMoney(n);
         const mini  = truncate3(Number(vals?.[0]) || 0);
         const minor = truncate3(Number(vals?.[1]) || 0);
         const major = truncate3(Number(vals?.[2]) || 0);
@@ -510,8 +510,8 @@ export class JackpotDisplay extends Component {
             this._tweenMap.delete(label);
         }
         if (Math.abs(from - to) < 0.01) {
-            const toTrunc = Math.floor(to * 1000) / 1000;
-            label.setData(toTrunc, currencyIndex, 3);
+            const toTrunc = truncateMoney(to);
+            label.setData(toTrunc, currencyIndex, moneyDecimals());
             return;
         }
         const obj = { val: from };
@@ -519,8 +519,8 @@ export class JackpotDisplay extends Component {
             .to(duration, { val: to }, {
                 easing: 'quadOut',
                 onUpdate: (_obj, ratio) => {
-                    const cur = naturalCountUpValue(from, to, ratio ?? 0, 3);
-                    label.setData(cur, currencyIndex, 3);
+                    const cur = naturalCountUpValue(from, to, ratio ?? 0, moneyDecimals());
+                    label.setData(cur, currencyIndex, moneyDecimals());
                 },
             })
             .call(() => {

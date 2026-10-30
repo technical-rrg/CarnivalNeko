@@ -45,6 +45,7 @@ import {
     gridMiniGreenReelVisualScale,
 } from './TopUpReelController';
 import { TopUpTransitionPopup, TransitionMode } from './TopUpTransitionPopup';
+import { moneyDecimals } from '../core/FormatUtils';
 import {
     MATSURI_COL_COUNT,
     MATSURI_CELL_SIZE,
@@ -1678,7 +1679,7 @@ export class StickyOverlayController extends Component {
             return;
         }
         sn.node.active = true;
-        sn.setData(this._featureCollectTotal, 0, 3, true);
+        sn.setData(this._featureCollectTotal, 0, moneyDecimals(), true);
     }
 
     // ── LIFECYCLE ──────────────────────────────────────────────────────────────
